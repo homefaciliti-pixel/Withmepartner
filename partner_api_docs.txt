@@ -15,6 +15,7 @@ Content-Type: application/json
 
 Request Body:
 {
+  "country_code": "+91",  // Optional, defaults to "+91"
   "mobile_number": "9876543210",
   "password": "MySecurePass123"
 }
@@ -26,6 +27,7 @@ Success Response — 200 OK:
   "data": {
     "user_id": "usr_10234",
     "name": "Rahul Sharma",
+    "country_code": "+91",
     "mobile_number": "9876543210",
     "profile_completed": true,
     "profile_step_pending": null,
@@ -53,6 +55,7 @@ Content-Type: application/json
 
 Request Body:
 {
+  "country_code": "+91",  // Optional, defaults to "+91"
   "mobile_number": "9876543210"
 }
 
@@ -62,7 +65,9 @@ Success Response — 200 OK:
   "message": "OTP sent successfully",
   "data": {
     "otp_session_id": "otp_sess_a1b2c3",
-    "otp_expires_in": 300
+    "otp_expires_in": 300,
+    "country_code": "+91",
+    "mobile_number": "9876543210"
   }
 }
 
@@ -132,6 +137,7 @@ Content-Type: application/json
 
 Request Body:
 {
+  "country_code": "+91",  // Optional, e.g. "+91", "+1", "+44", "+971". Defaults to "+91"
   "mobile_number": "9876543210"
 }
 
@@ -141,7 +147,9 @@ Success Response — 200 OK:
   "message": "OTP sent successfully",
   "data": {
     "otp_session_id": "otp_sess_x9y8z7",
-    "otp_expires_in": 300
+    "otp_expires_in": 300,
+    "country_code": "+91",
+    "mobile_number": "9876543210"
   }
 }
 
@@ -183,6 +191,7 @@ Request Body:
 {
   "token": "vtok_5c4b3a",
   "name": "Rahul Sharma",
+  "country_code": "+91",  // Optional, defaults to token session country code or "+91"
   "mobile_number": "9876543210",
   "email": "rahul.sharma@example.com",
   "gender": "Male",
@@ -216,11 +225,55 @@ Error Responses:
 
 
 --------------------------------------------------------------------------------
-4. PROFILE PHOTO API
+4. META & COUNTRY CODES API
+--------------------------------------------------------------------------------
+
+4.1 Get Country Codes Meta List
+Endpoint: GET /meta/country-codes
+Auth required: No
+
+Success Response — 200 OK:
+{
+  "status": true,
+  "message": "Success",
+  "data": {
+    "country_codes": [
+      { "name": "India", "code": "+91", "iso": "IN", "flag": "🇮🇳" },
+      { "name": "United States", "code": "+1", "iso": "US", "flag": "🇺🇸" },
+      { "name": "United Kingdom", "code": "+44", "iso": "GB", "flag": "🇬🇧" },
+      { "name": "United Arab Emirates", "code": "+971", "iso": "AE", "flag": "🇦🇪" },
+      { "name": "Canada", "code": "+1", "iso": "CA", "flag": "🇨🇦" },
+      { "name": "Australia", "code": "+61", "iso": "AU", "flag": "🇦🇺" },
+      { "name": "Saudi Arabia", "code": "+966", "iso": "SA", "flag": "🇸🇦" },
+      { "name": "Qatar", "code": "+974", "iso": "QA", "flag": "🇶🇦" },
+      { "name": "Singapore", "code": "+65", "iso": "SG", "flag": "🇸🇬" },
+      { "name": "Germany", "code": "+49", "iso": "DE", "flag": "🇩🇪" },
+      ...
+    ]
+  }
+}
+
+
+4.2 Get Meta Interests
+Endpoint: GET /meta/interests
+Auth required: No
+
+Success Response — 200 OK:
+{
+  "status": true,
+  "message": "Success",
+  "data": {
+    "interests": ["Coffee", "Travel", "Music", "Movies", "Photography", "Events", "Books", "Fitness"]
+  }
+}
+
+
+--------------------------------------------------------------------------------
+5. PROFILE PHOTO API
 --------------------------------------------------------------------------------
 User flow: tap profile photo -> capture/scan main photo -> add up to 4 more -> 5 photos total.
 
-4.1 Upload Profile Photos
+5.1 Upload Profile Photos
 Endpoint: POST /profile/photos
 Auth required: Yes (Headers: Authorization: Bearer <access_token>)
 Content-Type: multipart/form-data
@@ -250,7 +303,7 @@ Error Responses:
 { "status": false, "message": "File size exceeds 5MB limit", "error_code": "FILE_TOO_LARGE" }
 
 
-4.2 Get Profile Photos
+5.2 Get Profile Photos
 Endpoint: GET /profile/photos
 Auth required: Yes (Headers: Authorization: Bearer <access_token>)
 
@@ -270,7 +323,7 @@ Success Response — 200 OK:
 }
 
 
-4.3 Replace a Single Photo
+5.3 Replace a Single Photo
 Endpoint: PUT /profile/photos/{photo_id}
 Auth required: Yes (Headers: Authorization: Bearer <access_token>)
 Content-Type: multipart/form-data
@@ -290,10 +343,10 @@ Success Response — 200 OK:
 
 
 --------------------------------------------------------------------------------
-5. AADHAR API
+6. AADHAR API
 --------------------------------------------------------------------------------
 
-5.1 Submit Aadhar Details
+6.1 Submit Aadhar Details
 Endpoint: POST /profile/aadhar
 Auth required: Yes (Headers: Authorization: Bearer <access_token>)
 Content-Type: multipart/form-data
@@ -324,7 +377,7 @@ Validation Rules:
 • Private bucket access / signed URLs for uploaded images.
 
 
-5.2 Get Aadhar Verification Status
+6.2 Get Aadhar Verification Status
 Endpoint: GET /profile/aadhar/status
 Auth required: Yes (Headers: Authorization: Bearer <access_token>)
 
@@ -342,10 +395,10 @@ aadhar_verification_status enum: PENDING, APPROVED, REJECTED.
 
 
 --------------------------------------------------------------------------------
-6. ABOUT YOU API
+7. ABOUT YOU API
 --------------------------------------------------------------------------------
 
-6.1 Submit About You
+7.1 Submit About You
 Endpoint: POST /profile/about
 Auth required: Yes (Headers: Authorization: Bearer <access_token>)
 Content-Type: application/json
@@ -372,25 +425,11 @@ Error Responses:
 { "status": false, "message": "Select at least 1 interest", "error_code": "INTEREST_REQUIRED" }
 
 
-6.2 Get Meta Interests
-Endpoint: GET /meta/interests
-Auth required: No
-
-Success Response — 200 OK:
-{
-  "status": true,
-  "message": "Success",
-  "data": {
-    "interests": ["Coffee", "Travel", "Music", "Movies", "Photography", "Events", "Books", "Fitness"]
-  }
-}
-
-
 --------------------------------------------------------------------------------
-7. AVAILABILITY & PRICING API
+8. AVAILABILITY & PRICING API
 --------------------------------------------------------------------------------
 
-7.1 Get Available Time Slot Options
+8.1 Get Available Time Slot Options
 Endpoint: GET /meta/time-slots
 Auth required: No
 
@@ -411,7 +450,7 @@ Success Response — 200 OK:
 }
 
 
-7.2 Submit Availability & Pricing
+8.2 Submit Availability & Pricing
 Endpoint: POST /partner/availability
 Auth required: Yes (Headers: Authorization: Bearer <access_token>)
 Content-Type: application/json
@@ -455,15 +494,15 @@ Error Responses:
 { "status": false, "message": "Price must be set for each selected interest", "error_code": "PRICING_REQUIRED" }
 
 
-7.3 Get Current Availability & Pricing
+8.3 Get Current Availability & Pricing
 Endpoint: GET /partner/availability
 Auth required: Yes (Headers: Authorization: Bearer <access_token>)
 
 Success Response — 200 OK:
-Same payload structure as 7.2 success response.
+Same payload structure as 8.2 success response.
 
 
-7.4 Toggle "Receive Requests" Only
+8.4 Toggle "Receive Requests" Only
 Endpoint: PATCH /partner/availability/receive-requests
 Auth required: Yes (Headers: Authorization: Bearer <access_token>)
 Content-Type: application/json
@@ -485,10 +524,10 @@ Success Response — 200 OK:
 
 
 --------------------------------------------------------------------------------
-8. PROFILE DETAILS API (GET & EDIT)
+9. PROFILE DETAILS API (GET & EDIT)
 --------------------------------------------------------------------------------
 
-8.1 Get Profile Detail
+9.1 Get Profile Detail
 Endpoint: GET /profile
 Auth required: Yes (Headers: Authorization: Bearer <access_token>)
 
@@ -512,7 +551,9 @@ Success Response — 200 OK:
       "updated_at": "2026-09-15T10:32:00Z"
     },
     "email": "rahul.sharma@example.com",
+    "country_code": "+91",
     "phone": "9876543210",
+    "full_phone": "+919876543210",
     "phone_verified": true,
     "gender": "Male",
     "dob": "1998-05-14",
@@ -530,7 +571,7 @@ Error Response:
 { "status": false, "message": "Profile not found", "error_code": "USER_NOT_FOUND" }
 
 
-8.2 Update Current Location
+9.2 Update Current Location
 Endpoint: PATCH /profile/location
 Auth required: Yes (Headers: Authorization: Bearer <access_token>)
 Content-Type: application/json
@@ -556,7 +597,7 @@ Success Response — 200 OK:
 }
 
 
-8.3 Edit Profile
+9.3 Edit Profile
 Endpoint: PUT /profile
 Auth required: Yes (Headers: Authorization: Bearer <access_token>)
 Content-Type: application/json
@@ -565,6 +606,7 @@ Request Body:
 {
   "name": "Rahul Sharma",
   "email": "rahul.new@example.com",
+  "country_code": "+91",
   "phone": "9123456780"
 }
 
@@ -575,6 +617,7 @@ Success Response — 200 OK (If phone is NOT changed):
   "data": {
     "name": "Rahul Sharma",
     "email": "rahul.new@example.com",
+    "country_code": "+91",
     "phone": "9876543210",
     "phone_verified": true
   }
@@ -588,6 +631,7 @@ Success Response — 200 OK (If phone IS changed):
     "otp_session_id": "otp_sess_p9q8r7",
     "otp_expires_in": 300,
     "phone_verified": false,
+    "country_code": "+91",
     "pending_phone_change": "9123456780"
   }
 }

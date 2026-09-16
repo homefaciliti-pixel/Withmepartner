@@ -2,15 +2,26 @@ const { encrypt } = require('../utils/crypto');
 
 // In-memory Database Store
 const users = new Map();
-const otpSessions = new Map(); // session_id -> { mobile_number, type, otp, expires_at }
-const resetTokens = new Map(); // reset_token -> { mobile_number, expires_at }
-const verifyTokens = new Map(); // token -> { mobile_number, expires_at }
+const otpSessions = new Map(); // session_id -> { mobile_number, country_code, type, otp, expires_at }
+const resetTokens = new Map(); // reset_token -> { mobile_number, country_code, expires_at }
+const verifyTokens = new Map(); // token -> { mobile_number, country_code, expires_at }
+
+// Helper function to format country code
+function normalizeCountryCode(cc) {
+  if (!cc) return '+91';
+  let clean = cc.trim();
+  if (!clean.startsWith('+')) {
+    clean = '+' + clean;
+  }
+  return clean;
+}
 
 // Seed default user matching sample request/responses
 const seedUserId = "usr_10234";
 users.set(seedUserId, {
   user_id: seedUserId,
   name: "Rahul Sharma",
+  country_code: "+91",
   mobile_number: "9876543210",
   password: "MySecurePass123",
   email: "rahul.sharma@example.com",
@@ -69,5 +80,6 @@ module.exports = {
   users,
   otpSessions,
   resetTokens,
-  verifyTokens
+  verifyTokens,
+  normalizeCountryCode
 };

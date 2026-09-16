@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const { users, otpSessions } = require('../store/db');
+const { users, otpSessions, normalizeCountryCode } = require('../store/db');
 const { authenticateToken } = require('../middleware/auth');
 const { validateVerhoeff } = require('../utils/verhoeff');
 const { encrypt, decrypt } = require('../utils/crypto');
@@ -289,6 +289,7 @@ router.get('/', authenticateToken, (req, res) => {
   const primaryPhoto = (user.photos && user.photos.find(p => p.is_primary)) || (user.photos && user.photos[0]);
   const aadharVerified = user.aadhar ? user.aadhar.aadhar_verification_status === "APPROVED" : false;
   const avail = user.availability || {};
+  const cc = user.country_code || "+91";
 
   return res.status(200).json({
     status: true,
@@ -304,7 +305,9 @@ router.get('/', authenticateToken, (req, res) => {
       receive_requests: avail.receive_requests !== undefined ? avail.receive_requests : true,
       current_location: user.current_location || null,
       email: user.email,
+      country_code: cc,
       phone: user.mobile_number,
+      full_phone: `${cc}${user.mobile_number}`,
       phone_verified: user.phone_verified !== undefined ? user.phone_verified : true,
       gender: user.gender,
       dob: user.dob,
@@ -347,7 +350,7 @@ router.patch('/location', authenticateToken, (req, res) => {
 
 // 8.3 Edit Profile
 router.put('/', authenticateToken, (req, res) => {
-  const { name, email, phone } = req.body;
+  const { name, email, phone, country_code } = req.body;
   const user = users.get(req.user.user_id);
   if (!user) {
     return res.status(404).json({ status: false, message: "User not found", error_code: "USER_NOT_FOUND" });
@@ -356,18 +359,24 @@ router.put('/', authenticateToken, (req, res) => {
   if (name) user.name = name;
   if (email) user.email = email;
 
-  // Check if phone number is changed
-  if (phone && phone !== user.mobile_number) {
+  const newCC = country_code ? normalizeCountryCode(country_code) : (user.country_code || "+91");
+
+  // Check if phone number or country code is changed
+  if ((phone && phone !== user.mobile_number) || (country_code && newCC !== user.country_code)) {
+    const targetPhone = phone || user.mobile_number;
     const otp_session_id = `otp_sess_${Math.random().toString(36).substring(2, 8)}`;
+    
     otpSessions.set(otp_session_id, {
-      mobile_number: phone,
+      country_code: newCC,
+      mobile_number: targetPhone,
       otp: "1234",
       type: "phone_change",
       user_id: user.user_id,
       expires_at: Date.now() + 5 * 60 * 1000
     });
 
-    user.pending_phone_change = phone;
+    user.pending_phone_change = targetPhone;
+    user.pending_country_code_change = newCC;
     user.phone_verified = false;
 
     return res.status(200).json({
@@ -377,7 +386,8 @@ router.put('/', authenticateToken, (req, res) => {
         otp_session_id,
         otp_expires_in: 300,
         phone_verified: false,
-        pending_phone_change: phone
+        country_code: newCC,
+        pending_phone_change: targetPhone
       }
     });
   }
@@ -388,6 +398,7 @@ router.put('/', authenticateToken, (req, res) => {
     data: {
       name: user.name,
       email: user.email,
+      country_code: user.country_code || "+91",
       phone: user.mobile_number,
       phone_verified: user.phone_verified !== undefined ? user.phone_verified : true
     }

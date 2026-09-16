@@ -1,11 +1,23 @@
 const express = require('express');
 const router = express.Router();
-const { users, otpSessions, resetTokens, verifyTokens } = require('../store/db');
+const { users, otpSessions, resetTokens, verifyTokens, normalizeCountryCode } = require('../store/db');
 const { generateTokens } = require('../middleware/auth');
+
+// Helper to find user by mobile and optional country code
+function findUserByMobile(mobile_number, country_code) {
+  const normCC = country_code ? normalizeCountryCode(country_code) : null;
+  return Array.from(users.values()).find(u => {
+    if (u.mobile_number !== mobile_number) return false;
+    if (normCC && u.country_code) {
+      return u.country_code === normCC;
+    }
+    return true;
+  });
+}
 
 // 1.1 Login
 router.post('/login', (req, res) => {
-  const { mobile_number, password } = req.body;
+  const { country_code, mobile_number, password } = req.body;
 
   if (!mobile_number || !password) {
     return res.status(400).json({
@@ -15,8 +27,8 @@ router.post('/login', (req, res) => {
     });
   }
 
-  // Find user by mobile_number
-  let user = Array.from(users.values()).find(u => u.mobile_number === mobile_number);
+  const normCC = normalizeCountryCode(country_code);
+  let user = findUserByMobile(mobile_number, normCC);
 
   if (!user) {
     return res.status(404).json({
@@ -62,6 +74,7 @@ router.post('/login', (req, res) => {
     data: {
       user_id: user.user_id,
       name: user.name,
+      country_code: user.country_code || normCC,
       mobile_number: user.mobile_number,
       profile_completed: user.profile_completed || false,
       profile_step_pending: user.profile_step_pending || null,
@@ -74,8 +87,9 @@ router.post('/login', (req, res) => {
 
 // 2.1 Send OTP (Forgot Password)
 router.post('/forgot-password/send-otp', (req, res) => {
-  const { mobile_number } = req.body;
-  const user = Array.from(users.values()).find(u => u.mobile_number === mobile_number);
+  const { country_code, mobile_number } = req.body;
+  const normCC = normalizeCountryCode(country_code);
+  const user = findUserByMobile(mobile_number, normCC);
 
   if (!user) {
     return res.status(404).json({
@@ -89,6 +103,7 @@ router.post('/forgot-password/send-otp', (req, res) => {
   const otp = "4829"; // Mock OTP for testing
 
   otpSessions.set(otp_session_id, {
+    country_code: normCC,
     mobile_number,
     otp,
     type: "forgot_password",
@@ -100,7 +115,9 @@ router.post('/forgot-password/send-otp', (req, res) => {
     message: "OTP sent successfully",
     data: {
       otp_session_id,
-      otp_expires_in: 300
+      otp_expires_in: 300,
+      country_code: normCC,
+      mobile_number
     }
   });
 });
@@ -138,6 +155,7 @@ router.post('/forgot-password/verify-otp', (req, res) => {
   otpSessions.delete(otp_session_id);
   const reset_token = `rst_tok_${Math.random().toString(36).substring(2, 8)}`;
   resetTokens.set(reset_token, {
+    country_code: session.country_code,
     mobile_number: session.mobile_number,
     expires_at: Date.now() + 10 * 60 * 1000 // 10 mins
   });
@@ -174,7 +192,7 @@ router.post('/forgot-password/reset', (req, res) => {
     });
   }
 
-  const user = Array.from(users.values()).find(u => u.mobile_number === session.mobile_number);
+  const user = findUserByMobile(session.mobile_number, session.country_code);
   if (user) {
     user.password = new_password;
     user.locked = false;
@@ -191,8 +209,9 @@ router.post('/forgot-password/reset', (req, res) => {
 
 // 3.1 Send OTP (Registration)
 router.post('/register/send-otp', (req, res) => {
-  const { mobile_number } = req.body;
-  const existingUser = Array.from(users.values()).find(u => u.mobile_number === mobile_number);
+  const { country_code, mobile_number } = req.body;
+  const normCC = normalizeCountryCode(country_code);
+  const existingUser = findUserByMobile(mobile_number, normCC);
 
   if (existingUser) {
     return res.status(400).json({
@@ -206,6 +225,7 @@ router.post('/register/send-otp', (req, res) => {
   const otp = "5739";
 
   otpSessions.set(otp_session_id, {
+    country_code: normCC,
     mobile_number,
     otp,
     type: "registration",
@@ -217,7 +237,9 @@ router.post('/register/send-otp', (req, res) => {
     message: "OTP sent successfully",
     data: {
       otp_session_id,
-      otp_expires_in: 300
+      otp_expires_in: 300,
+      country_code: normCC,
+      mobile_number
     }
   });
 });
@@ -246,6 +268,7 @@ router.post('/register/verify-otp', (req, res) => {
   otpSessions.delete(otp_session_id);
   const token = `vtok_${Math.random().toString(36).substring(2, 8)}`;
   verifyTokens.set(token, {
+    country_code: session.country_code,
     mobile_number: session.mobile_number,
     expires_at: Date.now() + 30 * 60 * 1000 // 1800s
   });
@@ -263,7 +286,7 @@ router.post('/register/verify-otp', (req, res) => {
 // 3.3 Complete Registration
 router.post('/register', (req, res) => {
   const {
-    token, name, mobile_number, email, gender, dob,
+    token, name, country_code, mobile_number, email, gender, dob,
     area, city, state, pincode, password, confirm_password
   } = req.body;
 
@@ -285,6 +308,8 @@ router.post('/register', (req, res) => {
     });
   }
 
+  const normCC = normalizeCountryCode(country_code || vSession.country_code);
+
   // Check email existence
   const existingEmail = Array.from(users.values()).find(u => u.email === email);
   if (existingEmail) {
@@ -295,8 +320,8 @@ router.post('/register', (req, res) => {
     });
   }
 
-  // Check pincode format (6 digits for India)
-  if (!/^\d{6}$/.test(pincode)) {
+  // Check pincode format (digits check)
+  if (pincode && !/^\d{4,10}$/.test(pincode)) {
     return res.status(400).json({
       status: false,
       message: "Invalid pincode",
@@ -310,7 +335,8 @@ router.post('/register', (req, res) => {
   const newUser = {
     user_id: userId,
     name,
-    mobile_number,
+    country_code: normCC,
+    mobile_number: mobile_number || vSession.mobile_number,
     email,
     gender,
     dob,

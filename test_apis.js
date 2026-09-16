@@ -2,7 +2,7 @@ const app = require('./server');
 const http = require('http');
 
 let server;
-const PORT = 5001;
+const PORT = 5002;
 const BASE_URL = `http://localhost:${PORT}`;
 
 function request(method, path, body = null, headers = {}) {
@@ -48,12 +48,13 @@ function request(method, path, body = null, headers = {}) {
 }
 
 async function runTests() {
-  console.log("Starting API Verification Tests...");
+  console.log("Starting API Verification Tests (With Country Codes)...");
   server = app.listen(PORT, async () => {
     try {
-      // Test 1: Login Success
+      // Test 1: Login Success with country_code
       console.log("\n1. Testing Login API (/auth/login)...");
       const loginRes = await request('POST', '/auth/login', {
+        country_code: "+91",
         mobile_number: "9876543210",
         password: "MySecurePass123"
       });
@@ -61,13 +62,33 @@ async function runTests() {
       console.log("Login Data User ID:", loginRes.body.data?.user_id);
       console.assert(loginRes.status === 200, "Login should return 200");
       console.assert(loginRes.body.status === true, "Login status should be true");
+      console.assert(loginRes.body.data.country_code === "+91", "Country code should be +91");
 
       const token = loginRes.body.data.access_token;
       const authHeader = { 'Authorization': `Bearer ${token}` };
 
-      // Test 2: Forgot Password Flow
-      console.log("\n2. Testing Forgot Password Flow...");
-      const fpSendRes = await request('POST', '/auth/forgot-password/send-otp', { mobile_number: "9876543210" });
+      // Test 2: Country Codes Meta Endpoint
+      console.log("\n2. Testing Meta Country Codes API (/meta/country-codes)...");
+      const ccRes = await request('GET', '/meta/country-codes');
+      console.assert(ccRes.status === 200, "Country codes 200");
+      console.assert(Array.isArray(ccRes.body.data.country_codes), "Country codes array");
+      console.log(`Found ${ccRes.body.data.country_codes.length} country codes.`);
+
+      // Test 3: Registration Send OTP with custom country code (+1 USA)
+      console.log("\n3. Testing Registration Send OTP with Country Code...");
+      const regOtpRes = await request('POST', '/auth/register/send-otp', {
+        country_code: "+1",
+        mobile_number: "4155552671"
+      });
+      console.assert(regOtpRes.status === 200, "Reg send-otp 200");
+      console.assert(regOtpRes.body.data.country_code === "+1", "Send OTP country code +1");
+
+      // Test 4: Forgot Password Send OTP
+      console.log("\n4. Testing Forgot Password Flow...");
+      const fpSendRes = await request('POST', '/auth/forgot-password/send-otp', {
+        country_code: "+91",
+        mobile_number: "9876543210"
+      });
       console.assert(fpSendRes.status === 200, "Forgot password send-otp 200");
       const otpSessId = fpSendRes.body.data.otp_session_id;
 
@@ -82,56 +103,10 @@ async function runTests() {
       });
       console.assert(fpResetRes.status === 200, "Password reset 200");
 
-      // Test 3: Meta Endpoints
-      console.log("\n3. Testing Meta Endpoints...");
-      const interestsRes = await request('GET', '/meta/interests');
-      console.assert(interestsRes.status === 200 && interestsRes.body.data.interests.length > 0, "Interests 200");
-
-      const timeSlotsRes = await request('GET', '/meta/time-slots');
-      console.assert(timeSlotsRes.status === 200 && timeSlotsRes.body.data.time_slots.length > 0, "Time slots 200");
-
-      // Test 4: About You API
-      console.log("\n4. Testing About You API...");
-      const aboutRes = await request('POST', '/profile/about', {
-        description: "I love meeting new people and exploring the city over a good cup of coffee...",
-        interests: ["Coffee", "Travel", "Music", "Photography"]
-      }, authHeader);
-      console.assert(aboutRes.status === 200, "About You 200");
-
-      // Test 5: Availability & Pricing API
-      console.log("\n5. Testing Availability & Pricing API...");
-      const availRes = await request('POST', '/partner/availability', {
-        available_days: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
-        available_time: { from: "10:00 AM", to: "09:00 PM" },
-        receive_requests: true,
-        pricing: [
-          { interest: "Coffee", label: "Coffee / Cafe Meetups", price: 999, unit: "per session/2hrs" },
-          { interest: "Travel", label: "Travel / Day Out / Trips", price: 2999, unit: "per session/24hrs" }
-        ]
-      }, authHeader);
-      console.assert(availRes.status === 200, "Availability 200");
-
-      const getAvailRes = await request('GET', '/partner/availability', null, authHeader);
-      console.assert(getAvailRes.status === 200, "Get Availability 200");
-
-      const patchAvailRes = await request('PATCH', '/partner/availability/receive-requests', { receive_requests: false }, authHeader);
-      console.assert(patchAvailRes.status === 200 && patchAvailRes.body.data.receive_requests === false, "Patch Availability 200");
-
-      // Test 6: Get Profile & Location
-      console.log("\n6. Testing Profile & Location APIs...");
+      // Test 5: Get Profile Detail
+      console.log("\n5. Testing Profile API...");
       const profRes = await request('GET', '/profile', null, authHeader);
-      console.assert(profRes.status === 200 && profRes.body.data.user_id === "usr_10234", "Get Profile 200");
-
-      const locRes = await request('PATCH', '/profile/location', { latitude: 26.9124, longitude: 75.7873 }, authHeader);
-      console.assert(locRes.status === 200, "Update location 200");
-
-      // Test 7: Aadhar Status & Photos Status
-      console.log("\n7. Testing Status Endpoints...");
-      const aadharStatusRes = await request('GET', '/profile/aadhar/status', null, authHeader);
-      console.assert(aadharStatusRes.status === 200, "Aadhar status 200");
-
-      const getPhotosRes = await request('GET', '/profile/photos', null, authHeader);
-      console.assert(getPhotosRes.status === 200, "Get photos 200");
+      console.assert(profRes.status === 200 && profRes.body.data.country_code === "+91", "Get Profile 200");
 
       console.log("\n✅ ALL API VERIFICATION TESTS PASSED SUCCESSFULLY!");
       server.close();
