@@ -1,0 +1,594 @@
+================================================================================
+                            PARTNER APP - API DOCUMENTATION
+================================================================================
+
+BASE URL: http://localhost:5000 (or your server domain)
+
+--------------------------------------------------------------------------------
+1. LOGIN API
+--------------------------------------------------------------------------------
+
+1.1 Login with Mobile Number & Password
+Endpoint: POST /auth/login
+Auth required: No
+Content-Type: application/json
+
+Request Body:
+{
+  "mobile_number": "9876543210",
+  "password": "MySecurePass123"
+}
+
+Success Response — 200 OK:
+{
+  "status": true,
+  "message": "Login successful",
+  "data": {
+    "user_id": "usr_10234",
+    "name": "Rahul Sharma",
+    "mobile_number": "9876543210",
+    "profile_completed": true,
+    "profile_step_pending": null,
+    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "refresh_token": "rft_7f9e2a...",
+    "token_expires_in": 3600
+  }
+}
+
+Error Responses:
+{ "status": false, "message": "Invalid mobile number or password", "error_code": "INVALID_CREDENTIALS" }
+{ "status": false, "message": "Account not found. Please register.", "error_code": "USER_NOT_FOUND" }
+{ "status": false, "message": "Account temporarily locked due to multiple failed attempts", "error_code": "ACCOUNT_LOCKED" }
+
+
+--------------------------------------------------------------------------------
+2. FORGOT PASSWORD API
+--------------------------------------------------------------------------------
+Flow: Send OTP -> Verify OTP -> Reset Password
+
+2.1 Send OTP
+Endpoint: POST /auth/forgot-password/send-otp
+Auth required: No
+Content-Type: application/json
+
+Request Body:
+{
+  "mobile_number": "9876543210"
+}
+
+Success Response — 200 OK:
+{
+  "status": true,
+  "message": "OTP sent successfully",
+  "data": {
+    "otp_session_id": "otp_sess_a1b2c3",
+    "otp_expires_in": 300
+  }
+}
+
+Error Response:
+{ "status": false, "message": "Mobile number not registered", "error_code": "USER_NOT_FOUND" }
+
+
+2.2 Verify OTP
+Endpoint: POST /auth/forgot-password/verify-otp
+Auth required: No
+Content-Type: application/json
+
+Request Body:
+{
+  "otp_session_id": "otp_sess_a1b2c3",
+  "otp": "4829"
+}
+
+Success Response — 200 OK:
+{
+  "status": true,
+  "message": "OTP verified",
+  "data": {
+    "reset_token": "rst_tok_9f8e7d",
+    "reset_token_expires_in": 600
+  }
+}
+
+Error Responses:
+{ "status": false, "message": "Invalid OTP", "error_code": "INVALID_OTP" }
+{ "status": false, "message": "OTP expired, please resend", "error_code": "OTP_EXPIRED" }
+
+
+2.3 Reset Password
+Endpoint: POST /auth/forgot-password/reset
+Auth required: No (uses reset_token instead)
+Content-Type: application/json
+
+Request Body:
+{
+  "reset_token": "rst_tok_9f8e7d",
+  "new_password": "NewSecurePass456",
+  "confirm_password": "NewSecurePass456"
+}
+
+Success Response — 200 OK:
+{
+  "status": true,
+  "message": "Password reset successful. Please login with your new password.",
+  "data": null
+}
+
+Error Responses:
+{ "status": false, "message": "Passwords do not match", "error_code": "PASSWORD_MISMATCH" }
+{ "status": false, "message": "Reset session expired, please try again", "error_code": "RESET_TOKEN_EXPIRED" }
+
+
+--------------------------------------------------------------------------------
+3. REGISTER API
+--------------------------------------------------------------------------------
+Flow: Verify Phone via OTP first -> then fill rest of the form -> submit registration
+
+3.1 Send OTP (Registration)
+Endpoint: POST /auth/register/send-otp
+Auth required: No
+Content-Type: application/json
+
+Request Body:
+{
+  "mobile_number": "9876543210"
+}
+
+Success Response — 200 OK:
+{
+  "status": true,
+  "message": "OTP sent successfully",
+  "data": {
+    "otp_session_id": "otp_sess_x9y8z7",
+    "otp_expires_in": 300
+  }
+}
+
+Error Response:
+{ "status": false, "message": "Mobile number already registered", "error_code": "MOBILE_ALREADY_EXISTS" }
+
+
+3.2 Verify OTP (Registration)
+Endpoint: POST /auth/register/verify-otp
+Auth required: No
+Content-Type: application/json
+
+Request Body:
+{
+  "otp_session_id": "otp_sess_x9y8z7",
+  "otp": "5739"
+}
+
+Success Response — 200 OK:
+{
+  "status": true,
+  "message": "Mobile number verified",
+  "data": {
+    "token": "vtok_5c4b3a",
+    "verification_token_expires_in": 1800
+  }
+}
+
+Error Response:
+{ "status": false, "message": "Invalid OTP", "error_code": "INVALID_OTP" }
+
+
+3.3 Complete Registration
+Endpoint: POST /auth/register
+Auth required: No (uses verification_token)
+Content-Type: application/json
+
+Request Body:
+{
+  "token": "vtok_5c4b3a",
+  "name": "Rahul Sharma",
+  "mobile_number": "9876543210",
+  "email": "rahul.sharma@example.com",
+  "gender": "Male",
+  "dob": "1998-05-14",
+  "area": "Vaishali Nagar",
+  "city": "Jaipur",
+  "state": "Rajasthan",
+  "pincode": "302021",
+  "password": "MySecurePass123",
+  "confirm_password": "MySecurePass123"
+}
+
+Success Response — 201 Created:
+{
+  "status": true,
+  "message": "Registration successful",
+  "data": {
+    "user_id": "usr_10234",
+    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "refresh_token": "rft_7f9e2a...",
+    "token_expires_in": 3600,
+    "profile_step_pending": "PROFILE_PHOTO"
+  }
+}
+
+Error Responses:
+{ "status": false, "message": "Passwords do not match", "error_code": "PASSWORD_MISMATCH" }
+{ "status": false, "message": "Verification session expired. Please verify mobile number again.", "error_code": "VERIFICATION_TOKEN_EXPIRED" }
+{ "status": false, "message": "Email already registered", "error_code": "EMAIL_ALREADY_EXISTS" }
+{ "status": false, "message": "Invalid pincode", "error_code": "INVALID_PINCODE" }
+
+
+--------------------------------------------------------------------------------
+4. PROFILE PHOTO API
+--------------------------------------------------------------------------------
+User flow: tap profile photo -> capture/scan main photo -> add up to 4 more -> 5 photos total.
+
+4.1 Upload Profile Photos
+Endpoint: POST /profile/photos
+Auth required: Yes (Headers: Authorization: Bearer <access_token>)
+Content-Type: multipart/form-data
+
+Form Fields:
+- primary_photo (file, required): Main scanned/captured photo (JPG/PNG)
+- additional_photos (file[], max 4, required): Up to 4 more photos (JPG/PNG)
+
+Success Response — 201 Created:
+{
+  "status": true,
+  "message": "Profile photos uploaded successfully",
+  "data": {
+    "photos": [
+      { "photo_id": "ph_001", "url": "https://cdn.yourdomain.com/usr_10234/ph_001.jpg", "is_primary": true },
+      { "photo_id": "ph_002", "url": "https://cdn.yourdomain.com/usr_10234/ph_002.jpg", "is_primary": false },
+      { "photo_id": "ph_003", "url": "https://cdn.yourdomain.com/usr_10234/ph_003.jpg", "is_primary": false },
+      { "photo_id": "ph_004", "url": "https://cdn.yourdomain.com/usr_10234/ph_004.jpg", "is_primary": false },
+      { "photo_id": "ph_005", "url": "https://cdn.yourdomain.com/usr_10234/ph_005.jpg", "is_primary": false }
+    ]
+  }
+}
+
+Error Responses:
+{ "status": false, "message": "Exactly 5 photos are required (1 primary + 4 additional)", "error_code": "PHOTO_COUNT_INVALID" }
+{ "status": false, "message": "Unsupported file format. Use JPG or PNG", "error_code": "INVALID_FILE_TYPE" }
+{ "status": false, "message": "File size exceeds 5MB limit", "error_code": "FILE_TOO_LARGE" }
+
+
+4.2 Get Profile Photos
+Endpoint: GET /profile/photos
+Auth required: Yes (Headers: Authorization: Bearer <access_token>)
+
+Success Response — 200 OK:
+{
+  "status": true,
+  "message": "Success",
+  "data": {
+    "photos": [
+      { "photo_id": "ph_001", "url": "https://cdn.yourdomain.com/usr_10234/ph_001.jpg", "is_primary": true },
+      { "photo_id": "ph_002", "url": "https://cdn.yourdomain.com/usr_10234/ph_002.jpg", "is_primary": false },
+      { "photo_id": "ph_003", "url": "https://cdn.yourdomain.com/usr_10234/ph_003.jpg", "is_primary": false },
+      { "photo_id": "ph_004", "url": "https://cdn.yourdomain.com/usr_10234/ph_004.jpg", "is_primary": false },
+      { "photo_id": "ph_005", "url": "https://cdn.yourdomain.com/usr_10234/ph_005.jpg", "is_primary": false }
+    ]
+  }
+}
+
+
+4.3 Replace a Single Photo
+Endpoint: PUT /profile/photos/{photo_id}
+Auth required: Yes (Headers: Authorization: Bearer <access_token>)
+Content-Type: multipart/form-data
+
+Form Field:
+- photo (file, required): JPG/PNG file to replace existing photo
+
+Success Response — 200 OK:
+{
+  "status": true,
+  "message": "Photo updated successfully",
+  "data": {
+    "photo_id": "ph_003",
+    "url": "https://cdn.yourdomain.com/usr_10234/ph_003_v2.jpg"
+  }
+}
+
+
+--------------------------------------------------------------------------------
+5. AADHAR API
+--------------------------------------------------------------------------------
+
+5.1 Submit Aadhar Details
+Endpoint: POST /profile/aadhar
+Auth required: Yes (Headers: Authorization: Bearer <access_token>)
+Content-Type: multipart/form-data
+
+Form Fields:
+- aadhar_number (text, required): 12 digits (passes Verhoeff checksum)
+- aadhar_front_photo (file, required): JPG/PNG/PDF
+- aadhar_back_photo (file, required): JPG/PNG/PDF
+
+Success Response — 201 Created:
+{
+  "status": true,
+  "message": "Aadhar details submitted for verification",
+  "data": {
+    "aadhar_verification_status": "PENDING",
+    "profile_step_pending": "ABOUT_YOU"
+  }
+}
+
+Error Responses:
+{ "status": false, "message": "Invalid Aadhar number format", "error_code": "INVALID_AADHAR" }
+{ "status": false, "message": "Aadhar number already linked to another account", "error_code": "AADHAR_ALREADY_EXISTS" }
+{ "status": false, "message": "Both front and back Aadhar images are required", "error_code": "AADHAR_IMAGES_REQUIRED" }
+
+Validation Rules:
+• aadhar_number: exactly 12 digits, passes Verhoeff checksum algorithm.
+• Stored encrypted at rest (AES-256); masked when returned (e.g. XXXX-XXXX-1234).
+• Private bucket access / signed URLs for uploaded images.
+
+
+5.2 Get Aadhar Verification Status
+Endpoint: GET /profile/aadhar/status
+Auth required: Yes (Headers: Authorization: Bearer <access_token>)
+
+Success Response — 200 OK:
+{
+  "status": true,
+  "message": "Success",
+  "data": {
+    "aadhar_verification_status": "APPROVED",
+    "remarks": null
+  }
+}
+
+aadhar_verification_status enum: PENDING, APPROVED, REJECTED.
+
+
+--------------------------------------------------------------------------------
+6. ABOUT YOU API
+--------------------------------------------------------------------------------
+
+6.1 Submit About You
+Endpoint: POST /profile/about
+Auth required: Yes (Headers: Authorization: Bearer <access_token>)
+Content-Type: application/json
+
+Request Body:
+{
+  "description": "I love meeting new people and exploring the city over a good cup of coffee...",
+  "interests": ["Coffee", "Travel", "Music", "Photography"]
+}
+
+Success Response — 200 OK:
+{
+  "status": true,
+  "message": "Profile details saved",
+  "data": {
+    "description": "I love meeting new people and exploring the city over a good cup of coffee...",
+    "interests": ["Coffee", "Travel", "Music", "Photography"],
+    "profile_step_pending": "AVAILABILITY"
+  }
+}
+
+Error Responses:
+{ "status": false, "message": "Description exceeds 300 words", "error_code": "DESCRIPTION_TOO_LONG" }
+{ "status": false, "message": "Select at least 1 interest", "error_code": "INTEREST_REQUIRED" }
+
+
+6.2 Get Meta Interests
+Endpoint: GET /meta/interests
+Auth required: No
+
+Success Response — 200 OK:
+{
+  "status": true,
+  "message": "Success",
+  "data": {
+    "interests": ["Coffee", "Travel", "Music", "Movies", "Photography", "Events", "Books", "Fitness"]
+  }
+}
+
+
+--------------------------------------------------------------------------------
+7. AVAILABILITY & PRICING API
+--------------------------------------------------------------------------------
+
+7.1 Get Available Time Slot Options
+Endpoint: GET /meta/time-slots
+Auth required: No
+
+Success Response — 200 OK:
+{
+  "status": true,
+  "message": "Success",
+  "data": {
+    "time_slots": [
+      "06:00 AM", "06:30 AM", "07:00 AM", "07:30 AM", "08:00 AM", "08:30 AM",
+      "09:00 AM", "09:30 AM", "10:00 AM", "10:30 AM", "11:00 AM", "11:30 AM",
+      "12:00 PM", "12:30 PM", "01:00 PM", "01:30 PM", "02:00 PM", "02:30 PM",
+      "03:00 PM", "03:30 PM", "04:00 PM", "04:30 PM", "05:00 PM", "05:30 PM",
+      "06:00 PM", "06:30 PM", "07:00 PM", "07:30 PM", "08:00 PM", "08:30 PM",
+      "09:00 PM", "09:30 PM", "10:00 PM"
+    ]
+  }
+}
+
+
+7.2 Submit Availability & Pricing
+Endpoint: POST /partner/availability
+Auth required: Yes (Headers: Authorization: Bearer <access_token>)
+Content-Type: application/json
+
+Request Body:
+{
+  "available_days": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+  "available_time": {
+    "from": "10:00 AM",
+    "to": "09:00 PM"
+  },
+  "receive_requests": true,
+  "pricing": [
+    { "interest": "Coffee", "label": "Coffee / Cafe Meetups", "price": 999, "unit": "per session/2hrs" },
+    { "interest": "Travel", "label": "Travel / Day Out / Trips", "price": 2999, "unit": "per session/24hrs" }
+  ]
+}
+
+Success Response — 200 OK / 201 Created:
+{
+  "status": true,
+  "message": "Availability and pricing saved successfully",
+  "data": {
+    "available_days": ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"],
+    "available_time": { "from": "10:00 AM", "to": "09:00 PM" },
+    "receive_requests": true,
+    "availability_status": "Available",
+    "pricing": [
+      { "interest": "Coffee", "label": "Coffee / Cafe Meetups", "price": 999, "unit": "per session/2hrs" },
+      { "interest": "Travel", "label": "Travel / Day Out / Trips", "price": 2999, "unit": "per session/24hrs" }
+    ],
+    "platform_commission_percent": 15,
+    "profile_step_pending": null,
+    "profile_completed": true
+  }
+}
+
+Error Responses:
+{ "status": false, "message": "Select at least 1 available day", "error_code": "AVAILABLE_DAYS_REQUIRED" }
+{ "status": false, "message": "'To' time must be after 'From' time", "error_code": "INVALID_TIME_RANGE" }
+{ "status": false, "message": "Price must be set for each selected interest", "error_code": "PRICING_REQUIRED" }
+
+
+7.3 Get Current Availability & Pricing
+Endpoint: GET /partner/availability
+Auth required: Yes (Headers: Authorization: Bearer <access_token>)
+
+Success Response — 200 OK:
+Same payload structure as 7.2 success response.
+
+
+7.4 Toggle "Receive Requests" Only
+Endpoint: PATCH /partner/availability/receive-requests
+Auth required: Yes (Headers: Authorization: Bearer <access_token>)
+Content-Type: application/json
+
+Request Body:
+{
+  "receive_requests": false
+}
+
+Success Response — 200 OK:
+{
+  "status": true,
+  "message": "Availability status updated",
+  "data": {
+    "receive_requests": false,
+    "availability_status": "Unavailable"
+  }
+}
+
+
+--------------------------------------------------------------------------------
+8. PROFILE DETAILS API (GET & EDIT)
+--------------------------------------------------------------------------------
+
+8.1 Get Profile Detail
+Endpoint: GET /profile
+Auth required: Yes (Headers: Authorization: Bearer <access_token>)
+
+Success Response — 200 OK:
+{
+  "status": true,
+  "message": "Success",
+  "data": {
+    "user_id": "usr_10234",
+    "name": "Rahul Sharma",
+    "profile_photo_url": "https://cdn.yourdomain.com/usr_10234/ph_001.jpg",
+    "rating": 4.6,
+    "total_ratings": 128,
+    "aadhar_verified": true,
+    "availability_status": "Available",
+    "receive_requests": true,
+    "current_location": {
+      "latitude": 26.9124,
+      "longitude": 75.7873,
+      "address": "Vaishali Nagar, Jaipur, Rajasthan",
+      "updated_at": "2026-09-15T10:32:00Z"
+    },
+    "email": "rahul.sharma@example.com",
+    "phone": "9876543210",
+    "phone_verified": true,
+    "gender": "Male",
+    "dob": "1998-05-14",
+    "area": "Vaishali Nagar",
+    "city": "Jaipur",
+    "state": "Rajasthan",
+    "pincode": "302021",
+    "description": "I love meeting new people and exploring the city over a good cup of coffee...",
+    "interests": ["Coffee", "Travel", "Music", "Photography"],
+    "profile_completed": true
+  }
+}
+
+Error Response:
+{ "status": false, "message": "Profile not found", "error_code": "USER_NOT_FOUND" }
+
+
+8.2 Update Current Location
+Endpoint: PATCH /profile/location
+Auth required: Yes (Headers: Authorization: Bearer <access_token>)
+Content-Type: application/json
+
+Request Body:
+{
+  "latitude": 26.9124,
+  "longitude": 75.7873
+}
+
+Success Response — 200 OK:
+{
+  "status": true,
+  "message": "Location updated",
+  "data": {
+    "current_location": {
+      "latitude": 26.9124,
+      "longitude": 75.7873,
+      "address": "Vaishali Nagar, Jaipur, Rajasthan",
+      "updated_at": "2026-09-15T10:32:00Z"
+    }
+  }
+}
+
+
+8.3 Edit Profile
+Endpoint: PUT /profile
+Auth required: Yes (Headers: Authorization: Bearer <access_token>)
+Content-Type: application/json
+
+Request Body:
+{
+  "name": "Rahul Sharma",
+  "email": "rahul.new@example.com",
+  "phone": "9123456780"
+}
+
+Success Response — 200 OK (If phone is NOT changed):
+{
+  "status": true,
+  "message": "Profile updated successfully",
+  "data": {
+    "name": "Rahul Sharma",
+    "email": "rahul.new@example.com",
+    "phone": "9876543210",
+    "phone_verified": true
+  }
+}
+
+Success Response — 200 OK (If phone IS changed):
+{
+  "status": true,
+  "message": "OTP sent to new phone number for verification",
+  "data": {
+    "otp_session_id": "otp_sess_p9q8r7",
+    "otp_expires_in": 300,
+    "phone_verified": false,
+    "pending_phone_change": "9123456780"
+  }
+}
+================================================================================
