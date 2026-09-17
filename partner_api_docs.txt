@@ -71,9 +71,6 @@ Success Response — 200 OK:
   }
 }
 
-Error Response:
-{ "status": false, "message": "Mobile number not registered", "error_code": "USER_NOT_FOUND" }
-
 
 2.2 Verify OTP
 Endpoint: POST /auth/forgot-password/verify-otp
@@ -96,10 +93,6 @@ Success Response — 200 OK:
   }
 }
 
-Error Responses:
-{ "status": false, "message": "Invalid OTP", "error_code": "INVALID_OTP" }
-{ "status": false, "message": "OTP expired, please resend", "error_code": "OTP_EXPIRED" }
-
 
 2.3 Reset Password
 Endpoint: POST /auth/forgot-password/reset
@@ -120,102 +113,22 @@ Success Response — 200 OK:
   "data": null
 }
 
-Error Responses:
-{ "status": false, "message": "Passwords do not match", "error_code": "PASSWORD_MISMATCH" }
-{ "status": false, "message": "Reset session expired, please try again", "error_code": "RESET_TOKEN_EXPIRED" }
-
 
 --------------------------------------------------------------------------------
 3. REGISTER API
 --------------------------------------------------------------------------------
-Flow: Verify Phone via OTP first -> then fill rest of the form -> submit registration
 
 3.1 Send OTP (Registration)
 Endpoint: POST /auth/register/send-otp
 Auth required: No
-Content-Type: application/json
-
-Request Body:
-{
-  "country_code": "+91",
-  "mobile_number": "9876543210"
-}
-
-Success Response — 200 OK:
-{
-  "status": true,
-  "message": "OTP sent successfully",
-  "data": {
-    "otp_session_id": "otp_sess_x9y8z7",
-    "otp_expires_in": 300,
-    "country_code": "+91",
-    "mobile_number": "9876543210"
-  }
-}
-
-Error Response:
-{ "status": false, "message": "Mobile number already registered", "error_code": "MOBILE_ALREADY_EXISTS" }
-
 
 3.2 Verify OTP (Registration)
 Endpoint: POST /auth/register/verify-otp
 Auth required: No
-Content-Type: application/json
-
-Request Body:
-{
-  "otp_session_id": "otp_sess_x9y8z7",
-  "otp": "5739"
-}
-
-Success Response — 200 OK:
-{
-  "status": true,
-  "message": "Mobile number verified",
-  "data": {
-    "token": "vtok_5c4b3a",
-    "verification_token_expires_in": 1800
-  }
-}
-
-Error Response:
-{ "status": false, "message": "Invalid OTP", "error_code": "INVALID_OTP" }
-
 
 3.3 Complete Registration
 Endpoint: POST /auth/register
 Auth required: No (uses verification_token)
-Content-Type: application/json
-
-Request Body:
-{
-  "token": "vtok_5c4b3a",
-  "name": "Rahul Sharma",
-  "country_code": "+91",
-  "mobile_number": "9876543210",
-  "email": "rahul.sharma@example.com",
-  "gender": "Male",
-  "dob": "1998-05-14",
-  "area": "Vaishali Nagar",
-  "city": "Jaipur",
-  "state": "Rajasthan",
-  "pincode": "302021",
-  "password": "MySecurePass123",
-  "confirm_password": "MySecurePass123"
-}
-
-Success Response — 201 Created:
-{
-  "status": true,
-  "message": "Registration successful",
-  "data": {
-    "user_id": "usr_10234",
-    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-    "refresh_token": "rft_7f9e2a...",
-    "token_expires_in": 3600,
-    "profile_step_pending": "PROFILE_PHOTO"
-  }
-}
 
 
 --------------------------------------------------------------------------------
@@ -246,15 +159,6 @@ Success Response — 200 OK:
         "image": "https://cdn.yourdomain.com/users/priya.jpg",
         "name": "Priya Verma",
         "pending_status": "Pending"
-      },
-      {
-        "request_id": "req_002",
-        "interest": "Travel",
-        "date_time": "2026-09-19 11:00 AM",
-        "location": "C-Scheme, Jaipur",
-        "image": "https://cdn.yourdomain.com/users/ananya.jpg",
-        "name": "Ananya Sen",
-        "pending_status": "Pending"
       }
     ],
     "upcoming_bookings": [
@@ -278,63 +182,15 @@ Success Response — 200 OK:
 
 5.1 Get Request Detail
 Endpoint: GET /partner/requests/{request_id}
-Auth required: Yes (Headers: Authorization: Bearer <access_token>)
-
-Success Response — 200 OK:
-{
-  "status": true,
-  "message": "Success",
-  "data": {
-    "request_id": "req_001",
-    "image": "https://cdn.yourdomain.com/users/priya.jpg",
-    "name": "Priya Verma",
-    "age": 24,
-    "id_verified": 1,
-    "location": "Malviya Nagar, Jaipur",
-    "selfie_verified": 1,
-    "interests": ["Coffee"],
-    "activity": {
-      "type": "Coffee",
-      "date": "2026-09-18",
-      "time": "05:00 PM",
-      "area": "Malviya Nagar, Jaipur",
-      "description": "Looking for a coffee hangout partner to discuss tech & books."
-    }
-  }
-}
-
+Auth required: Yes
 
 5.2 Accept / Decline Request
 Endpoint: POST /partner/requests/{request_id}/action
-Auth required: Yes (Headers: Authorization: Bearer <access_token>)
+Auth required: Yes
 Content-Type: application/json
 
 Request Body:
-{
-  "action": "ACCEPT" // Options: "ACCEPT" or "DECLINE"
-}
-
-Success Response (Accept) — 200 OK:
-{
-  "status": true,
-  "message": "Request accepted successfully. Added to My Bookings.",
-  "data": {
-    "request_id": "req_001",
-    "booking_id": "bk_5821",
-    "status": "Upcoming",
-    "goes_to": "My Booking List"
-  }
-}
-
-Success Response (Decline) — 200 OK:
-{
-  "status": true,
-  "message": "Request declined",
-  "data": {
-    "request_id": "req_001",
-    "status": "Declined"
-  }
-}
+{ "action": "ACCEPT" } // Options: "ACCEPT" or "DECLINE"
 
 
 --------------------------------------------------------------------------------
@@ -343,68 +199,19 @@ Success Response (Decline) — 200 OK:
 
 6.1 Get Booking Details
 Endpoint: GET /partner/bookings/{booking_id}
-Auth required: Yes (Headers: Authorization: Bearer <access_token>)
-
-Success Response — 200 OK:
-{
-  "status": true,
-  "message": "Success",
-  "data": {
-    "booking_id": "bk_001",
-    "image": "https://cdn.yourdomain.com/users/ritika.jpg",
-    "name": "Ritika Singh",
-    "age": 25,
-    "id_verified": 1,
-    "location": "Raja Park, Jaipur",
-    "selfie_verified": 1,
-    "interest": "Coffee",
-    "meeting_info": {
-      "date": "2026-09-18",
-      "time": "04:00 PM",
-      "place": "Raja Park, Jaipur",
-      "type": "Coffee",
-      "description": "Casual cafe meetup at Tapri Central."
-    },
-    "safety_checklist": {
-      "start_safe_meet": false
-    },
-    "safe_meet_mode": {
-      "location_allow": 1,
-      "notify_trusted_contact": 1,
-      "safety_check_in": 1
-    }
-  }
-}
-
+Auth required: Yes
 
 6.2 Safe Meet Mode Settings API
 Endpoint: POST /partner/bookings/{booking_id}/safe-meet
-Auth required: Yes (Headers: Authorization: Bearer <access_token>)
+Auth required: Yes
 Content-Type: application/json
 
 Request Body:
 {
-  "location_allow": 1,          // 1 (Yes) or 0 (No)
-  "notify_trusted_contact": 1,  // 1 (Yes) or 0 (No)
-  "safety_check_in": 1,         // 1 (Yes) or 0 (No)
-  "start_safe_meet": true       // true / false
-}
-
-Success Response — 200 OK:
-{
-  "status": true,
-  "message": "Safe meet mode settings saved successfully",
-  "data": {
-    "booking_id": "bk_001",
-    "safe_meet_mode": {
-      "location_allow": 1,
-      "notify_trusted_contact": 1,
-      "safety_check_in": 1
-    },
-    "safety_checklist": {
-      "start_safe_meet": true
-    }
-  }
+  "location_allow": 1,
+  "notify_trusted_contact": 1,
+  "safety_check_in": 1,
+  "start_safe_meet": true
 }
 
 
@@ -413,49 +220,15 @@ Success Response — 200 OK:
 --------------------------------------------------------------------------------
 
 7.1 Get My Bookings List
-Endpoint: GET /partner/bookings
-Query Parameters:
-- status: "Upcoming" | "Complete" | "Cancelled" | "all"
-Auth required: Yes (Headers: Authorization: Bearer <access_token>)
-
-Success Response — 200 OK:
-{
-  "status": true,
-  "message": "Success",
-  "data": {
-    "filter_status": "Upcoming",
-    "total_count": 2,
-    "bookings": [
-      {
-        "booking_id": "bk_001",
-        "profile_image": "https://cdn.yourdomain.com/users/ritika.jpg",
-        "name": "Ritika Singh",
-        "interest": "Coffee",
-        "location": "Raja Park, Jaipur",
-        "date": "2026-09-18",
-        "time": "04:00 PM",
-        "status": "Upcoming"
-      },
-      {
-        "booking_id": "bk_002",
-        "profile_image": "https://cdn.yourdomain.com/users/megha.jpg",
-        "name": "Megha Sharma",
-        "interest": "Travel",
-        "location": "MI Road, Jaipur",
-        "date": "2026-09-19",
-        "time": "02:00 PM",
-        "status": "Upcoming"
-      }
-    ]
-  }
-}
+Endpoint: GET /partner/bookings?status=Upcoming|Complete|Cancelled|all
+Auth required: Yes
 
 
 --------------------------------------------------------------------------------
-8. MY EARNINGS & TRANSACTIONS API
+8. MY EARNINGS & TRANSACTIONS API (WITH TIME BREAKDOWNS)
 --------------------------------------------------------------------------------
 
-8.1 Get My Earnings & Transactions List
+8.1 Get My Earnings Summary & Transactions List
 Endpoint: GET /partner/earnings
 Auth required: Yes (Headers: Authorization: Bearer <access_token>)
 
@@ -464,7 +237,10 @@ Success Response — 200 OK:
   "status": true,
   "message": "Success",
   "data": {
-    "total_earnings": 2500,
+    "total_today_earn": 500,
+    "total_this_week_earn": 1500,
+    "total_this_month_earn": 2500,
+    "total_all_earn": 4800,
     "transactions": [
       {
         "order_id": "ORD_90123",
@@ -504,94 +280,77 @@ Success Response — 200 OK:
 
 
 --------------------------------------------------------------------------------
-9. META & COUNTRY CODES API
+9. PROFILE API & SAVE CHANGES EDIT PROFILE
 --------------------------------------------------------------------------------
 
-9.1 Get Country Codes
+9.1 Get Profile Detail
+Endpoint: GET /profile
+Auth required: Yes (Headers: Authorization: Bearer <access_token>)
+
+Success Response — 200 OK:
+{
+  "status": true,
+  "message": "Success",
+  "data": {
+    "user_id": "usr_10234",
+    "image": "https://cdn.yourdomain.com/usr_10234/ph_001.jpg",
+    "profile_photo_url": "https://cdn.yourdomain.com/usr_10234/ph_001.jpg",
+    "name": "Rahul Sharma",
+    "rating": 4.6,
+    "mail": "rahul.sharma@example.com",
+    "email": "rahul.sharma@example.com",
+    "total_booking": 4,
+    "total_earning": 2500,
+    "phone": "9876543210",
+    "country_code": "+91",
+    "full_phone": "+919876543210",
+    "phone_disabled": true,
+    "aadhar_verified": true,
+    "availability_status": "Available",
+    "receive_requests": true
+  }
+}
+
+
+9.2 Save Changes Profile API (Edit Profile)
+Endpoint: PUT /profile
+Auth required: Yes (Headers: Authorization: Bearer <access_token>)
+Content-Type: application/json
+
+Request Body:
+{
+  "profile_photo": "https://cdn.yourdomain.com/usr_10234/ph_001_v2.jpg",
+  "name": "Rahul Sharma",
+  "email": "rahul.new@example.com"
+  // Note: Phone field is disabled / read-only in direct profile edit
+}
+
+Success Response — 200 OK:
+{
+  "status": true,
+  "message": "Profile changes saved successfully",
+  "data": {
+    "image": "https://cdn.yourdomain.com/usr_10234/ph_001_v2.jpg",
+    "profile_photo_url": "https://cdn.yourdomain.com/usr_10234/ph_001_v2.jpg",
+    "name": "Rahul Sharma",
+    "mail": "rahul.new@example.com",
+    "email": "rahul.new@example.com",
+    "phone": "9876543210",
+    "country_code": "+91",
+    "phone_disabled": true
+  }
+}
+
+
+--------------------------------------------------------------------------------
+10. META & COUNTRY CODES API
+--------------------------------------------------------------------------------
+
+10.1 Get Country Codes
 Endpoint: GET /meta/country-codes
 Auth required: No
 
-Success Response — 200 OK:
-{
-  "status": true,
-  "message": "Success",
-  "data": {
-    "country_codes": [
-      { "name": "India", "code": "+91", "iso": "IN", "flag": "🇮🇳" },
-      { "name": "United States", "code": "+1", "iso": "US", "flag": "🇺🇸" }
-    ]
-  }
-}
-
-
-9.2 Get Meta Interests
+10.2 Get Meta Interests
 Endpoint: GET /meta/interests
 Auth required: No
-
-Success Response — 200 OK:
-{
-  "status": true,
-  "message": "Success",
-  "data": {
-    "interests": ["Coffee", "Travel", "Music", "Movies", "Photography", "Events", "Books", "Fitness"]
-  }
-}
-
-
---------------------------------------------------------------------------------
-10. PROFILE PHOTO API
---------------------------------------------------------------------------------
-
-10.1 Upload Profile Photos
-Endpoint: POST /profile/photos
-Auth required: Yes
-Content-Type: multipart/form-data
-
-Form Fields:
-- primary_photo (file, required)
-- additional_photos (file[], max 4, required)
-
-
---------------------------------------------------------------------------------
-11. AADHAR API
---------------------------------------------------------------------------------
-
-11.1 Submit Aadhar Details
-Endpoint: POST /profile/aadhar
-Auth required: Yes
-Content-Type: multipart/form-data
-
-
---------------------------------------------------------------------------------
-12. AVAILABILITY & PRICING API
---------------------------------------------------------------------------------
-
-12.1 Submit Availability & Pricing
-Endpoint: POST /partner/availability
-Auth required: Yes
-
-12.2 Get Current Availability & Pricing
-Endpoint: GET /partner/availability
-Auth required: Yes
-
-12.3 Toggle Receive Requests
-Endpoint: PATCH /partner/availability/receive-requests
-Auth required: Yes
-
-
---------------------------------------------------------------------------------
-13. PROFILE DETAILS API (GET & EDIT)
---------------------------------------------------------------------------------
-
-13.1 Get Profile Detail
-Endpoint: GET /profile
-Auth required: Yes
-
-13.2 Update Location
-Endpoint: PATCH /profile/location
-Auth required: Yes
-
-13.3 Edit Profile
-Endpoint: PUT /profile
-Auth required: Yes
 ================================================================================
