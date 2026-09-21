@@ -19,6 +19,13 @@ function normalizeCountryCode(cc) {
   return clean;
 }
 
+// User-uploaded profile photos URLs
+const PHOTO_1 = "http://localhost:5000/uploads/photos/photo_1.jpg";
+const PHOTO_2 = "http://localhost:5000/uploads/photos/photo_2.jpg";
+const PHOTO_3 = "http://localhost:5000/uploads/photos/photo_3.jpg";
+const PHOTO_4 = "http://localhost:5000/uploads/photos/photo_4.jpg";
+const PHOTO_5 = "http://localhost:5000/uploads/photos/photo_5.jpg";
+
 // Seed default user matching sample request/responses
 const seedUserId = "usr_10234";
 users.set(seedUserId, {
@@ -42,6 +49,7 @@ users.set(seedUserId, {
   total_ratings: 128,
   phone_verified: true,
   pending_phone_change: null,
+  profile_photo_url: PHOTO_1,
   current_location: {
     latitude: 26.9124,
     longitude: 75.7873,
@@ -49,11 +57,11 @@ users.set(seedUserId, {
     updated_at: "2026-09-15T10:32:00Z"
   },
   photos: [
-    { photo_id: "ph_001", url: "https://cdn.yourdomain.com/usr_10234/ph_001.jpg", is_primary: true },
-    { photo_id: "ph_002", url: "https://cdn.yourdomain.com/usr_10234/ph_002.jpg", is_primary: false },
-    { photo_id: "ph_003", url: "https://cdn.yourdomain.com/usr_10234/ph_003.jpg", is_primary: false },
-    { photo_id: "ph_004", url: "https://cdn.yourdomain.com/usr_10234/ph_004.jpg", is_primary: false },
-    { photo_id: "ph_005", url: "https://cdn.yourdomain.com/usr_10234/ph_005.jpg", is_primary: false }
+    { photo_id: "ph_001", url: PHOTO_1, is_primary: true },
+    { photo_id: "ph_002", url: PHOTO_2, is_primary: false },
+    { photo_id: "ph_003", url: PHOTO_3, is_primary: false },
+    { photo_id: "ph_004", url: PHOTO_4, is_primary: false },
+    { photo_id: "ph_005", url: PHOTO_5, is_primary: false }
   ],
   aadhar: {
     aadhar_number_encrypted: encrypt("999988887777"),
@@ -79,12 +87,12 @@ users.set(seedUserId, {
   }
 });
 
-// Seed Partner Requests
+// Seed Partner Requests with User-Uploaded Photos
 partnerRequests.set("req_001", {
   request_id: "req_001",
   name: "Priya Verma",
   age: 24,
-  image: "https://cdn.yourdomain.com/users/priya.jpg",
+  image: PHOTO_1,
   id_verified: 1,
   selfie_verified: 1,
   interest: "Coffee",
@@ -104,7 +112,7 @@ partnerRequests.set("req_002", {
   request_id: "req_002",
   name: "Ananya Sen",
   age: 26,
-  image: "https://cdn.yourdomain.com/users/ananya.jpg",
+  image: PHOTO_2,
   id_verified: 1,
   selfie_verified: 1,
   interest: "Travel",
@@ -124,7 +132,7 @@ partnerRequests.set("req_003", {
   request_id: "req_003",
   name: "Sneha Kapoor",
   age: 23,
-  image: "https://cdn.yourdomain.com/users/sneha.jpg",
+  image: PHOTO_3,
   id_verified: 0,
   selfie_verified: 1,
   interest: "Music",
@@ -140,10 +148,10 @@ partnerRequests.set("req_003", {
   }
 });
 
-// Seed Partner Bookings
+// Seed Partner Bookings with User-Uploaded Photos
 partnerBookings.set("bk_001", {
   booking_id: "bk_001",
-  profile_image: "https://cdn.yourdomain.com/users/ritika.jpg",
+  profile_image: PHOTO_1,
   name: "Ritika Singh",
   age: 25,
   id_verified: 1,
@@ -172,7 +180,7 @@ partnerBookings.set("bk_001", {
 
 partnerBookings.set("bk_002", {
   booking_id: "bk_002",
-  profile_image: "https://cdn.yourdomain.com/users/megha.jpg",
+  profile_image: PHOTO_2,
   name: "Megha Sharma",
   age: 27,
   id_verified: 1,
@@ -201,7 +209,7 @@ partnerBookings.set("bk_002", {
 
 partnerBookings.set("bk_003", {
   booking_id: "bk_003",
-  profile_image: "https://cdn.yourdomain.com/users/kavya.jpg",
+  profile_image: PHOTO_4,
   name: "Kavya Roy",
   age: 24,
   id_verified: 1,
@@ -230,7 +238,7 @@ partnerBookings.set("bk_003", {
 
 partnerBookings.set("bk_004", {
   booking_id: "bk_004",
-  profile_image: "https://cdn.yourdomain.com/users/divya.jpg",
+  profile_image: PHOTO_5,
   name: "Divya Jain",
   age: 26,
   id_verified: 1,
