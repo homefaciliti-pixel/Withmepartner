@@ -1,5 +1,7 @@
 const app = require('./server');
 const http = require('http');
+const fs = require('fs');
+const path = require('path');
 
 let server;
 const PORT = 5006;
@@ -48,36 +50,104 @@ function request(method, path, body = null, headers = {}) {
 }
 
 async function runTests() {
-  console.log("Starting Safe Meet Verification Tests...");
+  console.log("Starting Partner API Verification Suite...");
   server = app.listen(PORT, async () => {
     try {
-      // 1. Login
-      console.log("\n1. Testing Login API (/auth/login)...");
+      // 1. Seed User Login
+      console.log("\n1. Testing Seed User Login API (/auth/login)...");
       const loginRes = await request('POST', '/auth/login', {
         country_code: "+91",
         mobile_number: "9876543210",
         password: "MySecurePass123"
       });
-      console.assert(loginRes.status === 200, "Login 200");
+      console.assert(loginRes.status === 200, "Seed user Login 200");
       const token = loginRes.body.data.access_token;
       const authHeader = { 'Authorization': `Bearer ${token}` };
 
-      // 2. Booking Detail Check
-      console.log("\n2. Testing Booking Detail API (/partner/bookings/bk_001)...");
+      // 2. Flexible Mobile Login Test
+      console.log("\n2. Testing Flexible Mobile Number Login (+91 with leading zeros/formatting)...");
+      const flexLoginRes = await request('POST', '/auth/login', {
+        country_code: "91",
+        mobile_number: "09876543210",
+        password: "MySecurePass123"
+      });
+      console.assert(flexLoginRes.status === 200, "Flexible mobile login 200");
+
+      // 3. User Registration Flow (Send OTP -> Verify OTP -> Register)
+      console.log("\n3. Testing Registration Flow & Persistence...");
+      const testMobile = `91${Math.floor(10000000 + Math.random() * 90000000)}`;
+      const testEmail = `user_${Date.now()}@example.com`;
+
+      const sendOtpRes = await request('POST', '/auth/register/send-otp', {
+        country_code: "+91",
+        mobile_number: testMobile
+      });
+      console.assert(sendOtpRes.status === 200, "Send OTP 200");
+      const sessionId = sendOtpRes.body.data.otp_session_id;
+
+      const verifyOtpRes = await request('POST', '/auth/register/verify-otp', {
+        otp_session_id: sessionId,
+        otp: "5739"
+      });
+      console.assert(verifyOtpRes.status === 200, "Verify OTP 200");
+      const vToken = verifyOtpRes.body.data.token;
+
+      const regRes = await request('POST', '/auth/register', {
+        token: vToken,
+        name: "Test User",
+        country_code: "+91",
+        mobile_number: testMobile,
+        email: testEmail,
+        gender: "Female",
+        dob: "2000-01-01",
+        area: "Raja Park",
+        city: "Jaipur",
+        state: "Rajasthan",
+        pincode: "302004",
+        password: "NewUserPass123",
+        confirm_password: "NewUserPass123"
+      });
+      console.assert(regRes.status === 201, "Registration 201");
+      const newUserId = regRes.body.data.user_id;
+      const newAuthToken = regRes.body.data.access_token;
+
+      // Check persistence file store/users.json
+      const usersFilePath = path.join(__dirname, 'store', 'users.json');
+      console.assert(fs.existsSync(usersFilePath), "store/users.json exists");
+      const usersFileRaw = fs.readFileSync(usersFilePath, 'utf-8');
+      console.assert(usersFileRaw.includes(newUserId), "New registered user persisted to users.json");
+
+      // 4. Test Login for Newly Registered User
+      console.log("\n4. Testing Login for newly registered account...");
+      const newLoginRes = await request('POST', '/auth/login', {
+        country_code: "+91",
+        mobile_number: testMobile,
+        password: "NewUserPass123"
+      });
+      console.assert(newLoginRes.status === 200, "Newly registered user Login 200");
+
+      // 5. Test Default Photos for Newly Registered User
+      console.log("\n5. Testing Profile Photos of newly registered user...");
+      const profileRes = await request('GET', '/profile', null, { 'Authorization': `Bearer ${newAuthToken}` });
+      console.assert(profileRes.status === 200, "Get Profile 200");
+      console.assert(profileRes.body.data.profile_photo_url.includes("photo_1.jpg"), "Default profile photo assigned");
+
+      // 6. Booking Detail Check
+      console.log("\n6. Testing Booking Detail API (/partner/bookings/bk_001)...");
       const bkRes = await request('GET', '/partner/bookings/bk_001', null, authHeader);
       console.assert(bkRes.status === 200, "Booking detail 200");
       console.assert(bkRes.body.data.meeting_info !== undefined, "meeting_info present");
 
-      // 3. Start Safe Meet Save API
-      console.log("\n3. Testing Start Safe Meet Save API (/partner/bookings/bk_001/start-safe-meet)...");
+      // 7. Start Safe Meet Save API
+      console.log("\n7. Testing Start Safe Meet Save API (/partner/bookings/bk_001/start-safe-meet)...");
       const startRes = await request('POST', '/partner/bookings/bk_001/start-safe-meet', {
         start_safe_meet: true
       }, authHeader);
       console.assert(startRes.status === 200, "Start safe meet 200");
       console.assert(startRes.body.data.start_safe_meet === true, "start_safe_meet is true");
 
-      // 4. Safe Meet Mode Settings Save API
-      console.log("\n4. Testing Safe Meet Mode Save API (/partner/bookings/bk_001/safe-meet)...");
+      // 8. Safe Meet Mode Settings Save API
+      console.log("\n8. Testing Safe Meet Mode Save API (/partner/bookings/bk_001/safe-meet)...");
       const safeMeetRes = await request('POST', '/partner/bookings/bk_001/safe-meet', {
         location_allow: 1,
         notify_trusted_contact: 1,
@@ -86,7 +156,7 @@ async function runTests() {
       console.assert(safeMeetRes.status === 200, "Safe meet mode 200");
       console.assert(safeMeetRes.body.data.safe_meet_mode.location_allow === 1, "location_allow 1");
 
-      console.log("\n✅ ALL SAFE MEET TESTS PASSED SUCCESSFULLY!");
+      console.log("\n✅ ALL PARTNER API & PERSISTENCE TESTS PASSED SUCCESSFULLY!");
       server.close();
       process.exit(0);
     } catch (err) {

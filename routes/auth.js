@@ -1,19 +1,17 @@
 const express = require('express');
 const router = express.Router();
-const { users, otpSessions, resetTokens, verifyTokens, normalizeCountryCode } = require('../store/db');
+const {
+  users,
+  otpSessions,
+  resetTokens,
+  verifyTokens,
+  normalizeCountryCode,
+  findUserByMobile,
+  saveUsers,
+  PHOTO_1,
+  DEFAULT_PHOTOS
+} = require('../store/db');
 const { generateTokens } = require('../middleware/auth');
-
-// Helper to find user by mobile and optional country code
-function findUserByMobile(mobile_number, country_code) {
-  const normCC = country_code ? normalizeCountryCode(country_code) : null;
-  return Array.from(users.values()).find(u => {
-    if (u.mobile_number !== mobile_number) return false;
-    if (normCC && u.country_code) {
-      return u.country_code === normCC;
-    }
-    return true;
-  });
-}
 
 // 1.1 Login
 router.post('/login', (req, res) => {
@@ -50,12 +48,14 @@ router.post('/login', (req, res) => {
     user.failed_attempts = (user.failed_attempts || 0) + 1;
     if (user.failed_attempts >= 5) {
       user.locked = true;
+      saveUsers();
       return res.status(403).json({
         status: false,
         message: "Account temporarily locked due to multiple failed attempts",
         error_code: "ACCOUNT_LOCKED"
       });
     }
+    saveUsers();
     return res.status(400).json({
       status: false,
       message: "Invalid mobile number or password",
@@ -65,6 +65,7 @@ router.post('/login', (req, res) => {
 
   // Reset failed attempts on successful login
   user.failed_attempts = 0;
+  saveUsers();
 
   const tokens = generateTokens(user.user_id);
 
@@ -197,6 +198,7 @@ router.post('/forgot-password/reset', (req, res) => {
     user.password = new_password;
     user.locked = false;
     user.failed_attempts = 0;
+    saveUsers();
   }
   resetTokens.delete(reset_token);
 
@@ -352,13 +354,15 @@ router.post('/register', (req, res) => {
     rating: 0.0,
     total_ratings: 0,
     phone_verified: true,
-    photos: [],
+    profile_photo_url: PHOTO_1,
+    photos: DEFAULT_PHOTOS,
     aadhar: null,
     about: null,
     availability: null
   };
 
   users.set(userId, newUser);
+  saveUsers();
 
   const tokens = generateTokens(userId);
 

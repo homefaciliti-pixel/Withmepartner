@@ -3,6 +3,8 @@
 ================================================================================
 
 BASE URL: http://localhost:5000 (or your server domain)
+PERSISTENT STORE: store/users.json (User profiles & registrations persist on disk across server restarts)
+FEATURES: Flexible phone number matching (+91 / 91 / 0 prefix normalization), Default user-uploaded seed photos (photo_1.jpg .. photo_5.jpg) auto-assigned on registration.
 
 ================================================================================
 1. LOGIN API

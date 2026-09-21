@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const { users, partnerBookings, partnerTransactions, normalizeCountryCode } = require('../store/db');
+const { users, partnerBookings, partnerTransactions, normalizeCountryCode, saveUsers } = require('../store/db');
 const { authenticateToken } = require('../middleware/auth');
 const { validateVerhoeff } = require('../utils/verhoeff');
 const { encrypt, decrypt } = require('../utils/crypto');
@@ -86,6 +86,7 @@ router.post('/photos', authenticateToken, (req, res) => {
     if (user.profile_step_pending === "PROFILE_PHOTO") {
       user.profile_step_pending = "AADHAR";
     }
+    saveUsers();
 
     return res.status(201).json({
       status: true,
@@ -128,6 +129,7 @@ router.put('/photos/:photo_id', authenticateToken, upload.single('photo'), (req,
     const p = user.photos.find(item => item.photo_id === photo_id);
     if (p) {
       p.url = updatedUrl;
+      saveUsers();
     }
   }
 
@@ -202,6 +204,7 @@ router.post('/aadhar', authenticateToken, (req, res) => {
     };
 
     user.profile_step_pending = "ABOUT_YOU";
+    saveUsers();
 
     return res.status(201).json({
       status: true,
@@ -263,6 +266,7 @@ router.post('/about', authenticateToken, (req, res) => {
 
   user.about = { description, interests };
   user.profile_step_pending = "AVAILABILITY";
+  saveUsers();
 
   return res.status(200).json({
     status: true,
@@ -347,6 +351,7 @@ router.patch('/location', authenticateToken, (req, res) => {
   };
 
   user.current_location = currentLocation;
+  saveUsers();
 
   return res.status(200).json({
     status: true,
@@ -374,6 +379,7 @@ router.put('/', authenticateToken, (req, res) => {
   if (updatedPhoto) {
     user.profile_photo_url = updatedPhoto;
   }
+  saveUsers();
 
   const primaryPhoto = (user.photos && user.photos.find(p => p.is_primary)) || (user.photos && user.photos[0]);
   const photoUrl = user.profile_photo_url || (primaryPhoto ? primaryPhoto.url : null);

@@ -1,4 +1,8 @@
+const fs = require('fs');
+const path = require('path');
 const { encrypt } = require('../utils/crypto');
+
+const USERS_FILE = path.join(__dirname, 'users.json');
 
 // In-memory Database Store
 const users = new Map();
@@ -19,6 +23,18 @@ function normalizeCountryCode(cc) {
   return clean;
 }
 
+// Helper to strip non-digits and extract normalized 10-digit mobile number
+function normalizePhoneDigits(num) {
+  if (!num) return "";
+  let clean = String(num).replace(/\D/g, '');
+  if (clean.length > 10 && clean.startsWith('91')) {
+    clean = clean.slice(-10);
+  } else if (clean.length === 11 && clean.startsWith('0')) {
+    clean = clean.slice(-10);
+  }
+  return clean;
+}
+
 // User-uploaded profile photos URLs
 const PHOTO_1 = "http://localhost:5000/uploads/photos/photo_1.jpg";
 const PHOTO_2 = "http://localhost:5000/uploads/photos/photo_2.jpg";
@@ -26,9 +42,27 @@ const PHOTO_3 = "http://localhost:5000/uploads/photos/photo_3.jpg";
 const PHOTO_4 = "http://localhost:5000/uploads/photos/photo_4.jpg";
 const PHOTO_5 = "http://localhost:5000/uploads/photos/photo_5.jpg";
 
+const DEFAULT_PHOTOS = [
+  { photo_id: "ph_001", url: PHOTO_1, is_primary: true },
+  { photo_id: "ph_002", url: PHOTO_2, is_primary: false },
+  { photo_id: "ph_003", url: PHOTO_3, is_primary: false },
+  { photo_id: "ph_004", url: PHOTO_4, is_primary: false },
+  { photo_id: "ph_005", url: PHOTO_5, is_primary: false }
+];
+
+// Helper to save users Map to users.json file
+function saveUsers() {
+  try {
+    const userArray = Array.from(users.values());
+    fs.writeFileSync(USERS_FILE, JSON.stringify(userArray, null, 2), 'utf-8');
+  } catch (err) {
+    console.error("Failed to save users to JSON file:", err);
+  }
+}
+
 // Seed default user matching sample request/responses
 const seedUserId = "usr_10234";
-users.set(seedUserId, {
+const seedUserObj = {
   user_id: seedUserId,
   name: "Rahul Sharma",
   country_code: "+91",
@@ -56,13 +90,7 @@ users.set(seedUserId, {
     address: "Vaishali Nagar, Jaipur, Rajasthan",
     updated_at: "2026-09-15T10:32:00Z"
   },
-  photos: [
-    { photo_id: "ph_001", url: PHOTO_1, is_primary: true },
-    { photo_id: "ph_002", url: PHOTO_2, is_primary: false },
-    { photo_id: "ph_003", url: PHOTO_3, is_primary: false },
-    { photo_id: "ph_004", url: PHOTO_4, is_primary: false },
-    { photo_id: "ph_005", url: PHOTO_5, is_primary: false }
-  ],
+  photos: DEFAULT_PHOTOS,
   aadhar: {
     aadhar_number_encrypted: encrypt("999988887777"),
     aadhar_front_url: "https://private-bucket.s3.amazonaws.com/aadhar_front.jpg",
@@ -85,7 +113,50 @@ users.set(seedUserId, {
     ],
     platform_commission_percent: 15
   }
-});
+};
+
+// Helper to load users from users.json file
+function loadUsers() {
+  try {
+    if (fs.existsSync(USERS_FILE)) {
+      const raw = fs.readFileSync(USERS_FILE, 'utf-8');
+      if (raw.trim()) {
+        const userArray = JSON.parse(raw);
+        if (Array.isArray(userArray)) {
+          userArray.forEach(u => users.set(u.user_id, u));
+        }
+      }
+    }
+  } catch (err) {
+    console.error("Error reading users.json:", err);
+  }
+
+  // Ensure seed user exists
+  if (!users.has(seedUserId)) {
+    users.set(seedUserId, seedUserObj);
+  }
+  saveUsers();
+}
+
+// Perform initial load
+loadUsers();
+
+// Helper function to find user by mobile and optional country code
+function findUserByMobile(mobile_number, country_code) {
+  const searchDigits = normalizePhoneDigits(mobile_number);
+  const searchCC = country_code ? normalizeCountryCode(country_code) : null;
+
+  return Array.from(users.values()).find(u => {
+    const userDigits = normalizePhoneDigits(u.mobile_number);
+    if (userDigits !== searchDigits) return false;
+
+    if (searchCC && u.country_code) {
+      const userCC = normalizeCountryCode(u.country_code);
+      return userCC === searchCC;
+    }
+    return true;
+  });
+}
 
 // Seed Partner Requests with User-Uploaded Photos
 partnerRequests.set("req_001", {
@@ -281,5 +352,14 @@ module.exports = {
   partnerRequests,
   partnerBookings,
   partnerTransactions,
-  normalizeCountryCode
+  normalizeCountryCode,
+  normalizePhoneDigits,
+  findUserByMobile,
+  saveUsers,
+  PHOTO_1,
+  PHOTO_2,
+  PHOTO_3,
+  PHOTO_4,
+  PHOTO_5,
+  DEFAULT_PHOTOS
 };
