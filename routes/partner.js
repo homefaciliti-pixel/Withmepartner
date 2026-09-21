@@ -180,10 +180,10 @@ router.post('/requests/:request_id/action', authenticateToken, (req, res) => {
 
 
 // -----------------------------------------------------------------------------
-// 12. BOOKING DETAILS & SAFE MEET MODE API
+// 12. BOOKING DETAILS, START SAFE MEET & SAFE MEET MODE API
 // -----------------------------------------------------------------------------
 
-// GET /partner/bookings/:booking_id (Booking Details)
+// GET /partner/bookings/:booking_id (Booking Details: Meeting Info + Safety Checklist + Safe Meet Mode)
 router.get('/bookings/:booking_id', authenticateToken, (req, res) => {
   const { booking_id } = req.params;
   const booking = partnerBookings.get(booking_id);
@@ -208,14 +208,46 @@ router.get('/bookings/:booking_id', authenticateToken, (req, res) => {
       location: booking.location,
       selfie_verified: booking.selfie_verified,
       interest: booking.interest,
-      meeting_info: booking.meeting_info,
-      safety_checklist: booking.safety_checklist,
-      safe_meet_mode: booking.safe_meet_mode
+      meeting_info: {
+        date: booking.meeting_info ? booking.meeting_info.date : booking.date,
+        time: booking.meeting_info ? booking.meeting_info.time : booking.time,
+        place: booking.meeting_info ? booking.meeting_info.place : booking.location,
+        type: booking.meeting_info ? booking.meeting_info.type : booking.interest,
+        description: booking.meeting_info ? booking.meeting_info.description : "Meetup details"
+      },
+      safety_checklist: booking.safety_checklist || { start_safe_meet: false },
+      safe_meet_mode: booking.safe_meet_mode || { location_allow: 1, notify_trusted_contact: 1, safety_check_in: 1 }
     }
   });
 });
 
-// POST /partner/bookings/:booking_id/safe-meet (Safe Meet Mode Settings API)
+// POST /partner/bookings/:booking_id/start-safe-meet (Start Safe Meet Save API)
+router.post('/bookings/:booking_id/start-safe-meet', authenticateToken, (req, res) => {
+  const { booking_id } = req.params;
+  const { start_safe_meet } = req.body;
+
+  const booking = partnerBookings.get(booking_id);
+  if (!booking) {
+    return res.status(404).json({
+      status: false,
+      message: "Booking not found",
+      error_code: "BOOKING_NOT_FOUND"
+    });
+  }
+
+  booking.safety_checklist.start_safe_meet = start_safe_meet !== undefined ? Boolean(start_safe_meet) : true;
+
+  return res.status(200).json({
+    status: true,
+    message: "Start safe meet saved successfully",
+    data: {
+      booking_id,
+      start_safe_meet: booking.safety_checklist.start_safe_meet
+    }
+  });
+});
+
+// POST /partner/bookings/:booking_id/safe-meet (Safe Meet Mode Settings Save API)
 router.post('/bookings/:booking_id/safe-meet', authenticateToken, (req, res) => {
   const { booking_id } = req.params;
   const { location_allow, notify_trusted_contact, safety_check_in, start_safe_meet } = req.body;
@@ -246,6 +278,39 @@ router.post('/bookings/:booking_id/safe-meet', authenticateToken, (req, res) => 
       booking_id,
       safe_meet_mode: booking.safe_meet_mode,
       safety_checklist: booking.safety_checklist
+    }
+  });
+});
+
+// POST /partner/safe-meet-mode (General Save Safe Meet Mode API)
+router.post('/safe-meet-mode', authenticateToken, (req, res) => {
+  const { booking_id, location_allow, notify_trusted_contact, safety_check_in } = req.body;
+
+  let targetBooking = null;
+  if (booking_id && partnerBookings.has(booking_id)) {
+    targetBooking = partnerBookings.get(booking_id);
+  } else {
+    targetBooking = Array.from(partnerBookings.values())[0];
+  }
+
+  if (targetBooking) {
+    targetBooking.safe_meet_mode = {
+      location_allow: location_allow !== undefined ? Number(location_allow) : 1,
+      notify_trusted_contact: notify_trusted_contact !== undefined ? Number(notify_trusted_contact) : 1,
+      safety_check_in: safety_check_in !== undefined ? Number(safety_check_in) : 1
+    };
+  }
+
+  return res.status(200).json({
+    status: true,
+    message: "Safe meet mode settings saved successfully",
+    data: {
+      booking_id: targetBooking ? targetBooking.booking_id : "bk_001",
+      safe_meet_mode: {
+        location_allow: location_allow !== undefined ? Number(location_allow) : 1,
+        notify_trusted_contact: notify_trusted_contact !== undefined ? Number(notify_trusted_contact) : 1,
+        safety_check_in: safety_check_in !== undefined ? Number(safety_check_in) : 1
+      }
     }
   });
 });
