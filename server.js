@@ -5,6 +5,7 @@ const authRoutes = require('./routes/auth');
 const profileRoutes = require('./routes/profile');
 const metaRoutes = require('./routes/meta');
 const partnerRoutes = require('./routes/partner');
+const documentRoutes = require('./routes/documents');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -19,6 +20,7 @@ app.use('/auth', authRoutes);
 app.use('/profile', profileRoutes);
 app.use('/meta', metaRoutes);
 app.use('/partner', partnerRoutes);
+app.use('/documents', documentRoutes);
 
 // Root route
 app.get('/', (req, res) => {
