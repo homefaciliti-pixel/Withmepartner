@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { users, partnerRequests, partnerBookings, partnerTransactions } = require('../store/db');
+const { users, partnerRequests, partnerBookings, partnerTransactions, formatPhotoUrl } = require('../store/db');
 const { authenticateToken } = require('../middleware/auth');
 
 function parseTimeMinutes(timeStr) {
@@ -34,7 +34,7 @@ router.get('/home', authenticateToken, (req, res) => {
     interest: r.interest,
     date_time: r.date_time,
     location: r.location,
-    image: r.image,
+    image: formatPhotoUrl(r.image, req),
     name: r.name,
     pending_status: r.status
   }));
@@ -46,7 +46,7 @@ router.get('/home', authenticateToken, (req, res) => {
     interest: b.interest,
     location: b.location,
     date_time: `${b.date} ${b.time}`,
-    image: b.profile_image,
+    image: formatPhotoUrl(b.profile_image, req),
     status: b.status
   }));
 
@@ -92,7 +92,7 @@ router.get('/requests/:request_id', authenticateToken, (req, res) => {
     message: "Success",
     data: {
       request_id: requestData.request_id,
-      image: requestData.image,
+      image: formatPhotoUrl(requestData.image, req),
       name: requestData.name,
       age: requestData.age,
       id_verified: requestData.id_verified,
@@ -201,7 +201,7 @@ router.get('/bookings/:booking_id', authenticateToken, (req, res) => {
     message: "Success",
     data: {
       booking_id: booking.booking_id,
-      image: booking.profile_image,
+      image: formatPhotoUrl(booking.profile_image, req),
       name: booking.name,
       age: booking.age,
       id_verified: booking.id_verified,
@@ -332,7 +332,7 @@ router.get('/bookings', authenticateToken, (req, res) => {
 
   const list = filtered.map(b => ({
     booking_id: b.booking_id,
-    profile_image: b.profile_image,
+    profile_image: formatPhotoUrl(b.profile_image, req),
     name: b.name,
     interest: b.interest,
     location: b.location,

@@ -154,5 +154,57 @@
     "aadhar": null,
     "about": null,
     "availability": null
+  },
+  {
+    "user_id": "usr_20966",
+    "name": "Test User",
+    "country_code": "+91",
+    "mobile_number": "9126025349",
+    "email": "user_1789985218860@example.com",
+    "gender": "Female",
+    "dob": "2000-01-01",
+    "area": "Raja Park",
+    "city": "Jaipur",
+    "state": "Rajasthan",
+    "pincode": "302004",
+    "password": "NewUserPass123",
+    "profile_completed": false,
+    "profile_step_pending": "PROFILE_PHOTO",
+    "failed_attempts": 0,
+    "locked": false,
+    "rating": 0,
+    "total_ratings": 0,
+    "phone_verified": true,
+    "profile_photo_url": "/uploads/photos/photo_1.jpg",
+    "photos": [
+      {
+        "photo_id": "ph_001",
+        "url": "/uploads/photos/photo_1.jpg",
+        "is_primary": true
+      },
+      {
+        "photo_id": "ph_002",
+        "url": "/uploads/photos/photo_2.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_003",
+        "url": "/uploads/photos/photo_3.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_004",
+        "url": "/uploads/photos/photo_4.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_005",
+        "url": "/uploads/photos/photo_5.jpg",
+        "is_primary": false
+      }
+    ],
+    "aadhar": null,
+    "about": null,
+    "availability": null
   }
 ]

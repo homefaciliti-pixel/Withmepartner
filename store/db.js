@@ -35,12 +35,49 @@ function normalizePhoneDigits(num) {
   return clean;
 }
 
-// User-uploaded profile photos URLs
-const PHOTO_1 = "http://localhost:5000/uploads/photos/photo_1.jpg";
-const PHOTO_2 = "http://localhost:5000/uploads/photos/photo_2.jpg";
-const PHOTO_3 = "http://localhost:5000/uploads/photos/photo_3.jpg";
-const PHOTO_4 = "http://localhost:5000/uploads/photos/photo_4.jpg";
-const PHOTO_5 = "http://localhost:5000/uploads/photos/photo_5.jpg";
+// Dynamic Base URL Helper for Local / Render / Custom Domain
+function getBaseUrl(req) {
+  if (process.env.BASE_URL) {
+    return process.env.BASE_URL.replace(/\/$/, '');
+  }
+  if (process.env.RENDER_EXTERNAL_URL) {
+    return process.env.RENDER_EXTERNAL_URL.replace(/\/$/, '');
+  }
+  if (req && req.get) {
+    const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'http';
+    const host = req.get('host') || 'localhost:5000';
+    return `${protocol}://${host}`;
+  }
+  return 'http://localhost:5000';
+}
+
+// Format any photo URL or relative path dynamically to full URL using active host/Render domain
+function formatPhotoUrl(urlOrPath, req) {
+  if (!urlOrPath) return "";
+  const baseUrl = getBaseUrl(req);
+
+  // If it's hardcoded localhost:5000, replace with active server/Render domain
+  if (urlOrPath.includes("localhost:5000")) {
+    return urlOrPath.replace(/https?:\/\/localhost:5000/, baseUrl);
+  }
+
+  // If relative path starting with /uploads or uploads
+  if (urlOrPath.startsWith('/uploads')) {
+    return `${baseUrl}${urlOrPath}`;
+  }
+  if (urlOrPath.startsWith('uploads/')) {
+    return `${baseUrl}/${urlOrPath}`;
+  }
+
+  return urlOrPath;
+}
+
+// User-uploaded profile photos relative paths
+const PHOTO_1 = "/uploads/photos/photo_1.jpg";
+const PHOTO_2 = "/uploads/photos/photo_2.jpg";
+const PHOTO_3 = "/uploads/photos/photo_3.jpg";
+const PHOTO_4 = "/uploads/photos/photo_4.jpg";
+const PHOTO_5 = "/uploads/photos/photo_5.jpg";
 
 const DEFAULT_PHOTOS = [
   { photo_id: "ph_001", url: PHOTO_1, is_primary: true },
@@ -356,6 +393,8 @@ module.exports = {
   normalizePhoneDigits,
   findUserByMobile,
   saveUsers,
+  getBaseUrl,
+  formatPhotoUrl,
   PHOTO_1,
   PHOTO_2,
   PHOTO_3,

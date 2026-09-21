@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const { users, partnerBookings, partnerTransactions, normalizeCountryCode, saveUsers } = require('../store/db');
+const { users, partnerBookings, partnerTransactions, normalizeCountryCode, saveUsers, formatPhotoUrl } = require('../store/db');
 const { authenticateToken } = require('../middleware/auth');
 const { validateVerhoeff } = require('../utils/verhoeff');
 const { encrypt, decrypt } = require('../utils/crypto');
@@ -103,10 +103,15 @@ router.get('/photos', authenticateToken, (req, res) => {
     return res.status(404).json({ status: false, message: "User not found", error_code: "USER_NOT_FOUND" });
   }
 
+  const formattedPhotos = (user.photos || []).map(p => ({
+    ...p,
+    url: formatPhotoUrl(p.url, req)
+  }));
+
   return res.status(200).json({
     status: true,
     message: "Success",
-    data: { photos: user.photos || [] }
+    data: { photos: formattedPhotos }
   });
 });
 
@@ -291,7 +296,8 @@ router.get('/', authenticateToken, (req, res) => {
   }
 
   const primaryPhoto = (user.photos && user.photos.find(p => p.is_primary)) || (user.photos && user.photos[0]);
-  const photoUrl = primaryPhoto ? primaryPhoto.url : (user.profile_photo_url || `https://cdn.yourdomain.com/${user.user_id}/avatar.jpg`);
+  const rawPhoto = primaryPhoto ? primaryPhoto.url : (user.profile_photo_url || `/uploads/${user.user_id}/avatar.jpg`);
+  const photoUrl = formatPhotoUrl(rawPhoto, req);
   const aadharVerified = user.aadhar ? user.aadhar.aadhar_verification_status === "APPROVED" : false;
   const avail = user.availability || {};
   const cc = user.country_code || "+91";
@@ -382,7 +388,8 @@ router.put('/', authenticateToken, (req, res) => {
   saveUsers();
 
   const primaryPhoto = (user.photos && user.photos.find(p => p.is_primary)) || (user.photos && user.photos[0]);
-  const photoUrl = user.profile_photo_url || (primaryPhoto ? primaryPhoto.url : null);
+  const rawPhoto = user.profile_photo_url || (primaryPhoto ? primaryPhoto.url : null);
+  const photoUrl = formatPhotoUrl(rawPhoto, req);
   const cc = user.country_code || "+91";
 
   return res.status(200).json({
