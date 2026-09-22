@@ -14,6 +14,7 @@ const {
 } = require('../store/db');
 const { generateTokens } = require('../middleware/auth');
 const { sendDltOtpSms } = require('../utils/sms');
+const { saveOtpToMysql } = require('../config/database');
 
 // 1.1 Login
 router.post('/login', (req, res) => {
@@ -117,8 +118,9 @@ router.post('/forgot-password/send-otp', (req, res) => {
     expires_at: Date.now() + 5 * 60 * 1000 // 5 mins
   });
 
-  // Dispatch DLT SMS via SMSGATEWAYHUB
+  // Dispatch DLT SMS via SMSGATEWAYHUB and save to MySQL otps table
   sendDltOtpSms(mobile_number, otp).catch(err => console.error("SMS dispatch error:", err.message));
+  saveOtpToMysql(mobile_number, otp, "forgot_password").catch(err => console.error("MySQL OTP save error:", err.message));
 
   return res.status(200).json({
     status: true,
@@ -243,8 +245,9 @@ router.post('/register/send-otp', (req, res) => {
     expires_at: Date.now() + 5 * 60 * 1000
   });
 
-  // Dispatch DLT SMS via SMSGATEWAYHUB
+  // Dispatch DLT SMS via SMSGATEWAYHUB and save to MySQL otps table
   sendDltOtpSms(mobile_number, otp).catch(err => console.error("SMS dispatch error:", err.message));
+  saveOtpToMysql(mobile_number, otp, "registration").catch(err => console.error("MySQL OTP save error:", err.message));
 
   return res.status(200).json({
     status: true,
