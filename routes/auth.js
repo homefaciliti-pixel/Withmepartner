@@ -13,6 +13,7 @@ const {
   DEFAULT_PHOTOS
 } = require('../store/db');
 const { generateTokens } = require('../middleware/auth');
+const { sendDltOtpSms } = require('../utils/sms');
 
 // 1.1 Login
 router.post('/login', (req, res) => {
@@ -106,7 +107,7 @@ router.post('/forgot-password/send-otp', (req, res) => {
   }
 
   const otp_session_id = `otp_sess_${Math.random().toString(36).substring(2, 8)}`;
-  const otp = "4829"; // Mock OTP for testing
+  const otp = String(Math.floor(1000 + Math.random() * 9000));
 
   otpSessions.set(otp_session_id, {
     country_code: normCC,
@@ -115,6 +116,9 @@ router.post('/forgot-password/send-otp', (req, res) => {
     type: "forgot_password",
     expires_at: Date.now() + 5 * 60 * 1000 // 5 mins
   });
+
+  // Dispatch DLT SMS via SMSGATEWAYHUB
+  sendDltOtpSms(mobile_number, otp).catch(err => console.error("SMS dispatch error:", err.message));
 
   return res.status(200).json({
     status: true,
@@ -229,7 +233,7 @@ router.post('/register/send-otp', (req, res) => {
   }
 
   const otp_session_id = `otp_sess_${Math.random().toString(36).substring(2, 8)}`;
-  const otp = "5739";
+  const otp = String(Math.floor(1000 + Math.random() * 9000));
 
   otpSessions.set(otp_session_id, {
     country_code: normCC,
@@ -238,6 +242,9 @@ router.post('/register/send-otp', (req, res) => {
     type: "registration",
     expires_at: Date.now() + 5 * 60 * 1000
   });
+
+  // Dispatch DLT SMS via SMSGATEWAYHUB
+  sendDltOtpSms(mobile_number, otp).catch(err => console.error("SMS dispatch error:", err.message));
 
   return res.status(200).json({
     status: true,

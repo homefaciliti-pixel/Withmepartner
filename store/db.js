@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { encrypt } = require('../utils/crypto');
+const { initMysqlDatabase, syncUserToMysql, fetchUsersFromMysql } = require('../config/database');
 
 const USERS_FILE = path.join(__dirname, 'users.json');
 
@@ -96,13 +97,16 @@ const DEFAULT_PHOTOS = [
   { photo_id: "ph_005", url: PHOTO_5, is_primary: false }
 ];
 
-// Helper to save users Map to users.json file
+// Helper to save users Map to users.json file & sync with MySQL
 function saveUsers() {
   try {
     const userArray = Array.from(users.values());
     fs.writeFileSync(USERS_FILE, JSON.stringify(userArray, null, 2), 'utf-8');
+    userArray.forEach(u => {
+      syncUserToMysql(u).catch(err => console.error("MySQL sync error:", err.message));
+    });
   } catch (err) {
-    console.error("Failed to save users to JSON file:", err);
+    console.error("Failed to save users:", err);
   }
 }
 
@@ -161,8 +165,8 @@ const seedUserObj = {
   }
 };
 
-// Helper to load users from users.json file
-function loadUsers() {
+// Helper to load users from users.json file and MySQL
+async function loadUsers() {
   try {
     if (fs.existsSync(USERS_FILE)) {
       const raw = fs.readFileSync(USERS_FILE, 'utf-8');
@@ -175,6 +179,17 @@ function loadUsers() {
     }
   } catch (err) {
     console.error("Error reading users.json:", err);
+  }
+
+  // Load / sync from MySQL Database
+  try {
+    await initMysqlDatabase();
+    const dbUsers = await fetchUsersFromMysql();
+    if (dbUsers && dbUsers.length > 0) {
+      dbUsers.forEach(u => users.set(u.user_id, u));
+    }
+  } catch (err) {
+    console.error("Error loading from MySQL:", err.message);
   }
 
   // Ensure seed user exists
@@ -402,6 +417,7 @@ module.exports = {
   normalizePhoneDigits,
   findUserByMobile,
   saveUsers,
+  loadUsers,
   getBaseUrl,
   formatPhotoUrl,
   PHOTO_1,

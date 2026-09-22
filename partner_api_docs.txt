@@ -3,9 +3,12 @@
 ================================================================================
 
 BASE URL: http://localhost:5000 (or your Render domain e.g. https://your-app.onrender.com)
-PERSISTENT STORE: store/users.json (User profiles & registrations persist on disk across server restarts)
+PERSISTENT STORE: MySQL Database (homefaciliti.com / node_partner_users table) & store/users.json disk backup
+DLT SMS GATEWAY: SMSGATEWAYHUB (EntityID: 1201173444411453897, TemplateID: 1207173589889308632, Sender: HMFCLI)
 FEATURES:
- - Dynamic Image URLs: Image URLs automatically detect your Render domain (via process.env.RENDER_EXTERNAL_URL / process.env.BASE_URL or request Host header) instead of hardcoding localhost:5000.
+ - Real DLT SMS OTPs: Dispatches SMS via SMSGATEWAYHUB API for registration & forgot-password.
+ - MySQL Database Sync: Automatically initializes table `node_partner_users` on homefaciliti.com and syncs user profiles in real-time.
+ - Dynamic Image URLs: Image URLs automatically detect your Render domain (via process.env.RENDER_EXTERNAL_URL / process.env.BASE_URL or request Host header).
  - Flexible Phone Matching: (+91 / 91 / 0 prefix normalization).
  - Default Uploaded Photos: (photo_1.jpg .. photo_5.jpg) auto-assigned on registration.
 
