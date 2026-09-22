@@ -183,10 +183,10 @@ router.post('/aadhar', authenticateToken, (req, res) => {
       });
     }
 
-    if (!aadhar_number || !/^\d{12}$/.test(aadhar_number) || !validateVerhoeff(aadhar_number)) {
+    if (!aadhar_number || !/^\d{12}$/.test(aadhar_number)) {
       return res.status(400).json({
         status: false,
-        message: "Invalid Aadhar number format",
+        message: "Invalid Aadhar number format. Must be 12 digits.",
         error_code: "INVALID_AADHAR"
       });
     }
