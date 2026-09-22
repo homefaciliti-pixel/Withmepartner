@@ -35,6 +35,7 @@ router.get('/home', authenticateToken, (req, res) => {
     date_time: r.date_time,
     location: r.location,
     image: formatPhotoUrl(r.image, req),
+    profile_image: formatPhotoUrl(r.image, req),
     name: r.name,
     pending_status: r.status
   }));
@@ -47,6 +48,7 @@ router.get('/home', authenticateToken, (req, res) => {
     location: b.location,
     date_time: `${b.date} ${b.time}`,
     image: formatPhotoUrl(b.profile_image, req),
+    profile_image: formatPhotoUrl(b.profile_image, req),
     status: b.status
   }));
 
@@ -93,6 +95,7 @@ router.get('/requests/:request_id', authenticateToken, (req, res) => {
     data: {
       request_id: requestData.request_id,
       image: formatPhotoUrl(requestData.image, req),
+      profile_image: formatPhotoUrl(requestData.image, req),
       name: requestData.name,
       age: requestData.age,
       id_verified: requestData.id_verified,
@@ -202,6 +205,7 @@ router.get('/bookings/:booking_id', authenticateToken, (req, res) => {
     data: {
       booking_id: booking.booking_id,
       image: formatPhotoUrl(booking.profile_image, req),
+      profile_image: formatPhotoUrl(booking.profile_image, req),
       name: booking.name,
       age: booking.age,
       id_verified: booking.id_verified,
@@ -332,6 +336,7 @@ router.get('/bookings', authenticateToken, (req, res) => {
 
   const list = filtered.map(b => ({
     booking_id: b.booking_id,
+    image: formatPhotoUrl(b.profile_image, req),
     profile_image: formatPhotoUrl(b.profile_image, req),
     name: b.name,
     interest: b.interest,

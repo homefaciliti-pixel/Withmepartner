@@ -8,6 +8,7 @@ const {
   normalizeCountryCode,
   findUserByMobile,
   saveUsers,
+  formatPhotoUrl,
   PHOTO_1,
   DEFAULT_PHOTOS
 } = require('../store/db');
@@ -69,6 +70,8 @@ router.post('/login', (req, res) => {
 
   const tokens = generateTokens(user.user_id);
 
+  const userPhoto = formatPhotoUrl(user.profile_photo_url || (user.photos && user.photos[0] ? user.photos[0].url : PHOTO_1), req);
+
   return res.status(200).json({
     status: true,
     message: "Login successful",
@@ -79,6 +82,8 @@ router.post('/login', (req, res) => {
       mobile_number: user.mobile_number,
       profile_completed: user.profile_completed || false,
       profile_step_pending: user.profile_step_pending || null,
+      profile_photo_url: userPhoto,
+      image: userPhoto,
       access_token: tokens.access_token,
       refresh_token: tokens.refresh_token,
       token_expires_in: tokens.token_expires_in
@@ -365,6 +370,7 @@ router.post('/register', (req, res) => {
   saveUsers();
 
   const tokens = generateTokens(userId);
+  const userPhoto = formatPhotoUrl(PHOTO_1, req);
 
   return res.status(201).json({
     status: true,
@@ -374,7 +380,9 @@ router.post('/register', (req, res) => {
       access_token: tokens.access_token,
       refresh_token: tokens.refresh_token,
       token_expires_in: tokens.token_expires_in,
-      profile_step_pending: "PROFILE_PHOTO"
+      profile_step_pending: "PROFILE_PHOTO",
+      profile_photo_url: userPhoto,
+      image: userPhoto
     }
   });
 });

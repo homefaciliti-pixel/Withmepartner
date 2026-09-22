@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const { users, partnerBookings, partnerTransactions, normalizeCountryCode, saveUsers, formatPhotoUrl } = require('../store/db');
+const { users, partnerBookings, partnerTransactions, normalizeCountryCode, saveUsers, formatPhotoUrl, PHOTO_1, PHOTO_2, PHOTO_3, PHOTO_4, PHOTO_5 } = require('../store/db');
 const { authenticateToken } = require('../middleware/auth');
 const { validateVerhoeff } = require('../utils/verhoeff');
 const { encrypt, decrypt } = require('../utils/crypto');
@@ -75,23 +75,29 @@ router.post('/photos', authenticateToken, (req, res) => {
 
     // Process and store photo URLs
     const photoList = [
-      { photo_id: "ph_001", url: `https://cdn.yourdomain.com/${user.user_id}/ph_001.jpg`, is_primary: true },
-      { photo_id: "ph_002", url: `https://cdn.yourdomain.com/${user.user_id}/ph_002.jpg`, is_primary: false },
-      { photo_id: "ph_003", url: `https://cdn.yourdomain.com/${user.user_id}/ph_003.jpg`, is_primary: false },
-      { photo_id: "ph_004", url: `https://cdn.yourdomain.com/${user.user_id}/ph_004.jpg`, is_primary: false },
-      { photo_id: "ph_005", url: `https://cdn.yourdomain.com/${user.user_id}/ph_005.jpg`, is_primary: false }
+      { photo_id: "ph_001", url: PHOTO_1, is_primary: true },
+      { photo_id: "ph_002", url: PHOTO_2, is_primary: false },
+      { photo_id: "ph_003", url: PHOTO_3, is_primary: false },
+      { photo_id: "ph_004", url: PHOTO_4, is_primary: false },
+      { photo_id: "ph_005", url: PHOTO_5, is_primary: false }
     ];
 
     user.photos = photoList;
+    user.profile_photo_url = PHOTO_1;
     if (user.profile_step_pending === "PROFILE_PHOTO") {
       user.profile_step_pending = "AADHAR";
     }
     saveUsers();
 
+    const formattedPhotos = photoList.map(p => ({
+      ...p,
+      url: formatPhotoUrl(p.url, req)
+    }));
+
     return res.status(201).json({
       status: true,
       message: "Profile photos uploaded successfully",
-      data: { photos: user.photos }
+      data: { photos: formattedPhotos }
     });
   });
 });
@@ -128,7 +134,9 @@ router.put('/photos/:photo_id', authenticateToken, upload.single('photo'), (req,
     return res.status(400).json({ status: false, message: "Photo file is required", error_code: "FILE_REQUIRED" });
   }
 
-  const updatedUrl = `https://cdn.yourdomain.com/${user.user_id}/${photo_id}_v2.jpg`;
+  const photoIndex = photo_id.match(/\d+/) ? parseInt(photo_id.match(/\d+/)[0], 10) : 1;
+  const photoKey = photoIndex >= 1 && photoIndex <= 5 ? photoIndex : 1;
+  const updatedUrl = `/uploads/photos/photo_${photoKey}.jpg`;
   
   if (user.photos && user.photos.length > 0) {
     const p = user.photos.find(item => item.photo_id === photo_id);
@@ -143,7 +151,7 @@ router.put('/photos/:photo_id', authenticateToken, upload.single('photo'), (req,
     message: "Photo updated successfully",
     data: {
       photo_id,
-      url: updatedUrl
+      url: formatPhotoUrl(updatedUrl, req)
     }
   });
 });
@@ -296,8 +304,12 @@ router.get('/', authenticateToken, (req, res) => {
   }
 
   const primaryPhoto = (user.photos && user.photos.find(p => p.is_primary)) || (user.photos && user.photos[0]);
-  const rawPhoto = primaryPhoto ? primaryPhoto.url : (user.profile_photo_url || `/uploads/${user.user_id}/avatar.jpg`);
+  const rawPhoto = primaryPhoto ? primaryPhoto.url : (user.profile_photo_url || PHOTO_1);
   const photoUrl = formatPhotoUrl(rawPhoto, req);
+  const formattedPhotos = (user.photos || []).map(p => ({
+    ...p,
+    url: formatPhotoUrl(p.url, req)
+  }));
   const aadharVerified = user.aadhar ? user.aadhar.aadhar_verification_status === "APPROVED" : false;
   const avail = user.availability || {};
   const cc = user.country_code || "+91";
@@ -313,6 +325,9 @@ router.get('/', authenticateToken, (req, res) => {
       user_id: user.user_id,
       image: photoUrl,
       profile_photo_url: photoUrl,
+      profile_image: photoUrl,
+      photo_url: photoUrl,
+      photos: formattedPhotos,
       name: user.name,
       rating: user.rating || 4.6,
       total_ratings: user.total_ratings || 128,
@@ -392,12 +407,20 @@ router.put('/', authenticateToken, (req, res) => {
   const photoUrl = formatPhotoUrl(rawPhoto, req);
   const cc = user.country_code || "+91";
 
+  const formattedPhotos = (user.photos || []).map(p => ({
+    ...p,
+    url: formatPhotoUrl(p.url, req)
+  }));
+
   return res.status(200).json({
     status: true,
     message: "Profile changes saved successfully",
     data: {
       image: photoUrl,
       profile_photo_url: photoUrl,
+      profile_image: photoUrl,
+      photo_url: photoUrl,
+      photos: formattedPhotos,
       name: user.name,
       mail: user.email,
       email: user.email,

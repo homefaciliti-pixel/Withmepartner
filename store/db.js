@@ -56,6 +56,15 @@ function formatPhotoUrl(urlOrPath, req) {
   if (!urlOrPath) return "";
   const baseUrl = getBaseUrl(req);
 
+  // If it's fake domain cdn.yourdomain.com, replace with valid uploaded photo path
+  if (urlOrPath.includes("cdn.yourdomain.com")) {
+    const match = urlOrPath.match(/ph_00(\d)/);
+    if (match) {
+      return `${baseUrl}/uploads/photos/photo_${match[1]}.jpg`;
+    }
+    return `${baseUrl}/uploads/photos/photo_1.jpg`;
+  }
+
   // If it's hardcoded localhost:5000, replace with active server/Render domain
   if (urlOrPath.includes("localhost:5000")) {
     return urlOrPath.replace(/https?:\/\/localhost:5000/, baseUrl);
