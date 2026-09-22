@@ -280,6 +280,30 @@ partnerRequests.set("req_003", {
   }
 });
 
+const AMIT_PHOTO_1 = "/uploads/photos/amit_1.jpg";
+const AMIT_PHOTO_2 = "/uploads/photos/amit_2.jpg";
+const AMIT_PHOTO_3 = "/uploads/photos/amit_3.jpg";
+
+partnerRequests.set("req_004", {
+  request_id: "req_004",
+  name: "Amit",
+  age: 24,
+  image: AMIT_PHOTO_1,
+  id_verified: 1,
+  selfie_verified: 1,
+  interest: "Coffee",
+  date_time: "5:00 PM to 6:00 PM",
+  location: "Jaipur",
+  status: "Pending",
+  activity: {
+    type: "Coffee",
+    date: "2026-09-23",
+    time: "5:00 PM to 6:00 PM",
+    area: "Jaipur",
+    description: "Looking for a coffee hangout partner in Jaipur for slot 5:00 PM to 6:00 PM."
+  }
+});
+
 // Seed Partner Bookings with User-Uploaded Photos
 partnerBookings.set("bk_001", {
   booking_id: "bk_001",
