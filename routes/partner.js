@@ -319,6 +319,73 @@ router.post('/safe-meet-mode', authenticateToken, (req, res) => {
   });
 });
 
+// -----------------------------------------------------------------------------
+// CANCEL BOOKING API
+// -----------------------------------------------------------------------------
+
+// POST /partner/bookings/:booking_id/cancel (Cancel Booking by URL Param)
+router.post('/bookings/:booking_id/cancel', authenticateToken, (req, res) => {
+  const { booking_id } = req.params;
+  const { reason } = req.body || {};
+
+  const booking = partnerBookings.get(booking_id);
+  if (!booking) {
+    return res.status(404).json({
+      status: false,
+      message: "Booking not found",
+      error_code: "BOOKING_NOT_FOUND"
+    });
+  }
+
+  booking.status = "Cancelled";
+  booking.cancel_reason = reason || "Cancelled by user";
+
+  return res.status(200).json({
+    status: true,
+    message: "Booking cancelled successfully",
+    data: {
+      booking_id,
+      status: "Cancelled",
+      cancel_reason: booking.cancel_reason
+    }
+  });
+});
+
+// POST /partner/bookings/cancel (Cancel Booking by Request Body)
+router.post('/bookings/cancel', authenticateToken, (req, res) => {
+  const { booking_id, reason } = req.body || {};
+
+  if (!booking_id) {
+    return res.status(400).json({
+      status: false,
+      message: "booking_id is required",
+      error_code: "BOOKING_ID_REQUIRED"
+    });
+  }
+
+  const booking = partnerBookings.get(booking_id);
+  if (!booking) {
+    return res.status(404).json({
+      status: false,
+      message: "Booking not found",
+      error_code: "BOOKING_NOT_FOUND"
+    });
+  }
+
+  booking.status = "Cancelled";
+  booking.cancel_reason = reason || "Cancelled by user";
+
+  return res.status(200).json({
+    status: true,
+    message: "Booking cancelled successfully",
+    data: {
+      booking_id,
+      status: "Cancelled",
+      cancel_reason: booking.cancel_reason
+    }
+  });
+});
+
 
 // -----------------------------------------------------------------------------
 // 13. MY BOOKINGS LIST & FILTER API

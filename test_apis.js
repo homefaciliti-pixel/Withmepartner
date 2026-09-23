@@ -156,6 +156,22 @@ async function runTests() {
       console.assert(safeMeetRes.status === 200, "Safe meet mode 200");
       console.assert(safeMeetRes.body.data.safe_meet_mode.location_allow === 1, "location_allow 1");
 
+      console.log("\n9. Testing Cancel Booking API (/partner/bookings/bk_001/cancel)...");
+      const cancelRes = await request('POST', '/partner/bookings/bk_001/cancel', {
+        reason: "Change of plans"
+      }, authHeader);
+      console.assert(cancelRes.status === 200, "Cancel booking 200");
+      console.assert(cancelRes.body.data.status === "Cancelled", "Status Cancelled");
+      console.assert(cancelRes.body.data.cancel_reason === "Change of plans", "Cancel reason stored");
+
+      console.log("\n10. Testing Cancel Booking API by Body (/partner/bookings/cancel)...");
+      const cancelBodyRes = await request('POST', '/partner/bookings/cancel', {
+        booking_id: "bk_001",
+        reason: "Busy schedule"
+      }, authHeader);
+      console.assert(cancelBodyRes.status === 200, "Cancel booking body 200");
+      console.assert(cancelBodyRes.body.data.status === "Cancelled", "Status Cancelled");
+
       console.log("\n✅ ALL PARTNER API & PERSISTENCE TESTS PASSED SUCCESSFULLY!");
       server.close();
       process.exit(0);
