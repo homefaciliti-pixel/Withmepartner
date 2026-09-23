@@ -10,7 +10,8 @@ FEATURES:
  - MySQL Database Sync: Automatically initializes table `node_partner_users` on homefaciliti.com and syncs user profiles in real-time.
  - Dynamic Image URLs: Image URLs automatically detect your Render domain (via process.env.RENDER_EXTERNAL_URL / process.env.BASE_URL or request Host header).
  - Flexible Phone Matching: (+91 / 91 / 0 prefix normalization).
- - Default Uploaded Photos: (photo_1.jpg .. photo_5.jpg) auto-assigned on registration.
+ - Non-Expiring JWT Access Tokens: Tokens do not expire (refresh token removed as requested).
+ - Flexible Profile Photo Upload: Multer supports any field key name for file upload.
 
 ================================================================================
 1. LOGIN API
@@ -39,9 +40,7 @@ Success Response — 200 OK:
     "mobile_number": "9876543210",
     "profile_completed": true,
     "profile_step_pending": null,
-    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-    "refresh_token": "rft_7f9e2a...",
-    "token_expires_in": 3600
+    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
   }
 }
 
@@ -226,7 +225,7 @@ Request Body:
 
 
 ================================================================================
-6. BOOKING DETAILS & SAFE MEET MODE API
+6. BOOKING DETAILS, SAFE MEET MODE & CANCEL BOOKING API
 ================================================================================
 
 6.1 Get Booking Details
@@ -245,6 +244,50 @@ Request Body:
   "safety_check_in": 1,
   "start_safe_meet": true
 }
+
+6.3 Cancel Booking API (Option 1: URL Parameter)
+Endpoint: POST /partner/bookings/{booking_id}/cancel
+Auth required: Yes (Headers: Authorization: Bearer <access_token>)
+Content-Type: application/json
+
+Request Body (Optional):
+{
+  "reason": "Change of plans"
+}
+
+Success Response — 200 OK:
+{
+  "status": true,
+  "message": "Booking cancelled successfully",
+  "data": {
+    "booking_id": "bk_001",
+    "status": "Cancelled",
+    "cancel_reason": "Change of plans"
+  }
+}
+
+6.4 Cancel Booking API (Option 2: Request Body)
+Endpoint: POST /partner/bookings/cancel
+Auth required: Yes (Headers: Authorization: Bearer <access_token>)
+Content-Type: application/json
+
+Request Body:
+{
+  "booking_id": "bk_001",
+  "reason": "Busy schedule"
+}
+
+Success Response — 200 OK:
+{
+  "status": true,
+  "message": "Booking cancelled successfully",
+  "data": {
+    "booking_id": "bk_001",
+    "status": "Cancelled",
+    "cancel_reason": "Busy schedule"
+  }
+}
+
 
 
 ================================================================================
