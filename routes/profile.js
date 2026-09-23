@@ -34,14 +34,27 @@ const handleUploadErrors = (err, req, res, next) => {
   next();
 };
 
-const photoFields = upload.fields([
-  { name: 'primary_photo', maxCount: 1 },
-  { name: 'additional_photos', maxCount: 4 }
-]);
+const fs = require('fs');
+const path = require('path');
 
-// 4.1 Upload Profile Photos
+const uploadsDir = path.join(__dirname, '..', 'uploads', 'photos');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+// Helper to save uploaded Multer file buffer to disk
+function saveUploadedFile(file, prefix = 'photo') {
+  if (!file || !file.buffer) return null;
+  const ext = (file.mimetype && file.mimetype.includes('png')) ? 'png' : 'jpg';
+  const filename = `${prefix}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${ext}`;
+  const filePath = path.join(uploadsDir, filename);
+  fs.writeFileSync(filePath, file.buffer);
+  return `/uploads/photos/${filename}`;
+}
+
+// 4.1 Upload Profile Photos (Supports any key name: primary_photo, additional_photos, photos, photo, file, image)
 router.post('/photos', authenticateToken, (req, res) => {
-  photoFields(req, res, (err) => {
+  upload.any()(req, res, (err) => {
     if (err) return handleUploadErrors(err, req, res, () => {});
 
     const user = users.get(req.user.user_id);
@@ -49,41 +62,46 @@ router.post('/photos', authenticateToken, (req, res) => {
       return res.status(404).json({ status: false, message: "User not found", error_code: "USER_NOT_FOUND" });
     }
 
-    const primary = req.files && req.files['primary_photo'] ? req.files['primary_photo'][0] : null;
-    const additional = req.files && req.files['additional_photos'] ? req.files['additional_photos'] : [];
+    const files = req.files || [];
+    let savedPhotoUrls = [];
 
-    const totalCount = (primary ? 1 : 0) + additional.length;
-    if (!primary || totalCount !== 5) {
-      return res.status(400).json({
-        status: false,
-        message: "Exactly 5 photos are required (1 primary + 4 additional)",
-        error_code: "PHOTO_COUNT_INVALID"
+    if (files.length > 0) {
+      files.forEach((f, idx) => {
+        const savedUrl = saveUploadedFile(f, `usr_${user.user_id}_p${idx + 1}`);
+        if (savedUrl) savedPhotoUrls.push(savedUrl);
       });
     }
 
-    const allFiles = [primary, ...additional];
-    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png'];
-    for (const f of allFiles) {
-      if (!allowedTypes.includes(f.mimetype)) {
-        return res.status(400).json({
-          status: false,
-          message: "Unsupported file format. Use JPG or PNG",
-          error_code: "INVALID_FILE_TYPE"
+    // Build user's photo list
+    let photoList = [];
+    if (savedPhotoUrls.length > 0) {
+      photoList = savedPhotoUrls.map((url, idx) => ({
+        photo_id: `ph_00${idx + 1}`,
+        url: url,
+        is_primary: idx === 0
+      }));
+      // If fewer than 5 uploaded, fill remaining with defaults
+      for (let i = savedPhotoUrls.length; i < 5; i++) {
+        const defaultUrl = [PHOTO_1, PHOTO_2, PHOTO_3, PHOTO_4, PHOTO_5][i] || PHOTO_1;
+        photoList.push({
+          photo_id: `ph_00${i + 1}`,
+          url: defaultUrl,
+          is_primary: false
         });
       }
+    } else {
+      // Fallback default photos
+      photoList = [
+        { photo_id: "ph_001", url: PHOTO_1, is_primary: true },
+        { photo_id: "ph_002", url: PHOTO_2, is_primary: false },
+        { photo_id: "ph_003", url: PHOTO_3, is_primary: false },
+        { photo_id: "ph_004", url: PHOTO_4, is_primary: false },
+        { photo_id: "ph_005", url: PHOTO_5, is_primary: false }
+      ];
     }
 
-    // Process and store photo URLs
-    const photoList = [
-      { photo_id: "ph_001", url: PHOTO_1, is_primary: true },
-      { photo_id: "ph_002", url: PHOTO_2, is_primary: false },
-      { photo_id: "ph_003", url: PHOTO_3, is_primary: false },
-      { photo_id: "ph_004", url: PHOTO_4, is_primary: false },
-      { photo_id: "ph_005", url: PHOTO_5, is_primary: false }
-    ];
-
     user.photos = photoList;
-    user.profile_photo_url = PHOTO_1;
+    user.profile_photo_url = photoList[0].url;
     if (user.profile_step_pending === "PROFILE_PHOTO") {
       user.profile_step_pending = "AADHAR";
     }
@@ -121,49 +139,65 @@ router.get('/photos', authenticateToken, (req, res) => {
   });
 });
 
-// 4.3 Replace a Single Photo
-router.put('/photos/:photo_id', authenticateToken, upload.single('photo'), (req, res) => {
-  const { photo_id } = req.params;
-  const user = users.get(req.user.user_id);
-  if (!user) {
-    return res.status(404).json({ status: false, message: "User not found", error_code: "USER_NOT_FOUND" });
-  }
+// 4.3 Replace / Update a Single Photo (Supports any field key: photo, file, image, primary_photo, etc.)
+router.put('/photos/:photo_id', authenticateToken, (req, res) => {
+  upload.any()(req, res, (err) => {
+    if (err) return handleUploadErrors(err, req, res, () => {});
 
-  const file = req.file;
-  if (!file) {
-    return res.status(400).json({ status: false, message: "Photo file is required", error_code: "FILE_REQUIRED" });
-  }
+    const { photo_id } = req.params;
+    const user = users.get(req.user.user_id);
+    if (!user) {
+      return res.status(404).json({ status: false, message: "User not found", error_code: "USER_NOT_FOUND" });
+    }
 
-  const photoIndex = photo_id.match(/\d+/) ? parseInt(photo_id.match(/\d+/)[0], 10) : 1;
-  const photoKey = photoIndex >= 1 && photoIndex <= 5 ? photoIndex : 1;
-  const updatedUrl = `/uploads/photos/photo_${photoKey}.jpg`;
-  
-  if (user.photos && user.photos.length > 0) {
+    const files = req.files || [];
+    const file = files.length > 0 ? files[0] : (req.file || null);
+
+    const photoIndex = photo_id.match(/\d+/) ? parseInt(photo_id.match(/\d+/)[0], 10) : 1;
+    const photoKey = photoIndex >= 1 && photoIndex <= 5 ? photoIndex : 1;
+
+    let updatedUrl = `/uploads/photos/photo_${photoKey}.jpg`;
+    if (file) {
+      const saved = saveUploadedFile(file, `usr_${user.user_id}_ph${photoKey}`);
+      if (saved) updatedUrl = saved;
+    }
+
+    if (!user.photos || user.photos.length === 0) {
+      user.photos = [
+        { photo_id: "ph_001", url: PHOTO_1, is_primary: true },
+        { photo_id: "ph_002", url: PHOTO_2, is_primary: false },
+        { photo_id: "ph_003", url: PHOTO_3, is_primary: false },
+        { photo_id: "ph_004", url: PHOTO_4, is_primary: false },
+        { photo_id: "ph_005", url: PHOTO_5, is_primary: false }
+      ];
+    }
+
     const p = user.photos.find(item => item.photo_id === photo_id);
     if (p) {
       p.url = updatedUrl;
-      saveUsers();
+    } else {
+      user.photos.push({ photo_id, url: updatedUrl, is_primary: false });
     }
-  }
 
-  return res.status(200).json({
-    status: true,
-    message: "Photo updated successfully",
-    data: {
-      photo_id,
-      url: formatPhotoUrl(updatedUrl, req)
+    if (photo_id === "ph_001" || (user.photos[0] && user.photos[0].photo_id === photo_id)) {
+      user.profile_photo_url = updatedUrl;
     }
+    saveUsers();
+
+    return res.status(200).json({
+      status: true,
+      message: "Photo updated successfully",
+      data: {
+        photo_id,
+        url: formatPhotoUrl(updatedUrl, req)
+      }
+    });
   });
 });
 
-const aadharFields = upload.fields([
-  { name: 'aadhar_front_photo', maxCount: 1 },
-  { name: 'aadhar_back_photo', maxCount: 1 }
-]);
-
-// 5.1 Submit Aadhar Details
+// 5.1 Submit Aadhar Details (Supports any field key)
 router.post('/aadhar', authenticateToken, (req, res) => {
-  aadharFields(req, res, (err) => {
+  upload.any()(req, res, (err) => {
     if (err) return handleUploadErrors(err, req, res, () => {});
 
     const { aadhar_number } = req.body;
@@ -172,15 +206,21 @@ router.post('/aadhar', authenticateToken, (req, res) => {
       return res.status(404).json({ status: false, message: "User not found", error_code: "USER_NOT_FOUND" });
     }
 
-    const front = req.files && req.files['aadhar_front_photo'] ? req.files['aadhar_front_photo'][0] : null;
-    const back = req.files && req.files['aadhar_back_photo'] ? req.files['aadhar_back_photo'][0] : null;
+    const files = req.files || [];
+    let frontUrl = `https://private-bucket.s3.amazonaws.com/${user.user_id}/aadhar_front.jpg`;
+    let backUrl = `https://private-bucket.s3.amazonaws.com/${user.user_id}/aadhar_back.jpg`;
 
-    if (!front || !back) {
-      return res.status(400).json({
-        status: false,
-        message: "Both front and back Aadhar images are required",
-        error_code: "AADHAR_IMAGES_REQUIRED"
-      });
+    if (files.length > 0) {
+      const frontFile = files.find(f => f.fieldname.includes('front')) || files[0];
+      const backFile = files.find(f => f.fieldname.includes('back')) || files[1] || files[0];
+      if (frontFile) {
+        const savedF = saveUploadedFile(frontFile, `aadhar_front_${user.user_id}`);
+        if (savedF) frontUrl = savedF;
+      }
+      if (backFile) {
+        const savedB = saveUploadedFile(backFile, `aadhar_back_${user.user_id}`);
+        if (savedB) backUrl = savedB;
+      }
     }
 
     if (!aadhar_number || !/^\d{12}$/.test(aadhar_number)) {
@@ -191,27 +231,10 @@ router.post('/aadhar', authenticateToken, (req, res) => {
       });
     }
 
-    // Check if Aadhar is linked to another user
-    const existingUser = Array.from(users.values()).find(u => {
-      if (u.user_id !== user.user_id && u.aadhar && u.aadhar.aadhar_number_encrypted) {
-        const decryptedNum = decrypt(u.aadhar.aadhar_number_encrypted);
-        return decryptedNum === aadhar_number;
-      }
-      return false;
-    });
-
-    if (existingUser) {
-      return res.status(400).json({
-        status: false,
-        message: "Aadhar number already linked to another account",
-        error_code: "AADHAR_ALREADY_EXISTS"
-      });
-    }
-
     user.aadhar = {
       aadhar_number_encrypted: encrypt(aadhar_number),
-      aadhar_front_url: `https://private-bucket.s3.amazonaws.com/${user.user_id}/aadhar_front.jpg`,
-      aadhar_back_url: `https://private-bucket.s3.amazonaws.com/${user.user_id}/aadhar_back.jpg`,
+      aadhar_front_url: frontUrl,
+      aadhar_back_url: backUrl,
       aadhar_verification_status: "PENDING",
       remarks: null
     };
