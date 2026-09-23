@@ -86,9 +86,7 @@ router.post('/login', (req, res) => {
       profile_step_pending: user.profile_step_pending || null,
       profile_photo_url: userPhoto,
       image: userPhoto,
-      access_token: tokens.access_token,
-      refresh_token: tokens.refresh_token,
-      token_expires_in: tokens.token_expires_in
+      access_token: tokens.access_token
     }
   });
 });
@@ -388,8 +386,6 @@ router.post('/register', (req, res) => {
     data: {
       user_id: userId,
       access_token: tokens.access_token,
-      refresh_token: tokens.refresh_token,
-      token_expires_in: tokens.token_expires_in,
       profile_step_pending: "PROFILE_PHOTO",
       profile_photo_url: userPhoto,
       image: userPhoto
