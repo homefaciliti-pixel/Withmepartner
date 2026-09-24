@@ -92,6 +92,26 @@ async function runTests() {
       console.assert(verifyOtpRes.status === 200, "Verify OTP 200");
       const vToken = verifyOtpRes.body.data.token;
 
+      // Underage DOB test (e.g. 2010-05-15 = age 16)
+      console.log("\n3.1 Testing Underage Registration Restriction (age < 19)...");
+      const underageRegRes = await request('POST', '/auth/register', {
+        token: vToken,
+        name: "Underage User",
+        country_code: "+91",
+        mobile_number: testMobile,
+        email: `underage_${Date.now()}@example.com`,
+        gender: "Female",
+        dob: "2010-05-15",
+        area: "Raja Park",
+        city: "Jaipur",
+        state: "Rajasthan",
+        pincode: "302004",
+        password: "NewUserPass123",
+        confirm_password: "NewUserPass123"
+      });
+      console.assert(underageRegRes.status === 400, "Underage registration blocked with 400");
+      console.assert(underageRegRes.body.error_code === "UNDERAGE_NOT_ALLOWED", "UNDERAGE_NOT_ALLOWED code returned");
+
       const regRes = await request('POST', '/auth/register', {
         token: vToken,
         name: "Test User",
@@ -172,8 +192,10 @@ async function runTests() {
       console.assert(cancelBodyRes.status === 200, "Cancel booking body 200");
       console.assert(cancelBodyRes.body.data.status === "Cancelled", "Status Cancelled");
 
+      const newAuthHeader = { 'Authorization': `Bearer ${newAuthToken}` };
+
       console.log("\n11. Testing Get Bank Account API (/partner/withdraw/bank-account)...");
-      const getBankRes = await request('GET', '/partner/withdraw/bank-account', null, authHeader);
+      const getBankRes = await request('GET', '/partner/withdraw/bank-account', null, newAuthHeader);
       console.assert(getBankRes.status === 200, "Get Bank Account 200");
       console.assert(getBankRes.body.data.support_note.includes("me24with@gmail.com"), "Contains support email note");
 
@@ -184,7 +206,7 @@ async function runTests() {
         account_number: "30123456789",
         ifsc_code: "SBIN0001234",
         upi_id: "rahul@upi"
-      }, authHeader);
+      }, newAuthHeader);
       console.assert(saveBankRes.status === 200, "Save Bank Account 200");
       console.assert(saveBankRes.body.data.bank_account.account_number === "30123456789", "Account number saved");
       console.assert(saveBankRes.body.data.support_note.includes("me24with@gmail.com"), "Support note returned");
@@ -195,13 +217,13 @@ async function runTests() {
         bank_name: "HDFC Bank",
         account_number: "99999999999",
         ifsc_code: "HDFC0001234"
-      }, authHeader);
+      }, newAuthHeader);
       console.assert(secondSaveBankRes.status === 400, "Second save blocked with 400");
       console.assert(secondSaveBankRes.body.error_code === "BANK_ACCOUNT_LOCKED", "BANK_ACCOUNT_LOCKED code");
       console.assert(secondSaveBankRes.body.data.support_note.includes("me24with@gmail.com"), "Support note present in locked response");
 
       console.log("\n14. Testing Submit Withdrawal Request API (/partner/withdraw)...");
-      const withdrawRes = await request('POST', '/partner/withdraw', { amount: 1000 }, authHeader);
+      const withdrawRes = await request('POST', '/partner/withdraw', { amount: 1000 }, newAuthHeader);
       console.assert(withdrawRes.status === 200, "Withdrawal 200");
       console.assert(withdrawRes.body.data.bank_account.bank_name === "State Bank of India", "Bank account included in withdrawal");
 

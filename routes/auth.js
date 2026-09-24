@@ -298,6 +298,28 @@ router.post('/register/verify-otp', (req, res) => {
   });
 });
 
+function calculateAge(dobStr) {
+  if (!dobStr) return -1;
+  let birthDate;
+  const str = String(dobStr).trim();
+  if (/^\d{1,2}[-\/]\d{1,2}[-\/]\d{4}$/.test(str)) {
+    const parts = str.split(/[-\/]/);
+    birthDate = new Date(parseInt(parts[2], 10), parseInt(parts[1], 10) - 1, parseInt(parts[0], 10));
+  } else {
+    birthDate = new Date(str);
+  }
+
+  if (isNaN(birthDate.getTime())) return -1;
+
+  const today = new Date();
+  let age = today.getFullYear() - birthDate.getFullYear();
+  const monthDiff = today.getMonth() - birthDate.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+    age--;
+  }
+  return age;
+}
+
 // 3.3 Complete Registration
 router.post('/register', (req, res) => {
   const {
@@ -310,6 +332,37 @@ router.post('/register', (req, res) => {
       status: false,
       message: "Passwords do not match",
       error_code: "PASSWORD_MISMATCH"
+    });
+  }
+
+  // Age verification (Minimum 19 years old requirement)
+  if (!dob) {
+    return res.status(400).json({
+      status: false,
+      message: "Date of birth (dob) is required for registration",
+      error_code: "DOB_REQUIRED"
+    });
+  }
+
+  const userAge = calculateAge(dob);
+  if (userAge < 0) {
+    return res.status(400).json({
+      status: false,
+      message: "Invalid date of birth format",
+      error_code: "INVALID_DOB_FORMAT"
+    });
+  }
+
+  if (userAge < 19) {
+    return res.status(400).json({
+      status: false,
+      message: "Registration failed. User must be at least 19 years old to register.",
+      error_code: "UNDERAGE_NOT_ALLOWED",
+      data: {
+        provided_dob: dob,
+        calculated_age: userAge,
+        minimum_required_age: 19
+      }
     });
   }
 

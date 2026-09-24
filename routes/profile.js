@@ -406,12 +406,46 @@ router.patch('/location', authenticateToken, (req, res) => {
   });
 });
 
+function calculateAge(dobStr) {
+  if (!dobStr) return -1;
+  let birthDate;
+  const str = String(dobStr).trim();
+  if (/^\d{1,2}[-\/]\d{1,2}[-\/]\d{4}$/.test(str)) {
+    const parts = str.split(/[-\/]/);
+    birthDate = new Date(parseInt(parts[2], 10), parseInt(parts[1], 10) - 1, parseInt(parts[0], 10));
+  } else {
+    birthDate = new Date(str);
+  }
+
+  if (isNaN(birthDate.getTime())) return -1;
+
+  const today = new Date();
+  let age = today.getFullYear() - birthDate.getFullYear();
+  const monthDiff = today.getMonth() - birthDate.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+    age--;
+  }
+  return age;
+}
+
 // 8.3 Save Changes Profile API (Edit Profile: Photo, Name, Email. Phone is disabled)
 router.put('/', authenticateToken, (req, res) => {
-  const { profile_photo, image, name, email, mail } = req.body;
+  const { profile_photo, image, name, email, mail, dob } = req.body;
   const user = users.get(req.user.user_id);
   if (!user) {
     return res.status(404).json({ status: false, message: "User not found", error_code: "USER_NOT_FOUND" });
+  }
+
+  if (dob) {
+    const userAge = calculateAge(dob);
+    if (userAge >= 0 && userAge < 19) {
+      return res.status(400).json({
+        status: false,
+        message: "User must be at least 19 years old.",
+        error_code: "UNDERAGE_NOT_ALLOWED"
+      });
+    }
+    user.dob = dob;
   }
 
   const updatedName = name || user.name;

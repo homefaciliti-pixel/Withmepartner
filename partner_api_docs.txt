@@ -136,6 +136,37 @@ Auth required: No
 3.3 Complete Registration
 Endpoint: POST /auth/register
 Auth required: No (uses verification token)
+Content-Type: application/json
+
+Request Body:
+{
+  "token": "vtok_a1b2c3",
+  "name": "Rahul Sharma",
+  "country_code": "+91",
+  "mobile_number": "9876543210",
+  "email": "rahul@example.com",
+  "gender": "Male",
+  "dob": "2005-01-15", // Required: Format YYYY-MM-DD or DD-MM-YYYY (Must be at least 19 years old)
+  "area": "Raja Park",
+  "city": "Jaipur",
+  "state": "Rajasthan",
+  "pincode": "302004",
+  "password": "MySecurePassword123",
+  "confirm_password": "MySecurePassword123"
+}
+
+Age Restriction Error — 400 Bad Request (If user is under 19 years old):
+{
+  "status": false,
+  "message": "Registration failed. User must be at least 19 years old to register.",
+  "error_code": "UNDERAGE_NOT_ALLOWED",
+  "data": {
+    "provided_dob": "2010-05-15",
+    "calculated_age": 16,
+    "minimum_required_age": 19
+  }
+}
+
 
 
 ================================================================================
