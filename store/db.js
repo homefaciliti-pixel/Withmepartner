@@ -1,7 +1,16 @@
 const fs = require('fs');
 const path = require('path');
 const { encrypt } = require('../utils/crypto');
-const { initMysqlDatabase, syncUserToMysql, fetchUsersFromMysql } = require('../config/database');
+const {
+  initMysqlDatabase,
+  syncUserToMysql,
+  fetchUsersFromMysql,
+  fetchPartnerRequestsFromMysql,
+  savePartnerRequestToMysql,
+  updatePartnerRequestStatusInMysql,
+  fetchPartnerBookingsFromMysql,
+  savePartnerBookingToMysql
+} = require('../config/database');
 
 const USERS_FILE = path.join(__dirname, 'users.json');
 
@@ -187,6 +196,24 @@ async function loadUsers() {
     const dbUsers = await fetchUsersFromMysql();
     if (dbUsers && dbUsers.length > 0) {
       dbUsers.forEach(u => users.set(u.user_id, u));
+    }
+
+    // Load dynamic partner requests from MySQL
+    const dbRequests = await fetchPartnerRequestsFromMysql();
+    if (dbRequests && dbRequests.length > 0) {
+      dbRequests.forEach(r => {
+        partnerRequests.set(r.request_id, r);
+      });
+      console.log(`[Store] Loaded ${dbRequests.length} partner requests from MySQL into memory.`);
+    }
+
+    // Load dynamic bookings from MySQL
+    const dbBookings = await fetchPartnerBookingsFromMysql();
+    if (dbBookings && dbBookings.length > 0) {
+      dbBookings.forEach(b => {
+        partnerBookings.set(b.booking_id, b);
+      });
+      console.log(`[Store] Loaded ${dbBookings.length} partner bookings from MySQL into memory.`);
     }
   } catch (err) {
     console.error("Error loading from MySQL:", err.message);
@@ -449,5 +476,8 @@ module.exports = {
   PHOTO_3,
   PHOTO_4,
   PHOTO_5,
-  DEFAULT_PHOTOS
+  DEFAULT_PHOTOS,
+  savePartnerRequestToMysql,
+  updatePartnerRequestStatusInMysql,
+  savePartnerBookingToMysql
 };

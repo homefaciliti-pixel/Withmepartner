@@ -1,7 +1,47 @@
 const express = require('express');
 const router = express.Router();
-const { users, partnerRequests, partnerBookings, partnerTransactions, formatPhotoUrl, saveUsers } = require('../store/db');
+const {
+  users,
+  partnerRequests,
+  partnerBookings,
+  partnerTransactions,
+  formatPhotoUrl,
+  saveUsers,
+  savePartnerRequestToMysql,
+  updatePartnerRequestStatusInMysql,
+  savePartnerBookingToMysql
+} = require('../store/db');
+const { fetchPartnerRequestsFromMysql, fetchPartnerBookingsFromMysql } = require('../config/database');
 const { authenticateToken } = require('../middleware/auth');
+
+const getUserAppApiUrl = () => {
+  return process.env.USER_APP_API_URL || 'https://withmeapi-userapp.onrender.com';
+};
+
+const notifyUserAppStatusUpdate = async (payload) => {
+  const userAppUrls = [
+    getUserAppApiUrl(),
+    'http://localhost:5000',
+    'http://localhost:5001'
+  ];
+
+  for (const baseUrl of userAppUrls) {
+    try {
+      const res = await fetch(`${baseUrl}/api/v1/partner-request/update-status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        console.log(`[User App Sync] Successfully notified User App of status update for ${payload.request_id}`);
+        return true;
+      }
+    } catch (e) {
+      // Ignore offline url
+    }
+  }
+  return false;
+};
 
 function parseTimeMinutes(timeStr) {
   if (!timeStr) return -1;
@@ -18,18 +58,163 @@ function parseTimeMinutes(timeStr) {
 }
 
 // -----------------------------------------------------------------------------
+// 0. INCOMING USER REQUEST & BOOKING SYNC (From WithMe User App API)
+// -----------------------------------------------------------------------------
+
+// POST /partner/incoming-request (Receive request from User App)
+const handleIncomingUserRequest = async (req, res) => {
+  const requestPayload = req.body || {};
+  const requestId = requestPayload.request_id || `req_${Date.now()}`;
+  const senderName = requestPayload.name || requestPayload.sender_name || 'Amit';
+  const interest = requestPayload.interest || requestPayload.activity_name || 'Coffee';
+  const location = requestPayload.location || 'Jaipur';
+  const dateTime = requestPayload.date_time || `${requestPayload.date || '2026-09-25'} ${requestPayload.time || '06:00 PM'}`;
+  const profileImage = requestPayload.profile_image || requestPayload.image || '/uploads/photos/photo_1.jpg';
+
+  const newRequest = {
+    request_id: requestId,
+    booking_id: requestPayload.booking_id || `BK${Math.floor(100000 + Math.random() * 900000)}`,
+    partner_id: requestPayload.partner_id || '101',
+    user_id: requestPayload.user_id || 'usr_998877',
+    name: senderName,
+    age: requestPayload.age || 25,
+    image: profileImage,
+    profile_image: profileImage,
+    id_verified: 1,
+    selfie_verified: 1,
+    interest,
+    date_time: dateTime,
+    location,
+    status: 'Pending',
+    pending_status: 'Pending',
+    message: requestPayload.message || 'Looking for an activity partner',
+    activity: requestPayload.activity || {
+      type: interest,
+      date: requestPayload.date || '2026-09-25',
+      time: requestPayload.time || '06:00 PM',
+      area: location,
+      description: requestPayload.message || 'Meetup request from user'
+    }
+  };
+
+  partnerRequests.set(requestId, newRequest);
+
+  // Save to MySQL database
+  try {
+    await savePartnerRequestToMysql(newRequest);
+  } catch (err) {
+    console.warn("MySQL save partner request error:", err.message);
+  }
+
+  console.log(`[Partner API] Successfully received and registered incoming user request: ${requestId} for ${interest} in ${location}`);
+
+  return res.status(200).json({
+    status: true,
+    message: "Incoming user request registered and visible to partner",
+    data: newRequest
+  });
+};
+
+router.post('/incoming-request', handleIncomingUserRequest);
+router.post('/sync-request', handleIncomingUserRequest);
+router.post('/requests/create', handleIncomingUserRequest);
+
+// POST /partner/incoming-booking (Receive booking from User App)
+const handleIncomingUserBooking = async (req, res) => {
+  const bookingPayload = req.body || {};
+  const bookingId = bookingPayload.booking_id || `BK${Math.floor(100000 + Math.random() * 900000)}`;
+  const userName = bookingPayload.name || bookingPayload.user_name || 'Amit';
+  const interest = bookingPayload.interest || bookingPayload.activity || 'Coffee';
+  const location = bookingPayload.location || 'Jaipur';
+  const profileImage = bookingPayload.profile_image || bookingPayload.user_image || '/uploads/photos/photo_1.jpg';
+
+  const newBooking = {
+    booking_id: bookingId,
+    user_id: bookingPayload.user_id || 'usr_998877',
+    partner_id: bookingPayload.partner_id || '101',
+    profile_image: profileImage,
+    name: userName,
+    age: bookingPayload.age || 25,
+    id_verified: 1,
+    selfie_verified: 1,
+    interest,
+    location,
+    date: bookingPayload.date || '2026-09-25',
+    time: bookingPayload.time || '06:00 PM',
+    status: 'Upcoming',
+    meeting_info: bookingPayload.meeting_info || {
+      date: bookingPayload.date || '2026-09-25',
+      time: bookingPayload.time || '06:00 PM',
+      place: location,
+      type: interest,
+      description: `Confirmed ${interest} booking`
+    },
+    safety_checklist: { start_safe_meet: false },
+    safe_meet_mode: { location_allow: 1, notify_trusted_contact: 1, safety_check_in: 1 }
+  };
+
+  partnerBookings.set(bookingId, newBooking);
+
+  // Save to MySQL
+  try {
+    await savePartnerBookingToMysql(newBooking);
+  } catch (err) {
+    console.warn("MySQL save partner booking error:", err.message);
+  }
+
+  console.log(`[Partner API] Successfully registered incoming user booking: ${bookingId}`);
+
+  return res.status(200).json({
+    status: true,
+    message: "Incoming user booking registered successfully",
+    data: newBooking
+  });
+};
+
+router.post('/incoming-booking', handleIncomingUserBooking);
+router.post('/sync-booking', handleIncomingUserBooking);
+
+// -----------------------------------------------------------------------------
 // 10. HOME SCREEN API
 // -----------------------------------------------------------------------------
 
 // GET /partner/home (Home Screen Overview + Lists)
-router.get('/home', authenticateToken, (req, res) => {
+router.get('/home', authenticateToken, async (req, res) => {
   const user = users.get(req.user.user_id);
   if (!user) {
     return res.status(404).json({ status: false, message: "User not found", error_code: "USER_NOT_FOUND" });
   }
 
+  // Fetch real-time requests from MySQL to ensure any user request is populated
+  try {
+    const dbRequests = await fetchPartnerRequestsFromMysql();
+    if (dbRequests && dbRequests.length > 0) {
+      dbRequests.forEach(r => {
+        if (!partnerRequests.has(r.request_id)) {
+          partnerRequests.set(r.request_id, r);
+        }
+      });
+    }
+  } catch (err) {
+    // Ignore MySQL fetch error
+  }
+
+  // Fetch real-time bookings from MySQL
+  try {
+    const dbBookings = await fetchPartnerBookingsFromMysql();
+    if (dbBookings && dbBookings.length > 0) {
+      dbBookings.forEach(b => {
+        if (!partnerBookings.has(b.booking_id)) {
+          partnerBookings.set(b.booking_id, b);
+        }
+      });
+    }
+  } catch (err) {
+    // Ignore MySQL fetch error
+  }
+
   const allReqs = Array.from(partnerRequests.values());
-  const newRequestsList = allReqs.filter(r => r.status === "Pending").map(r => ({
+  const newRequestsList = allReqs.filter(r => r.status === "Pending" || r.status === "PENDING").map(r => ({
     request_id: r.request_id,
     interest: r.interest,
     date_time: r.date_time,
@@ -132,6 +317,13 @@ router.post('/requests/:request_id/action', authenticateToken, (req, res) => {
   const isAccept = action.toUpperCase() === "ACCEPT";
   requestData.status = isAccept ? "ACCEPTED" : "DECLINED";
 
+  // Update in MySQL database
+  try {
+    updatePartnerRequestStatusInMysql(request_id, isAccept ? "ACCEPTED" : "DECLINED");
+  } catch (err) {
+    console.warn("MySQL update partner request status error:", err.message);
+  }
+
   // Notify User App in background of status update
   notifyUserAppStatusUpdate({
     request_id,
@@ -144,6 +336,7 @@ router.post('/requests/:request_id/action', authenticateToken, (req, res) => {
     const booking_id = requestData.booking_id || `bk_${Math.floor(1000 + Math.random() * 9000)}`;
     const newBooking = {
       booking_id,
+      request_id,
       profile_image: requestData.image,
       name: requestData.name,
       age: requestData.age,
@@ -167,6 +360,13 @@ router.post('/requests/:request_id/action', authenticateToken, (req, res) => {
 
     partnerBookings.set(booking_id, newBooking);
 
+    // Save to MySQL
+    try {
+      savePartnerBookingToMysql(newBooking);
+    } catch (err) {
+      console.warn("MySQL save booking error:", err.message);
+    }
+
     return res.status(200).json({
       status: true,
       message: "Request accepted successfully. Added to My Bookings.",
@@ -188,181 +388,6 @@ router.post('/requests/:request_id/action', authenticateToken, (req, res) => {
     }
   });
 });
-
-
-// -----------------------------------------------------------------------------
-// 11.1 CROSS-APP CONNECTION & INCOMING USER BOOKING API
-// -----------------------------------------------------------------------------
-
-const getUserApiUrl = () => {
-  return process.env.USER_APP_API_URL || process.env.WITME_USER_APP_URL || 'https://withmeapi-userapp.onrender.com';
-};
-
-async function notifyUserAppStatusUpdate(payload) {
-  const userAppUrls = [
-    getUserApiUrl(),
-    'http://localhost:5001',
-    'http://localhost:5000'
-  ];
-
-  for (const baseUrl of userAppUrls) {
-    try {
-      const resp = await fetch(`${baseUrl}/api/v1/partner-request/update-status`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      if (resp.ok) {
-        console.log(`[Partner Sync Callback] Successfully notified User App of status update for ${payload.request_id || payload.booking_id}`);
-        return true;
-      }
-    } catch (err) {
-      // Ignore offline host notice
-    }
-  }
-  return false;
-}
-
-// Handler for incoming user booking / meetup requests from User App
-function handleIncomingUserRequest(req, res) {
-  const {
-    request_id,
-    booking_id,
-    name,
-    sender_name,
-    user_name,
-    image,
-    profile_image,
-    sender_avatar,
-    interest,
-    activity,
-    activity_name,
-    date,
-    time,
-    date_time,
-    location,
-    area,
-    city,
-    age,
-    message,
-    description,
-    status
-  } = req.body || {};
-
-  const reqId = request_id || `req_${Math.floor(100 + Math.random() * 900)}`;
-  const bkId = booking_id || `bk_${Math.floor(100 + Math.random() * 900)}`;
-  const userName = sender_name || name || user_name || "User";
-  const userImage = profile_image || image || sender_avatar || "/uploads/photos/photo_1.jpg";
-  const actType = activity || interest || activity_name || "Coffee";
-  const dateTimeStr = date_time || `${date || '2026-09-25'} ${time || '05:00 PM'}`;
-  const locStr = typeof location === 'string' ? location : (location && location.address ? location.address : `${area || 'Jaipur'}`);
-
-  const newPartnerReq = {
-    request_id: reqId,
-    booking_id: bkId,
-    name: userName,
-    image: userImage,
-    profile_image: userImage,
-    interest: actType,
-    date_time: dateTimeStr,
-    location: locStr,
-    age: age || 24,
-    id_verified: 1,
-    selfie_verified: 1,
-    status: status || "Pending",
-    activity: {
-      type: actType,
-      date: date || '2026-09-25',
-      time: time || '05:00 PM',
-      area: locStr,
-      description: message || description || "User meetup request"
-    },
-    created_at: new Date().toISOString()
-  };
-
-  partnerRequests.set(reqId, newPartnerReq);
-
-  console.log(`[Partner Connection] Received incoming user request ${reqId} for ${userName} (${actType})`);
-
-  return res.status(200).json({
-    status: true,
-    message: "Incoming user booking request received and added to Partner Requests list",
-    data: {
-      request_id: reqId,
-      booking_id: bkId,
-      status: "Pending",
-      name: userName,
-      interest: actType,
-      location: locStr,
-      date_time: dateTimeStr
-    }
-  });
-}
-
-// Handler for direct incoming confirmed bookings from User App
-function handleIncomingUserBooking(req, res) {
-  const {
-    booking_id,
-    name,
-    user_name,
-    image,
-    profile_image,
-    interest,
-    activity,
-    location,
-    date,
-    time,
-    status
-  } = req.body || {};
-
-  const bkId = booking_id || `bk_${Math.floor(100 + Math.random() * 900)}`;
-  const userName = name || user_name || "User";
-  const userImage = profile_image || image || "/uploads/photos/photo_1.jpg";
-  const actType = activity || interest || "Coffee";
-  const locStr = typeof location === 'string' ? location : (location && location.address ? location.address : "Jaipur");
-  const meetingDate = date || "2026-09-25";
-  const meetingTime = time || "06:00 PM";
-
-  const newBooking = {
-    booking_id: bkId,
-    profile_image: userImage,
-    name: userName,
-    age: 24,
-    id_verified: 1,
-    selfie_verified: 1,
-    interest: actType,
-    location: locStr,
-    date: meetingDate,
-    time: meetingTime,
-    status: status || "Upcoming",
-    meeting_info: {
-      date: meetingDate,
-      time: meetingTime,
-      place: locStr,
-      type: actType,
-      description: "Direct confirmed booking from User App"
-    },
-    safety_checklist: { start_safe_meet: false },
-    safe_meet_mode: { location_allow: 1, notify_trusted_contact: 1, safety_check_in: 1 }
-  };
-
-  partnerBookings.set(bkId, newBooking);
-
-  console.log(`[Partner Connection] Received incoming user booking ${bkId} for ${userName}`);
-
-  return res.status(200).json({
-    status: true,
-    message: "Incoming user booking received and added to Partner Bookings list",
-    data: newBooking
-  });
-}
-
-// Bind Cross-App Incoming Endpoints
-router.post('/incoming-request', handleIncomingUserRequest);
-router.post('/requests/incoming', handleIncomingUserRequest);
-router.post('/incoming-booking', handleIncomingUserBooking);
-router.post('/bookings/incoming', handleIncomingUserBooking);
-
 
 
 // -----------------------------------------------------------------------------

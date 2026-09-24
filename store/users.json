@@ -101,6 +101,14 @@
         }
       ],
       "platform_commission_percent": 15
+    },
+    "bank_account": {
+      "account_holder_name": "Rahul Sharma",
+      "bank_name": "State Bank of India",
+      "account_number": "30123456789",
+      "ifsc_code": "SBIN0001234",
+      "upi_id": "rahul@upi",
+      "added_at": "2026-09-24T09:56:05.516Z"
     }
   },
   {
@@ -26493,6 +26501,1085 @@
       "aadhar_front_url": "https://partner-backend-2.onrender.com/uploads/1790071248315-113553520.jpg",
       "aadhar_back_url": "https://partner-backend-2.onrender.com/uploads/1790071248513-163042110.jpg",
       "aadhar_verification_status": "APPROVED"
+    }
+  },
+  {
+    "user_id": "usr_53218",
+    "name": "Test User",
+    "country_code": "+91",
+    "mobile_number": "9152166598",
+    "email": "user_1790078308122@example.com",
+    "gender": "Female",
+    "dob": "2000-01-01",
+    "area": "Raja Park",
+    "city": "Jaipur",
+    "state": "Rajasthan",
+    "pincode": "302004",
+    "password": "NewUserPass123",
+    "profile_completed": false,
+    "profile_step_pending": "PROFILE_PHOTO",
+    "failed_attempts": 0,
+    "locked": false,
+    "rating": 0,
+    "total_ratings": 0,
+    "phone_verified": true,
+    "profile_photo_url": "/uploads/photos/photo_1.jpg",
+    "photos": [
+      {
+        "photo_id": "ph_001",
+        "url": "/uploads/photos/photo_1.jpg",
+        "is_primary": true
+      },
+      {
+        "photo_id": "ph_002",
+        "url": "/uploads/photos/photo_2.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_003",
+        "url": "/uploads/photos/photo_3.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_004",
+        "url": "/uploads/photos/photo_4.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_005",
+        "url": "/uploads/photos/photo_5.jpg",
+        "is_primary": false
+      }
+    ],
+    "aadhar": null,
+    "about": null,
+    "availability": null
+  },
+  {
+    "user_id": "usr_845",
+    "name": "Test User",
+    "country_code": "+91",
+    "mobile_number": "9122245002",
+    "password": "NewUserPass123",
+    "email": "user_1790071025319@example.com",
+    "gender": "Female",
+    "area": "Raja Park",
+    "city": "Jaipur",
+    "state": "Rajasthan",
+    "profile_completed": true,
+    "profile_step_pending": null,
+    "rating": 0,
+    "total_ratings": 10,
+    "phone_verified": true,
+    "profile_photo_url": "/uploads/photos/photo_1.jpg",
+    "photos": [
+      {
+        "photo_id": "ph_001",
+        "url": "/uploads/photos/photo_1.jpg",
+        "is_primary": true
+      },
+      {
+        "photo_id": "ph_002",
+        "url": "/uploads/photos/photo_2.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_003",
+        "url": "/uploads/photos/photo_3.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_004",
+        "url": "/uploads/photos/photo_4.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_005",
+        "url": "/uploads/photos/photo_5.jpg",
+        "is_primary": false
+      }
+    ],
+    "aadhar": null
+  },
+  {
+    "user_id": "usr_14870",
+    "name": "Test User",
+    "country_code": "+91",
+    "mobile_number": "9194540242",
+    "email": "user_1790079291115@example.com",
+    "gender": "Female",
+    "dob": "2000-01-01",
+    "area": "Raja Park",
+    "city": "Jaipur",
+    "state": "Rajasthan",
+    "pincode": "302004",
+    "password": "NewUserPass123",
+    "profile_completed": false,
+    "profile_step_pending": "PROFILE_PHOTO",
+    "failed_attempts": 0,
+    "locked": false,
+    "rating": 0,
+    "total_ratings": 0,
+    "phone_verified": true,
+    "profile_photo_url": "/uploads/photos/photo_1.jpg",
+    "photos": [
+      {
+        "photo_id": "ph_001",
+        "url": "/uploads/photos/photo_1.jpg",
+        "is_primary": true
+      },
+      {
+        "photo_id": "ph_002",
+        "url": "/uploads/photos/photo_2.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_003",
+        "url": "/uploads/photos/photo_3.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_004",
+        "url": "/uploads/photos/photo_4.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_005",
+        "url": "/uploads/photos/photo_5.jpg",
+        "is_primary": false
+      }
+    ],
+    "aadhar": null,
+    "about": null,
+    "availability": null
+  },
+  {
+    "user_id": "usr_97110",
+    "name": "Test User",
+    "country_code": "+91",
+    "mobile_number": "9141751616",
+    "email": "user_1790143590678@example.com",
+    "gender": "Female",
+    "dob": "2000-01-01",
+    "area": "Raja Park",
+    "city": "Jaipur",
+    "state": "Rajasthan",
+    "pincode": "302004",
+    "password": "NewUserPass123",
+    "profile_completed": false,
+    "profile_step_pending": "PROFILE_PHOTO",
+    "failed_attempts": 0,
+    "locked": false,
+    "rating": 0,
+    "total_ratings": 0,
+    "phone_verified": true,
+    "profile_photo_url": "/uploads/photos/photo_1.jpg",
+    "photos": [
+      {
+        "photo_id": "ph_001",
+        "url": "/uploads/photos/photo_1.jpg",
+        "is_primary": true
+      },
+      {
+        "photo_id": "ph_002",
+        "url": "/uploads/photos/photo_2.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_003",
+        "url": "/uploads/photos/photo_3.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_004",
+        "url": "/uploads/photos/photo_4.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_005",
+        "url": "/uploads/photos/photo_5.jpg",
+        "is_primary": false
+      }
+    ],
+    "aadhar": null,
+    "about": null,
+    "availability": null
+  },
+  {
+    "user_id": "usr_23620",
+    "name": "Test User",
+    "country_code": "+91",
+    "mobile_number": "9195251402",
+    "email": "user_1790147363892@example.com",
+    "gender": "Female",
+    "dob": "2000-01-01",
+    "area": "Raja Park",
+    "city": "Jaipur",
+    "state": "Rajasthan",
+    "pincode": "302004",
+    "password": "NewUserPass123",
+    "profile_completed": false,
+    "profile_step_pending": "PROFILE_PHOTO",
+    "failed_attempts": 0,
+    "locked": false,
+    "rating": 0,
+    "total_ratings": 0,
+    "phone_verified": true,
+    "profile_photo_url": "/uploads/photos/photo_1.jpg",
+    "photos": [
+      {
+        "photo_id": "ph_001",
+        "url": "/uploads/photos/photo_1.jpg",
+        "is_primary": true
+      },
+      {
+        "photo_id": "ph_002",
+        "url": "/uploads/photos/photo_2.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_003",
+        "url": "/uploads/photos/photo_3.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_004",
+        "url": "/uploads/photos/photo_4.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_005",
+        "url": "/uploads/photos/photo_5.jpg",
+        "is_primary": false
+      }
+    ],
+    "aadhar": null,
+    "about": null,
+    "availability": null
+  },
+  {
+    "user_id": "usr_855",
+    "name": "Manamala Harish",
+    "country_code": "+91",
+    "mobile_number": "8309345217",
+    "password": "$2b$10$MYguJGbM.hmad/feEx45zOIb4KKUz6VkLZOHQO8gnqelZk0H4qhXW",
+    "email": "manamalaharish@gmail.com",
+    "gender": "Male",
+    "area": "Jaya Nagar ",
+    "city": "Bangalore ",
+    "state": "karanataka ",
+    "profile_completed": true,
+    "profile_step_pending": null,
+    "rating": 0,
+    "total_ratings": 10,
+    "phone_verified": true,
+    "profile_photo_url": "https://partner-backend-2.onrender.com/uploads/1790144060761-516718200.jpg",
+    "photos": [
+      {
+        "photo_id": "ph_001",
+        "url": "https://partner-backend-2.onrender.com/uploads/1790144060761-516718200.jpg",
+        "is_primary": true
+      },
+      {
+        "photo_id": "ph_002",
+        "url": "/uploads/photos/photo_2.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_003",
+        "url": "/uploads/photos/photo_3.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_004",
+        "url": "/uploads/photos/photo_4.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_005",
+        "url": "/uploads/photos/photo_5.jpg",
+        "is_primary": false
+      }
+    ],
+    "aadhar": {
+      "aadhar_number": "778030693012",
+      "aadhar_front_url": "https://partner-backend-2.onrender.com/uploads/1790144061180-555347367.jpg",
+      "aadhar_back_url": "https://partner-backend-2.onrender.com/uploads/1790144061260-995095844.jpg",
+      "aadhar_verification_status": "APPROVED"
+    }
+  },
+  {
+    "user_id": "usr_854",
+    "name": "Parveez ",
+    "country_code": "+91",
+    "mobile_number": "9686761324",
+    "password": "$2b$10$MRxNLVjm0qGPut8C4TynxO2dGeXKY.WuKBchQvIKf8fs3oo0q1co6",
+    "email": "syed.parveez93@gmail.com",
+    "gender": "Male",
+    "area": "kadugondanahalli ",
+    "city": "Bangalore ",
+    "state": "karnataka ",
+    "profile_completed": true,
+    "profile_step_pending": null,
+    "rating": 0,
+    "total_ratings": 10,
+    "phone_verified": true,
+    "profile_photo_url": "https://partner-backend-2.onrender.com/uploads/1789892445853-947288523.jpg",
+    "photos": [
+      {
+        "photo_id": "ph_001",
+        "url": "https://partner-backend-2.onrender.com/uploads/1789892445853-947288523.jpg",
+        "is_primary": true
+      },
+      {
+        "photo_id": "ph_002",
+        "url": "/uploads/photos/photo_2.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_003",
+        "url": "/uploads/photos/photo_3.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_004",
+        "url": "/uploads/photos/photo_4.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_005",
+        "url": "/uploads/photos/photo_5.jpg",
+        "is_primary": false
+      }
+    ],
+    "aadhar": {
+      "aadhar_number": "543342693436",
+      "aadhar_front_url": "https://partner-backend-2.onrender.com/uploads/1789892446180-299999990.jpg",
+      "aadhar_back_url": "https://partner-backend-2.onrender.com/uploads/1789892449066-219827714.jpg",
+      "aadhar_verification_status": "APPROVED"
+    }
+  },
+  {
+    "user_id": "usr_853",
+    "name": "Ashok Dhondiram Jadhav",
+    "country_code": "+91",
+    "mobile_number": "9021892242",
+    "password": "$2b$10$qKyxsthjg/Z4s2BIKMMvmeTvCexPwPAIV3.VnJTgxt.KklDNTKD3y",
+    "email": "ashokjadhav637051@gmail.com",
+    "gender": "Male",
+    "area": "Hinjewadi ",
+    "city": "pune",
+    "state": "Maharashtra ",
+    "profile_completed": true,
+    "profile_step_pending": null,
+    "rating": 0,
+    "total_ratings": 10,
+    "phone_verified": true,
+    "profile_photo_url": "https://partner-backend-2.onrender.com/uploads/1790141875666-427670480.jpg",
+    "photos": [
+      {
+        "photo_id": "ph_001",
+        "url": "https://partner-backend-2.onrender.com/uploads/1790141875666-427670480.jpg",
+        "is_primary": true
+      },
+      {
+        "photo_id": "ph_002",
+        "url": "/uploads/photos/photo_2.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_003",
+        "url": "/uploads/photos/photo_3.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_004",
+        "url": "/uploads/photos/photo_4.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_005",
+        "url": "/uploads/photos/photo_5.jpg",
+        "is_primary": false
+      }
+    ],
+    "aadhar": {
+      "aadhar_number": "651816781930",
+      "aadhar_front_url": "https://partner-backend-2.onrender.com/uploads/1790141875722-953513387.jpg",
+      "aadhar_back_url": "https://partner-backend-2.onrender.com/uploads/1790141876273-546634921.jpg",
+      "aadhar_verification_status": "APPROVED"
+    }
+  },
+  {
+    "user_id": "usr_852",
+    "name": "Sahidul Alom Mazumder",
+    "country_code": "+91",
+    "mobile_number": "6003607075",
+    "password": "$2b$10$oTUVnLkOeFErmW8QF7tr9OINUlJ4UYht1dCAp8asg4l6/luwQUmTi",
+    "email": "sahidmazumder749@gmail.com",
+    "gender": "Male",
+    "area": "Mg Road",
+    "city": "Bangalore ",
+    "state": "Karnataka ",
+    "profile_completed": true,
+    "profile_step_pending": null,
+    "rating": 0,
+    "total_ratings": 10,
+    "phone_verified": true,
+    "profile_photo_url": "https://partner-backend-2.onrender.com/uploads/1790107174945-628029664.jpg",
+    "photos": [
+      {
+        "photo_id": "ph_001",
+        "url": "https://partner-backend-2.onrender.com/uploads/1790107174945-628029664.jpg",
+        "is_primary": true
+      },
+      {
+        "photo_id": "ph_002",
+        "url": "/uploads/photos/photo_2.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_003",
+        "url": "/uploads/photos/photo_3.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_004",
+        "url": "/uploads/photos/photo_4.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_005",
+        "url": "/uploads/photos/photo_5.jpg",
+        "is_primary": false
+      }
+    ],
+    "aadhar": {
+      "aadhar_number": "889539658984",
+      "aadhar_front_url": "https://partner-backend-2.onrender.com/uploads/1790107175834-157816383.jpg",
+      "aadhar_back_url": "https://partner-backend-2.onrender.com/uploads/1790107175880-838978335.jpg",
+      "aadhar_verification_status": "APPROVED"
+    }
+  },
+  {
+    "user_id": "usr_851",
+    "name": "Neeraj yadav",
+    "country_code": "+91",
+    "mobile_number": "9279770647",
+    "password": "$2b$10$/w4mBAb3eR5zfyNFCLN2GuIzbVA.0ck/vNys7vJ7QZeHbai3n7.re",
+    "email": "neerajkrjamui2001@gmail.com",
+    "gender": "Male",
+    "area": "panchayawala ",
+    "city": "jaipur ",
+    "state": "rajsthan ",
+    "profile_completed": true,
+    "profile_step_pending": null,
+    "rating": 0,
+    "total_ratings": 10,
+    "phone_verified": true,
+    "profile_photo_url": "https://partner-backend-2.onrender.com/uploads/1790101088210-959931088.jpg",
+    "photos": [
+      {
+        "photo_id": "ph_001",
+        "url": "https://partner-backend-2.onrender.com/uploads/1790101088210-959931088.jpg",
+        "is_primary": true
+      },
+      {
+        "photo_id": "ph_002",
+        "url": "/uploads/photos/photo_2.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_003",
+        "url": "/uploads/photos/photo_3.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_004",
+        "url": "/uploads/photos/photo_4.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_005",
+        "url": "/uploads/photos/photo_5.jpg",
+        "is_primary": false
+      }
+    ],
+    "aadhar": {
+      "aadhar_number": "519771306310",
+      "aadhar_front_url": "https://partner-backend-2.onrender.com/uploads/1790101088595-342254441.jpg",
+      "aadhar_back_url": "https://partner-backend-2.onrender.com/uploads/1790101089098-160725897.jpg",
+      "aadhar_verification_status": "APPROVED"
+    }
+  },
+  {
+    "user_id": "usr_850",
+    "name": "Rahul Deb Mondal ",
+    "country_code": "+91",
+    "mobile_number": "9330365113",
+    "password": "$2b$10$.oA0fJpbrS7IomYFsWr5au.bKK.5T0c3ze7O5y51iaphWGdBEqbmS",
+    "email": "raahulmondal110@gmail.com",
+    "gender": "Male",
+    "area": "N,24.Parganas",
+    "city": "Kolkata ",
+    "state": "West Bengal ",
+    "profile_completed": true,
+    "profile_step_pending": null,
+    "rating": 0,
+    "total_ratings": 10,
+    "phone_verified": true,
+    "profile_photo_url": "https://partner-backend-2.onrender.com/uploads/1790098859980-668885639.jpg",
+    "photos": [
+      {
+        "photo_id": "ph_001",
+        "url": "https://partner-backend-2.onrender.com/uploads/1790098859980-668885639.jpg",
+        "is_primary": true
+      },
+      {
+        "photo_id": "ph_002",
+        "url": "/uploads/photos/photo_2.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_003",
+        "url": "/uploads/photos/photo_3.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_004",
+        "url": "/uploads/photos/photo_4.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_005",
+        "url": "/uploads/photos/photo_5.jpg",
+        "is_primary": false
+      }
+    ],
+    "aadhar": {
+      "aadhar_number": "447370090454",
+      "aadhar_front_url": "https://partner-backend-2.onrender.com/uploads/1790098860208-384122111.jpg",
+      "aadhar_back_url": "https://partner-backend-2.onrender.com/uploads/1790098860668-201865551.jpg",
+      "aadhar_verification_status": "APPROVED"
+    }
+  },
+  {
+    "user_id": "usr_849",
+    "name": "imtiyaz shsikh",
+    "country_code": "+91",
+    "mobile_number": "8799935748",
+    "password": "$2b$10$oErna/oqalqRC0vqd2sUvOVWJ2JnO9z8fJv50KHyc.irFJWPCeodK",
+    "email": "intu711@gmail.com",
+    "gender": "Male",
+    "area": "kondhwa yewlewadi ",
+    "city": "pune",
+    "state": "maharastra",
+    "profile_completed": true,
+    "profile_step_pending": null,
+    "rating": 0,
+    "total_ratings": 10,
+    "phone_verified": true,
+    "profile_photo_url": "https://partner-backend-2.onrender.com/uploads/1790089094823-764414310.jpg",
+    "photos": [
+      {
+        "photo_id": "ph_001",
+        "url": "https://partner-backend-2.onrender.com/uploads/1790089094823-764414310.jpg",
+        "is_primary": true
+      },
+      {
+        "photo_id": "ph_002",
+        "url": "/uploads/photos/photo_2.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_003",
+        "url": "/uploads/photos/photo_3.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_004",
+        "url": "/uploads/photos/photo_4.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_005",
+        "url": "/uploads/photos/photo_5.jpg",
+        "is_primary": false
+      }
+    ],
+    "aadhar": {
+      "aadhar_number": "462197099759",
+      "aadhar_front_url": "https://partner-backend-2.onrender.com/uploads/1790089095221-35576427.jpg",
+      "aadhar_back_url": "https://partner-backend-2.onrender.com/uploads/1790089095455-784740807.jpg",
+      "aadhar_verification_status": "APPROVED"
+    }
+  },
+  {
+    "user_id": "usr_848",
+    "name": "Mohammed Shoaib",
+    "country_code": "+91",
+    "mobile_number": "9963530804",
+    "password": "$2b$10$SmAvKJLMT.mij1Q5yAd2A.fSl0FpbWTgJipA3pfFTSKUAknbJAGai",
+    "email": "mohammedshoaib32318@gmail.com",
+    "gender": "Male",
+    "area": "Mehdipatnam ",
+    "city": "Hyderabad ",
+    "state": "telengana ",
+    "profile_completed": true,
+    "profile_step_pending": null,
+    "rating": 0,
+    "total_ratings": 10,
+    "phone_verified": true,
+    "profile_photo_url": "https://partner-backend-2.onrender.com/uploads/1790084302170-613456302.jpg",
+    "photos": [
+      {
+        "photo_id": "ph_001",
+        "url": "https://partner-backend-2.onrender.com/uploads/1790084302170-613456302.jpg",
+        "is_primary": true
+      },
+      {
+        "photo_id": "ph_002",
+        "url": "/uploads/photos/photo_2.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_003",
+        "url": "/uploads/photos/photo_3.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_004",
+        "url": "/uploads/photos/photo_4.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_005",
+        "url": "/uploads/photos/photo_5.jpg",
+        "is_primary": false
+      }
+    ],
+    "aadhar": {
+      "aadhar_number": "361096039050",
+      "aadhar_front_url": "https://partner-backend-2.onrender.com/uploads/1790084302400-302997053.jpg",
+      "aadhar_back_url": "https://partner-backend-2.onrender.com/uploads/1790084303113-249624841.jpg",
+      "aadhar_verification_status": "APPROVED"
+    }
+  },
+  {
+    "user_id": "usr_847",
+    "name": "gulzar ",
+    "country_code": "+91",
+    "mobile_number": "9739472569",
+    "password": "$2b$10$jkoLQp/nvRPtaojatoTzc.XBoylMjHi0pwok5W464WhiYaaZNiAY2",
+    "email": "ansargulzar134@gmail.com",
+    "gender": "Female",
+    "area": "Chikkadevsandra ",
+    "city": "Bangalore ",
+    "state": "Karnataka ",
+    "profile_completed": true,
+    "profile_step_pending": null,
+    "rating": 0,
+    "total_ratings": 10,
+    "phone_verified": true,
+    "profile_photo_url": "https://partner-backend-2.onrender.com/uploads/1790080736526-222856649.jpg",
+    "photos": [
+      {
+        "photo_id": "ph_001",
+        "url": "https://partner-backend-2.onrender.com/uploads/1790080736526-222856649.jpg",
+        "is_primary": true
+      },
+      {
+        "photo_id": "ph_002",
+        "url": "/uploads/photos/photo_2.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_003",
+        "url": "/uploads/photos/photo_3.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_004",
+        "url": "/uploads/photos/photo_4.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_005",
+        "url": "/uploads/photos/photo_5.jpg",
+        "is_primary": false
+      }
+    ],
+    "aadhar": {
+      "aadhar_number": "799296832642",
+      "aadhar_front_url": "https://partner-backend-2.onrender.com/uploads/1790080737024-175396381.jpg",
+      "aadhar_back_url": "https://partner-backend-2.onrender.com/uploads/1790080737385-145858072.jpg",
+      "aadhar_verification_status": "APPROVED"
+    }
+  },
+  {
+    "user_id": "usr_846",
+    "name": "Test User",
+    "country_code": "+91",
+    "mobile_number": "9152166598",
+    "password": "NewUserPass123",
+    "email": "user_1790078308122@example.com",
+    "gender": "Female",
+    "area": "Raja Park",
+    "city": "Jaipur",
+    "state": "Rajasthan",
+    "profile_completed": true,
+    "profile_step_pending": null,
+    "rating": 0,
+    "total_ratings": 10,
+    "phone_verified": true,
+    "profile_photo_url": "/uploads/photos/photo_1.jpg",
+    "photos": [
+      {
+        "photo_id": "ph_001",
+        "url": "/uploads/photos/photo_1.jpg",
+        "is_primary": true
+      },
+      {
+        "photo_id": "ph_002",
+        "url": "/uploads/photos/photo_2.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_003",
+        "url": "/uploads/photos/photo_3.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_004",
+        "url": "/uploads/photos/photo_4.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_005",
+        "url": "/uploads/photos/photo_5.jpg",
+        "is_primary": false
+      }
+    ],
+    "aadhar": null
+  },
+  {
+    "user_id": "usr_41970",
+    "name": "Test User",
+    "country_code": "+91",
+    "mobile_number": "9138860380",
+    "email": "user_1790158670769@example.com",
+    "gender": "Female",
+    "dob": "2000-01-01",
+    "area": "Raja Park",
+    "city": "Jaipur",
+    "state": "Rajasthan",
+    "pincode": "302004",
+    "password": "NewUserPass123",
+    "profile_completed": false,
+    "profile_step_pending": "PROFILE_PHOTO",
+    "failed_attempts": 0,
+    "locked": false,
+    "rating": 0,
+    "total_ratings": 0,
+    "phone_verified": true,
+    "profile_photo_url": "/uploads/photos/photo_1.jpg",
+    "photos": [
+      {
+        "photo_id": "ph_001",
+        "url": "/uploads/photos/photo_1.jpg",
+        "is_primary": true
+      },
+      {
+        "photo_id": "ph_002",
+        "url": "/uploads/photos/photo_2.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_003",
+        "url": "/uploads/photos/photo_3.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_004",
+        "url": "/uploads/photos/photo_4.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_005",
+        "url": "/uploads/photos/photo_5.jpg",
+        "is_primary": false
+      }
+    ],
+    "aadhar": null,
+    "about": null,
+    "availability": null
+  },
+  {
+    "user_id": "usr_46178",
+    "name": "Test User",
+    "country_code": "+91",
+    "mobile_number": "9196123140",
+    "email": "user_1790158811102@example.com",
+    "gender": "Female",
+    "dob": "2000-01-01",
+    "area": "Raja Park",
+    "city": "Jaipur",
+    "state": "Rajasthan",
+    "pincode": "302004",
+    "password": "NewUserPass123",
+    "profile_completed": false,
+    "profile_step_pending": "PROFILE_PHOTO",
+    "failed_attempts": 0,
+    "locked": false,
+    "rating": 0,
+    "total_ratings": 0,
+    "phone_verified": true,
+    "profile_photo_url": "/uploads/photos/photo_1.jpg",
+    "photos": [
+      {
+        "photo_id": "ph_001",
+        "url": "/uploads/photos/photo_1.jpg",
+        "is_primary": true
+      },
+      {
+        "photo_id": "ph_002",
+        "url": "/uploads/photos/photo_2.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_003",
+        "url": "/uploads/photos/photo_3.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_004",
+        "url": "/uploads/photos/photo_4.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_005",
+        "url": "/uploads/photos/photo_5.jpg",
+        "is_primary": false
+      }
+    ],
+    "aadhar": null,
+    "about": null,
+    "availability": null
+  },
+  {
+    "user_id": "usr_42473",
+    "name": "Test User",
+    "country_code": "+91",
+    "mobile_number": "9175190902",
+    "email": "user_1790159989223@example.com",
+    "gender": "Female",
+    "dob": "2000-01-01",
+    "area": "Raja Park",
+    "city": "Jaipur",
+    "state": "Rajasthan",
+    "pincode": "302004",
+    "password": "NewUserPass123",
+    "profile_completed": false,
+    "profile_step_pending": "PROFILE_PHOTO",
+    "failed_attempts": 0,
+    "locked": false,
+    "rating": 0,
+    "total_ratings": 0,
+    "phone_verified": true,
+    "profile_photo_url": "/uploads/photos/photo_1.jpg",
+    "photos": [
+      {
+        "photo_id": "ph_001",
+        "url": "/uploads/photos/photo_1.jpg",
+        "is_primary": true
+      },
+      {
+        "photo_id": "ph_002",
+        "url": "/uploads/photos/photo_2.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_003",
+        "url": "/uploads/photos/photo_3.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_004",
+        "url": "/uploads/photos/photo_4.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_005",
+        "url": "/uploads/photos/photo_5.jpg",
+        "is_primary": false
+      }
+    ],
+    "aadhar": null,
+    "about": null,
+    "availability": null
+  },
+  {
+    "user_id": "usr_69351",
+    "name": "Test User",
+    "country_code": "+91",
+    "mobile_number": "9199495821",
+    "email": "user_1790243765230@example.com",
+    "gender": "Female",
+    "dob": "2000-01-01",
+    "area": "Raja Park",
+    "city": "Jaipur",
+    "state": "Rajasthan",
+    "pincode": "302004",
+    "password": "NewUserPass123",
+    "profile_completed": false,
+    "profile_step_pending": "PROFILE_PHOTO",
+    "failed_attempts": 0,
+    "locked": false,
+    "rating": 0,
+    "total_ratings": 0,
+    "phone_verified": true,
+    "profile_photo_url": "/uploads/photos/photo_1.jpg",
+    "photos": [
+      {
+        "photo_id": "ph_001",
+        "url": "/uploads/photos/photo_1.jpg",
+        "is_primary": true
+      },
+      {
+        "photo_id": "ph_002",
+        "url": "/uploads/photos/photo_2.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_003",
+        "url": "/uploads/photos/photo_3.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_004",
+        "url": "/uploads/photos/photo_4.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_005",
+        "url": "/uploads/photos/photo_5.jpg",
+        "is_primary": false
+      }
+    ],
+    "aadhar": null,
+    "about": null,
+    "availability": null
+  },
+  {
+    "user_id": "usr_91315",
+    "name": "Test User",
+    "country_code": "+91",
+    "mobile_number": "9196719430",
+    "email": "user_1790244219780@example.com",
+    "gender": "Female",
+    "dob": "2000-01-01",
+    "area": "Raja Park",
+    "city": "Jaipur",
+    "state": "Rajasthan",
+    "pincode": "302004",
+    "password": "NewUserPass123",
+    "profile_completed": false,
+    "profile_step_pending": "PROFILE_PHOTO",
+    "failed_attempts": 0,
+    "locked": false,
+    "rating": 0,
+    "total_ratings": 0,
+    "phone_verified": true,
+    "profile_photo_url": "/uploads/photos/photo_1.jpg",
+    "photos": [
+      {
+        "photo_id": "ph_001",
+        "url": "/uploads/photos/photo_1.jpg",
+        "is_primary": true
+      },
+      {
+        "photo_id": "ph_002",
+        "url": "/uploads/photos/photo_2.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_003",
+        "url": "/uploads/photos/photo_3.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_004",
+        "url": "/uploads/photos/photo_4.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_005",
+        "url": "/uploads/photos/photo_5.jpg",
+        "is_primary": false
+      }
+    ],
+    "aadhar": null,
+    "about": null,
+    "availability": null
+  },
+  {
+    "user_id": "usr_38406",
+    "name": "Test User",
+    "country_code": "+91",
+    "mobile_number": "9126322888",
+    "email": "user_1790244255084@example.com",
+    "gender": "Female",
+    "dob": "2000-01-01",
+    "area": "Raja Park",
+    "city": "Jaipur",
+    "state": "Rajasthan",
+    "pincode": "302004",
+    "password": "NewUserPass123",
+    "profile_completed": false,
+    "profile_step_pending": "PROFILE_PHOTO",
+    "failed_attempts": 0,
+    "locked": false,
+    "rating": 0,
+    "total_ratings": 0,
+    "phone_verified": true,
+    "profile_photo_url": "/uploads/photos/photo_1.jpg",
+    "photos": [
+      {
+        "photo_id": "ph_001",
+        "url": "/uploads/photos/photo_1.jpg",
+        "is_primary": true
+      },
+      {
+        "photo_id": "ph_002",
+        "url": "/uploads/photos/photo_2.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_003",
+        "url": "/uploads/photos/photo_3.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_004",
+        "url": "/uploads/photos/photo_4.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_005",
+        "url": "/uploads/photos/photo_5.jpg",
+        "is_primary": false
+      }
+    ],
+    "aadhar": null,
+    "about": null,
+    "availability": null,
+    "bank_account": {
+      "account_holder_name": "Rahul Sharma",
+      "bank_name": "State Bank of India",
+      "account_number": "30123456789",
+      "ifsc_code": "SBIN0001234",
+      "upi_id": "rahul@upi",
+      "added_at": "2026-09-24T10:04:15.235Z"
     }
   }
 ]

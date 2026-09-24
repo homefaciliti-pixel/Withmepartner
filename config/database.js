@@ -206,12 +206,158 @@ async function deleteUserFromMysql(mobileNumber) {
   }
 }
 
+/**
+ * Fetch all pending / incoming partner requests from MySQL database `partner_requests`
+ */
+async function fetchPartnerRequestsFromMysql() {
+  try {
+    const db = getDbPool();
+    const [rows] = await db.query(`SELECT * FROM partner_requests ORDER BY created_at DESC LIMIT 100`);
+    return rows.map(r => ({
+      request_id: r.request_id || r.id,
+      booking_id: r.booking_id,
+      name: r.sender_name || 'Amit Sharma',
+      age: 25,
+      image: r.sender_avatar || '/uploads/photos/photo_1.jpg',
+      profile_image: r.sender_avatar || '/uploads/photos/photo_1.jpg',
+      id_verified: 1,
+      selfie_verified: 1,
+      interest: r.activity_name || 'Coffee',
+      date_time: `${r.date || '2026-09-25'} ${r.time || '06:00 PM'}`,
+      location: r.location || 'Jaipur',
+      status: (r.status === 'Pending' || r.status === 'PENDING') ? 'Pending' : r.status,
+      message: r.message,
+      activity: {
+        type: r.activity_name || 'Coffee',
+        date: r.date || '2026-09-25',
+        time: r.time || '06:00 PM',
+        area: r.location || 'Jaipur',
+        description: r.message || 'Looking for an activity partner'
+      }
+    }));
+  } catch (err) {
+    console.warn("[MySQL] Fetch partner requests notice:", err.message);
+    return [];
+  }
+}
+
+/**
+ * Save / insert partner request into MySQL table `partner_requests`
+ */
+async function savePartnerRequestToMysql(requestData) {
+  try {
+    const db = getDbPool();
+    const reqId = requestData.request_id || `req_${Date.now()}`;
+    const bId = requestData.booking_id || `BK${Date.now()}`;
+    const senderName = requestData.name || requestData.sender_name || 'Amit';
+    const senderPhone = requestData.phone_number || requestData.mobile_number || '+917250642635';
+    const senderAvatar = requestData.image || requestData.profile_image || '/uploads/photos/photo_1.jpg';
+    const partnerId = requestData.partner_id || '101';
+    const activityName = requestData.interest || (requestData.activity && requestData.activity.type) || 'Coffee';
+    const date = requestData.date || (requestData.activity && requestData.activity.date) || '2026-09-25';
+    const time = requestData.time || (requestData.activity && requestData.activity.time) || '06:00 PM';
+    const location = requestData.location || (requestData.activity && requestData.activity.area) || 'Jaipur';
+    const message = requestData.message || (requestData.activity && requestData.activity.description) || 'Meetup request';
+    const status = requestData.status || 'Pending';
+
+    await db.query(
+      `INSERT INTO partner_requests (
+        id, request_id, booking_id, sender_id, sender_name, sender_phone, sender_avatar,
+        receiver_id, partner_id, activity_id, activity_name, date, time, location,
+        message, price, currency, status, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'act_01', ?, ?, ?, ?, ?, 1.00, 'INR', ?, NOW())
+      ON DUPLICATE KEY UPDATE status = VALUES(status), updated_at = NOW()`,
+      [reqId, reqId, bId, requestData.user_id || 'usr_998877', senderName, senderPhone, senderAvatar, partnerId, partnerId, activityName, date, time, location, message, status]
+    );
+    console.log(`[MySQL] Saved partner request ${reqId} to MySQL database.`);
+  } catch (err) {
+    console.warn("[MySQL] Save partner request notice:", err.message);
+  }
+}
+
+/**
+ * Update partner request status in MySQL (ACCEPTED / DECLINED)
+ */
+async function updatePartnerRequestStatusInMysql(requestId, status) {
+  try {
+    const db = getDbPool();
+    await db.query(`UPDATE partner_requests SET status = ?, updated_at = NOW() WHERE request_id = ? OR id = ?`, [status, requestId, requestId]);
+    console.log(`[MySQL] Updated partner request ${requestId} status to ${status}.`);
+  } catch (err) {
+    console.warn("[MySQL] Update partner request status notice:", err.message);
+  }
+}
+
+/**
+ * Fetch all upcoming / past bookings from MySQL database `partner_bookings`
+ */
+async function fetchPartnerBookingsFromMysql() {
+  try {
+    const db = getDbPool();
+    const [rows] = await db.query(`SELECT * FROM partner_bookings ORDER BY created_at DESC LIMIT 100`);
+    return rows.map(r => ({
+      booking_id: r.booking_id,
+      name: r.user_name || 'Amit Sharma',
+      profile_image: r.user_image || '/uploads/photos/photo_1.jpg',
+      interest: r.activity || 'Coffee',
+      location: r.location || 'Jaipur',
+      date: r.date || '2026-09-25',
+      time: r.time || '06:00 PM',
+      status: r.status || 'Upcoming',
+      meeting_info: {
+        date: r.date || '2026-09-25',
+        time: r.time || '06:00 PM',
+        location: r.location || 'Jaipur',
+        activity: r.activity || 'Coffee'
+      }
+    }));
+  } catch (err) {
+    console.warn("[MySQL] Fetch partner bookings notice:", err.message);
+    return [];
+  }
+}
+
+/**
+ * Save partner booking to MySQL `partner_bookings`
+ */
+async function savePartnerBookingToMysql(bookingData) {
+  try {
+    const db = getDbPool();
+    const bId = bookingData.booking_id || `BK${Date.now()}`;
+    const userName = bookingData.name || bookingData.user_name || 'Amit';
+    const userImage = bookingData.profile_image || bookingData.user_image || '/uploads/photos/photo_1.jpg';
+    const partnerId = bookingData.partner_id || '101';
+    const activity = bookingData.interest || bookingData.activity || 'Coffee';
+    const date = bookingData.date || '2026-09-25';
+    const time = bookingData.time || '06:00 PM';
+    const location = bookingData.location || 'Jaipur';
+    const status = bookingData.status || 'Upcoming';
+
+    await db.query(
+      `INSERT INTO partner_bookings (
+        booking_id, user_id, user_name, user_image, partner_id, activity,
+        date, time, location, price, currency, status, created_at
+      ) VALUES (?, 'usr_998877', ?, ?, ?, ?, ?, ?, ?, 1.00, 'INR', ?, NOW())
+      ON DUPLICATE KEY UPDATE status = VALUES(status), updated_at = NOW()`,
+      [bId, userName, userImage, partnerId, activity, date, time, location, status]
+    );
+    console.log(`[MySQL] Saved partner booking ${bId} to MySQL database.`);
+  } catch (err) {
+    console.warn("[MySQL] Save partner booking notice:", err.message);
+  }
+}
+
 module.exports = {
   getDbPool,
   initMysqlDatabase,
   saveOtpToMysql,
   syncUserToMysql,
   fetchUsersFromMysql,
-  deleteUserFromMysql
+  deleteUserFromMysql,
+  fetchPartnerRequestsFromMysql,
+  savePartnerRequestToMysql,
+  updatePartnerRequestStatusInMysql,
+  fetchPartnerBookingsFromMysql,
+  savePartnerBookingToMysql
 };
 
