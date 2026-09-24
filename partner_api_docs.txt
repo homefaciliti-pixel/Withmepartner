@@ -553,4 +553,106 @@ Auth required: No
 14.3 Get Time Slots
 Endpoint: GET /meta/time-slots
 Auth required: No
+
+
 ================================================================================
+15. WITHDRAW & BANK ACCOUNT DETAILS API
+================================================================================
+
+15.1 Add / Save Bank Account Details (One-time submission per user)
+Endpoints:
+  - POST /partner/withdraw/bank-account
+  - POST /partner/bank-account (Alias)
+Auth required: Yes (Headers: Authorization: Bearer <access_token>)
+Content-Type: application/json
+
+Request Body:
+{
+  "account_holder_name": "Rahul Sharma",
+  "bank_name": "State Bank of India",
+  "account_number": "30123456789",
+  "ifsc_code": "SBIN0001234",
+  "upi_id": "rahul@upi" // Optional
+}
+
+Success Response — 200 OK:
+{
+  "status": true,
+  "message": "Bank account details added successfully",
+  "data": {
+    "bank_account": {
+      "account_holder_name": "Rahul Sharma",
+      "bank_name": "State Bank of India",
+      "account_number": "30123456789",
+      "ifsc_code": "SBIN0001234",
+      "upi_id": "rahul@upi",
+      "added_at": "2026-09-24T15:25:00.000Z"
+    },
+    "account_added": true,
+    "support_note": "Please fill all the details carefully. If you need to change your account details and add new account details, please contact our support executive via Mail: me24with@gmail.com"
+  }
+}
+
+If Already Added (Locked Error) — 400 Bad Request:
+{
+  "status": false,
+  "message": "Bank account details have already been submitted and locked. To change account details, please contact support at me24with@gmail.com",
+  "error_code": "BANK_ACCOUNT_LOCKED",
+  "data": {
+    "bank_account": { ... },
+    "account_added": true,
+    "support_note": "Please fill all the details carefully. If you need to change your account details and add new account details, please contact our support executive via Mail: me24with@gmail.com"
+  }
+}
+
+
+15.2 Get Bank Account Details
+Endpoints:
+  - GET /partner/withdraw/bank-account
+  - GET /partner/bank-account (Alias)
+Auth required: Yes (Headers: Authorization: Bearer <access_token>)
+
+Success Response — 200 OK:
+{
+  "status": true,
+  "message": "Success",
+  "data": {
+    "bank_account": {
+      "account_holder_name": "Rahul Sharma",
+      "bank_name": "State Bank of India",
+      "account_number": "30123456789",
+      "ifsc_code": "SBIN0001234",
+      "upi_id": "rahul@upi"
+    },
+    "account_added": true,
+    "support_note": "Please fill all the details carefully. If you need to change your account details and add new account details, please contact our support executive via Mail: me24with@gmail.com"
+  }
+}
+
+
+15.3 Submit Withdrawal Request
+Endpoints:
+  - POST /partner/withdraw
+  - POST /partner/withdraw/request (Alias)
+Auth required: Yes (Headers: Authorization: Bearer <access_token>)
+Content-Type: application/json
+
+Request Body:
+{
+  "amount": 1000
+}
+
+Success Response — 200 OK:
+{
+  "status": true,
+  "message": "Withdrawal request submitted successfully",
+  "data": {
+    "withdrawal_id": "wth_1790200000000",
+    "amount": 1000,
+    "status": "Pending",
+    "bank_account": { ... },
+    "support_note": "Please fill all the details carefully. If you need to change your account details and add new account details, please contact our support executive via Mail: me24with@gmail.com"
+  }
+}
+================================================================================
+

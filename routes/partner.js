@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { users, partnerRequests, partnerBookings, partnerTransactions, formatPhotoUrl } = require('../store/db');
+const { users, partnerRequests, partnerBookings, partnerTransactions, formatPhotoUrl, saveUsers } = require('../store/db');
 const { authenticateToken } = require('../middleware/auth');
 
 function parseTimeMinutes(timeStr) {
@@ -608,4 +608,152 @@ router.patch('/availability/receive-requests', authenticateToken, (req, res) => 
   });
 });
 
+// -----------------------------------------------------------------------------
+// 15. WITHDRAW & BANK ACCOUNT DETAILS API
+// -----------------------------------------------------------------------------
+
+const SUPPORT_NOTE = "Please fill all the details carefully. If you need to change your account details and add new account details, please contact our support executive via Mail: me24with@gmail.com";
+
+// Helper to save Bank Account Details
+function handleSaveBankAccount(req, res) {
+  const { account_holder_name, bank_name, account_number, ifsc_code, upi_id } = req.body || {};
+  const user = users.get(req.user.user_id);
+  if (!user) {
+    return res.status(404).json({ status: false, message: "User not found", error_code: "USER_NOT_FOUND" });
+  }
+
+  // Restrict adding again if already submitted
+  if (user.bank_account) {
+    return res.status(400).json({
+      status: false,
+      message: "Bank account details have already been submitted and locked. To change account details, please contact support at me24with@gmail.com",
+      error_code: "BANK_ACCOUNT_LOCKED",
+      data: {
+        bank_account: user.bank_account,
+        account_added: true,
+        support_note: SUPPORT_NOTE
+      }
+    });
+  }
+
+  if (!account_holder_name || !String(account_holder_name).trim()) {
+    return res.status(400).json({
+      status: false,
+      message: "Account holder name is required",
+      error_code: "ACCOUNT_HOLDER_NAME_REQUIRED"
+    });
+  }
+
+  if (!bank_name || !String(bank_name).trim()) {
+    return res.status(400).json({
+      status: false,
+      message: "Bank name is required",
+      error_code: "BANK_NAME_REQUIRED"
+    });
+  }
+
+  if (!account_number || !String(account_number).trim()) {
+    return res.status(400).json({
+      status: false,
+      message: "Account number is required",
+      error_code: "ACCOUNT_NUMBER_REQUIRED"
+    });
+  }
+
+  if (!ifsc_code || !String(ifsc_code).trim()) {
+    return res.status(400).json({
+      status: false,
+      message: "IFSC code is required",
+      error_code: "IFSC_CODE_REQUIRED"
+    });
+  }
+
+  user.bank_account = {
+    account_holder_name: String(account_holder_name).trim(),
+    bank_name: String(bank_name).trim(),
+    account_number: String(account_number).trim(),
+    ifsc_code: String(ifsc_code).trim().toUpperCase(),
+    upi_id: upi_id ? String(upi_id).trim() : "",
+    added_at: new Date().toISOString()
+  };
+
+  saveUsers();
+
+  return res.status(200).json({
+    status: true,
+    message: "Bank account details added successfully",
+    data: {
+      bank_account: user.bank_account,
+      account_added: true,
+      support_note: SUPPORT_NOTE
+    }
+  });
+}
+
+// Helper to fetch Bank Account Details
+function handleGetBankAccount(req, res) {
+  const user = users.get(req.user.user_id);
+  if (!user) {
+    return res.status(404).json({ status: false, message: "User not found", error_code: "USER_NOT_FOUND" });
+  }
+
+  return res.status(200).json({
+    status: true,
+    message: "Success",
+    data: {
+      bank_account: user.bank_account || null,
+      account_added: Boolean(user.bank_account),
+      support_note: SUPPORT_NOTE
+    }
+  });
+}
+
+// Helper to submit Withdrawal Request
+function handleWithdrawRequest(req, res) {
+  const { amount } = req.body || {};
+  const user = users.get(req.user.user_id);
+  if (!user) {
+    return res.status(404).json({ status: false, message: "User not found", error_code: "USER_NOT_FOUND" });
+  }
+
+  if (!user.bank_account) {
+    return res.status(400).json({
+      status: false,
+      message: "Please add your bank account details before requesting a withdrawal",
+      error_code: "BANK_ACCOUNT_REQUIRED",
+      data: {
+        bank_account: null,
+        account_added: false,
+        support_note: SUPPORT_NOTE
+      }
+    });
+  }
+
+  const withdrawAmount = Number(amount) || 500;
+  const withdrawal_id = `wth_${Date.now()}`;
+
+  return res.status(200).json({
+    status: true,
+    message: "Withdrawal request submitted successfully",
+    data: {
+      withdrawal_id,
+      amount: withdrawAmount,
+      status: "Pending",
+      bank_account: user.bank_account,
+      support_note: SUPPORT_NOTE
+    }
+  });
+}
+
+// Register Bank Account & Withdraw Routes with multiple endpoint aliases
+router.post('/withdraw/bank-account', authenticateToken, handleSaveBankAccount);
+router.post('/bank-account', authenticateToken, handleSaveBankAccount);
+
+router.get('/withdraw/bank-account', authenticateToken, handleGetBankAccount);
+router.get('/bank-account', authenticateToken, handleGetBankAccount);
+
+router.post('/withdraw', authenticateToken, handleWithdrawRequest);
+router.post('/withdraw/request', authenticateToken, handleWithdrawRequest);
+
 module.exports = router;
+

@@ -172,6 +172,39 @@ async function runTests() {
       console.assert(cancelBodyRes.status === 200, "Cancel booking body 200");
       console.assert(cancelBodyRes.body.data.status === "Cancelled", "Status Cancelled");
 
+      console.log("\n11. Testing Get Bank Account API (/partner/withdraw/bank-account)...");
+      const getBankRes = await request('GET', '/partner/withdraw/bank-account', null, authHeader);
+      console.assert(getBankRes.status === 200, "Get Bank Account 200");
+      console.assert(getBankRes.body.data.support_note.includes("me24with@gmail.com"), "Contains support email note");
+
+      console.log("\n12. Testing Save Bank Account API (/partner/withdraw/bank-account)...");
+      const saveBankRes = await request('POST', '/partner/withdraw/bank-account', {
+        account_holder_name: "Rahul Sharma",
+        bank_name: "State Bank of India",
+        account_number: "30123456789",
+        ifsc_code: "SBIN0001234",
+        upi_id: "rahul@upi"
+      }, authHeader);
+      console.assert(saveBankRes.status === 200, "Save Bank Account 200");
+      console.assert(saveBankRes.body.data.bank_account.account_number === "30123456789", "Account number saved");
+      console.assert(saveBankRes.body.data.support_note.includes("me24with@gmail.com"), "Support note returned");
+
+      console.log("\n13. Testing Bank Account Single Addition Restriction (Second Save Attempt)...");
+      const secondSaveBankRes = await request('POST', '/partner/withdraw/bank-account', {
+        account_holder_name: "Rahul Sharma",
+        bank_name: "HDFC Bank",
+        account_number: "99999999999",
+        ifsc_code: "HDFC0001234"
+      }, authHeader);
+      console.assert(secondSaveBankRes.status === 400, "Second save blocked with 400");
+      console.assert(secondSaveBankRes.body.error_code === "BANK_ACCOUNT_LOCKED", "BANK_ACCOUNT_LOCKED code");
+      console.assert(secondSaveBankRes.body.data.support_note.includes("me24with@gmail.com"), "Support note present in locked response");
+
+      console.log("\n14. Testing Submit Withdrawal Request API (/partner/withdraw)...");
+      const withdrawRes = await request('POST', '/partner/withdraw', { amount: 1000 }, authHeader);
+      console.assert(withdrawRes.status === 200, "Withdrawal 200");
+      console.assert(withdrawRes.body.data.bank_account.bank_name === "State Bank of India", "Bank account included in withdrawal");
+
       console.log("\n✅ ALL PARTNER API & PERSISTENCE TESTS PASSED SUCCESSFULLY!");
       server.close();
       process.exit(0);
