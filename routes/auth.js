@@ -14,7 +14,7 @@ const {
 } = require('../store/db');
 const { generateTokens, authenticateToken } = require('../middleware/auth');
 const { sendDltOtpSms } = require('../utils/sms');
-const { saveOtpToMysql, deleteUserFromMysql } = require('../config/database');
+const { saveOtpToMysql, deleteUserFromMysql, syncUserToMysql } = require('../config/database');
 
 // 1.1 Login
 router.post('/login', (req, res) => {
@@ -430,6 +430,12 @@ router.post('/register', (req, res) => {
   users.set(userId, newUser);
   saveUsers();
 
+  // 1. Real-time sync to MySQL database tables (`node_partners` and `partners`)
+  syncUserToMysql(newUser).catch(err => console.error("[MySQL Sync Error]:", err.message));
+
+  // 2. Real-time sync to User App API
+  syncPartnerToUserApp(newUser).catch(() => {});
+
   const tokens = generateTokens(userId);
   const userPhoto = formatPhotoUrl(PHOTO_1, req);
 
@@ -445,6 +451,55 @@ router.post('/register', (req, res) => {
     }
   });
 });
+
+// Helper to push new partner profile to User App backend
+const getUserApiUrl = () => {
+  return process.env.USER_APP_API_URL || process.env.WITME_USER_APP_URL || 'https://withmeapi-userapp.onrender.com';
+};
+
+async function syncPartnerToUserApp(partnerUser) {
+  const userAppUrls = [
+    getUserApiUrl(),
+    'http://localhost:5001',
+    'http://localhost:5000'
+  ];
+
+  const payload = {
+    user_id: partnerUser.user_id,
+    partner_id: partnerUser.user_id,
+    name: partnerUser.name,
+    email: partnerUser.email,
+    phone_number: partnerUser.mobile_number,
+    mobile_number: partnerUser.mobile_number,
+    gender: partnerUser.gender,
+    dob: partnerUser.dob,
+    city: partnerUser.city || 'Jaipur',
+    area: partnerUser.area || 'Raja Park',
+    profile_image: partnerUser.profile_photo_url,
+    image: partnerUser.profile_photo_url,
+    rating: partnerUser.rating || 4.8,
+    is_approved: true,
+    created_at: new Date().toISOString()
+  };
+
+  for (const baseUrl of userAppUrls) {
+    try {
+      const resp = await fetch(`${baseUrl}/api/v1/partners/register-partner`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (resp.ok) {
+        console.log(`[Cross-App Partner Sync] Synced new partner ${partnerUser.name} to User App at ${baseUrl}`);
+        return true;
+      }
+    } catch (err) {
+      // Ignore offline host notice
+    }
+  }
+  return false;
+}
+
 
 // 3.4 Delete Account API (/auth/delete-account)
 function handleDeleteAuthAccount(req, res) {

@@ -5,7 +5,7 @@ const { users, partnerBookings, partnerTransactions, normalizeCountryCode, saveU
 const { authenticateToken } = require('../middleware/auth');
 const { validateVerhoeff } = require('../utils/verhoeff');
 const { encrypt, decrypt } = require('../utils/crypto');
-const { deleteUserFromMysql } = require('../config/database');
+const { deleteUserFromMysql, syncUserToMysql } = require('../config/database');
 
 // Configure multer storage
 const storage = multer.memoryStorage();
@@ -459,6 +459,9 @@ router.put('/', authenticateToken, (req, res) => {
     user.profile_photo_url = updatedPhoto;
   }
   saveUsers();
+
+  // Sync updated partner profile to MySQL database tables (`node_partners` and `partners`)
+  syncUserToMysql(user).catch(err => console.error("[MySQL Profile Sync Error]:", err.message));
 
   const primaryPhoto = (user.photos && user.photos.find(p => p.is_primary)) || (user.photos && user.photos[0]);
   const rawPhoto = user.profile_photo_url || (primaryPhoto ? primaryPhoto.url : null);
