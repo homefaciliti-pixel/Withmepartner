@@ -120,33 +120,33 @@ function saveUsers() {
 }
 
 // Seed default user matching sample request/responses
-const seedUserId = "usr_10234";
+const seedUserId = "usr_203";
 const seedUserObj = {
   user_id: seedUserId,
-  name: "Rahul Sharma",
+  name: "Priya Sharma",
   country_code: "+91",
-  mobile_number: "9876543210",
+  mobile_number: "9876500001",
   password: "MySecurePass123",
-  email: "rahul.sharma@example.com",
-  gender: "Male",
-  dob: "1998-05-14",
-  area: "Vaishali Nagar",
+  email: "priya.sharma@withme.app",
+  gender: "Female",
+  dob: "2001-05-14",
+  area: "Malviya Nagar",
   city: "Jaipur",
   state: "Rajasthan",
-  pincode: "302021",
+  pincode: "302017",
   profile_completed: true,
   profile_step_pending: null,
   failed_attempts: 0,
   locked: false,
-  rating: 4.6,
-  total_ratings: 128,
+  rating: 4.8,
+  total_ratings: 120,
   phone_verified: true,
   pending_phone_change: null,
   profile_photo_url: PHOTO_1,
   current_location: {
     latitude: 26.9124,
     longitude: 75.7873,
-    address: "Vaishali Nagar, Jaipur, Rajasthan",
+    address: "Malviya Nagar, Jaipur, Rajasthan",
     updated_at: "2026-09-15T10:32:00Z"
   },
   photos: DEFAULT_PHOTOS,
@@ -167,8 +167,8 @@ const seedUserObj = {
     receive_requests: true,
     availability_status: "Available",
     pricing: [
-      { interest: "Coffee", label: "Coffee / Cafe Meetups", price: 999, unit: "per session/2hrs" },
-      { interest: "Travel", label: "Travel / Day Out / Trips", price: 2999, unit: "per session/24hrs" }
+      { interest: "Coffee", label: "Coffee / Cafe Meetups", price: 1, unit: "per session/2hrs" },
+      { interest: "Travel", label: "Travel / Day Out / Trips", price: 699, unit: "per session/24hrs" }
     ],
     platform_commission_percent: 15
   }
