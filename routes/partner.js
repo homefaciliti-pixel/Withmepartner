@@ -132,8 +132,16 @@ router.post('/requests/:request_id/action', authenticateToken, (req, res) => {
   const isAccept = action.toUpperCase() === "ACCEPT";
   requestData.status = isAccept ? "ACCEPTED" : "DECLINED";
 
+  // Notify User App in background of status update
+  notifyUserAppStatusUpdate({
+    request_id,
+    booking_id: requestData.booking_id,
+    status: isAccept ? "ACCEPTED" : "DECLINED",
+    action: isAccept ? "ACCEPT" : "DECLINE"
+  }).catch(err => console.error("User App callback notification failed:", err.message));
+
   if (isAccept) {
-    const booking_id = `bk_${Math.floor(1000 + Math.random() * 9000)}`;
+    const booking_id = requestData.booking_id || `bk_${Math.floor(1000 + Math.random() * 9000)}`;
     const newBooking = {
       booking_id,
       profile_image: requestData.image,
@@ -180,6 +188,181 @@ router.post('/requests/:request_id/action', authenticateToken, (req, res) => {
     }
   });
 });
+
+
+// -----------------------------------------------------------------------------
+// 11.1 CROSS-APP CONNECTION & INCOMING USER BOOKING API
+// -----------------------------------------------------------------------------
+
+const getUserApiUrl = () => {
+  return process.env.USER_APP_API_URL || process.env.WITME_USER_APP_URL || 'https://withmeapi-userapp.onrender.com';
+};
+
+async function notifyUserAppStatusUpdate(payload) {
+  const userAppUrls = [
+    getUserApiUrl(),
+    'http://localhost:5001',
+    'http://localhost:5000'
+  ];
+
+  for (const baseUrl of userAppUrls) {
+    try {
+      const resp = await fetch(`${baseUrl}/api/v1/partner-request/update-status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (resp.ok) {
+        console.log(`[Partner Sync Callback] Successfully notified User App of status update for ${payload.request_id || payload.booking_id}`);
+        return true;
+      }
+    } catch (err) {
+      // Ignore offline host notice
+    }
+  }
+  return false;
+}
+
+// Handler for incoming user booking / meetup requests from User App
+function handleIncomingUserRequest(req, res) {
+  const {
+    request_id,
+    booking_id,
+    name,
+    sender_name,
+    user_name,
+    image,
+    profile_image,
+    sender_avatar,
+    interest,
+    activity,
+    activity_name,
+    date,
+    time,
+    date_time,
+    location,
+    area,
+    city,
+    age,
+    message,
+    description,
+    status
+  } = req.body || {};
+
+  const reqId = request_id || `req_${Math.floor(100 + Math.random() * 900)}`;
+  const bkId = booking_id || `bk_${Math.floor(100 + Math.random() * 900)}`;
+  const userName = sender_name || name || user_name || "User";
+  const userImage = profile_image || image || sender_avatar || "/uploads/photos/photo_1.jpg";
+  const actType = activity || interest || activity_name || "Coffee";
+  const dateTimeStr = date_time || `${date || '2026-09-25'} ${time || '05:00 PM'}`;
+  const locStr = typeof location === 'string' ? location : (location && location.address ? location.address : `${area || 'Jaipur'}`);
+
+  const newPartnerReq = {
+    request_id: reqId,
+    booking_id: bkId,
+    name: userName,
+    image: userImage,
+    profile_image: userImage,
+    interest: actType,
+    date_time: dateTimeStr,
+    location: locStr,
+    age: age || 24,
+    id_verified: 1,
+    selfie_verified: 1,
+    status: status || "Pending",
+    activity: {
+      type: actType,
+      date: date || '2026-09-25',
+      time: time || '05:00 PM',
+      area: locStr,
+      description: message || description || "User meetup request"
+    },
+    created_at: new Date().toISOString()
+  };
+
+  partnerRequests.set(reqId, newPartnerReq);
+
+  console.log(`[Partner Connection] Received incoming user request ${reqId} for ${userName} (${actType})`);
+
+  return res.status(200).json({
+    status: true,
+    message: "Incoming user booking request received and added to Partner Requests list",
+    data: {
+      request_id: reqId,
+      booking_id: bkId,
+      status: "Pending",
+      name: userName,
+      interest: actType,
+      location: locStr,
+      date_time: dateTimeStr
+    }
+  });
+}
+
+// Handler for direct incoming confirmed bookings from User App
+function handleIncomingUserBooking(req, res) {
+  const {
+    booking_id,
+    name,
+    user_name,
+    image,
+    profile_image,
+    interest,
+    activity,
+    location,
+    date,
+    time,
+    status
+  } = req.body || {};
+
+  const bkId = booking_id || `bk_${Math.floor(100 + Math.random() * 900)}`;
+  const userName = name || user_name || "User";
+  const userImage = profile_image || image || "/uploads/photos/photo_1.jpg";
+  const actType = activity || interest || "Coffee";
+  const locStr = typeof location === 'string' ? location : (location && location.address ? location.address : "Jaipur");
+  const meetingDate = date || "2026-09-25";
+  const meetingTime = time || "06:00 PM";
+
+  const newBooking = {
+    booking_id: bkId,
+    profile_image: userImage,
+    name: userName,
+    age: 24,
+    id_verified: 1,
+    selfie_verified: 1,
+    interest: actType,
+    location: locStr,
+    date: meetingDate,
+    time: meetingTime,
+    status: status || "Upcoming",
+    meeting_info: {
+      date: meetingDate,
+      time: meetingTime,
+      place: locStr,
+      type: actType,
+      description: "Direct confirmed booking from User App"
+    },
+    safety_checklist: { start_safe_meet: false },
+    safe_meet_mode: { location_allow: 1, notify_trusted_contact: 1, safety_check_in: 1 }
+  };
+
+  partnerBookings.set(bkId, newBooking);
+
+  console.log(`[Partner Connection] Received incoming user booking ${bkId} for ${userName}`);
+
+  return res.status(200).json({
+    status: true,
+    message: "Incoming user booking received and added to Partner Bookings list",
+    data: newBooking
+  });
+}
+
+// Bind Cross-App Incoming Endpoints
+router.post('/incoming-request', handleIncomingUserRequest);
+router.post('/requests/incoming', handleIncomingUserRequest);
+router.post('/incoming-booking', handleIncomingUserBooking);
+router.post('/bookings/incoming', handleIncomingUserBooking);
+
 
 
 // -----------------------------------------------------------------------------

@@ -722,6 +722,73 @@ Error Response (If Account Not Found or Already Deleted) — 404 Not Found:
   "message": "Account not found or already deleted",
   "error_code": "USER_NOT_FOUND"
 }
+
+
 ================================================================================
+17. CROSS-APP CONNECTION (USER APP <-> PARTNER APP REAL-TIME SYNC)
+================================================================================
+
+17.1 Receive Incoming User Booking / Meetup Request
+Endpoints:
+  - POST /partner/incoming-request
+  - POST /partner/requests/incoming (Alias)
+Auth required: No (Backend-to-Backend / Webhook Sync)
+Content-Type: application/json
+
+Request Payload (Sent by User App when User books a partner):
+{
+  "request_id": "req_501",
+  "booking_id": "BK197860",
+  "name": "Amit Kumar",
+  "interest": "Coffee",
+  "date": "2026-09-25",
+  "time": "06:00 PM",
+  "location": "Jaipur Coffee House",
+  "message": "Looking forward to meeting for coffee"
+}
+
+Success Response — 200 OK:
+{
+  "status": true,
+  "message": "Incoming user booking request received and added to Partner Requests list",
+  "data": {
+    "request_id": "req_501",
+    "booking_id": "BK197860",
+    "status": "Pending",
+    "name": "Amit Kumar",
+    "interest": "Coffee",
+    "location": "Jaipur Coffee House",
+    "date_time": "2026-09-25 06:00 PM"
+  }
+}
+
+17.2 Receive Incoming Direct Confirmed Booking
+Endpoints:
+  - POST /partner/incoming-booking
+  - POST /partner/bookings/incoming (Alias)
+Auth required: No (Backend-to-Backend Sync)
+Content-Type: application/json
+
+Request Payload:
+{
+  "booking_id": "BK197860",
+  "name": "Amit Kumar",
+  "interest": "Dinner",
+  "date": "2026-09-26",
+  "time": "08:00 PM",
+  "location": "C-Scheme, Jaipur"
+}
+
+17.3 Partner Action Status Callback to User App
+When Partner accepts or declines a request via `POST /partner/requests/:request_id/action`, Partner App automatically dispatches an HTTP POST callback to User App (`/api/v1/partner-request/update-status`):
+Payload:
+{
+  "request_id": "req_501",
+  "booking_id": "BK197860",
+  "status": "ACCEPTED",
+  "action": "ACCEPT"
+}
+================================================================================
+
 
 

@@ -232,6 +232,25 @@ async function runTests() {
       console.assert(deleteRes.status === 200, "Delete account 200");
       console.assert(deleteRes.body.data.user_id === newUserId, "Correct user deleted");
 
+      console.log("\n16. Testing Cross-App Incoming User Booking Sync (/partner/incoming-request)...");
+      const syncRes = await request('POST', '/partner/incoming-request', {
+        request_id: "req_user_999",
+        booking_id: "bk_user_999",
+        name: "Vikram Malhotra",
+        interest: "Dinner",
+        date: "2026-09-26",
+        time: "08:00 PM",
+        location: "C-Scheme, Jaipur",
+        message: "Looking forward to dinner meetup"
+      });
+      console.assert(syncRes.status === 200, "Incoming user request 200");
+      console.assert(syncRes.body.data.name === "Vikram Malhotra", "Incoming user name synced");
+
+      const homeRes = await request('GET', '/partner/home', null, authHeader);
+      console.assert(homeRes.status === 200, "Partner home 200");
+      const hasVikram = homeRes.body.data.new_requests.some(r => r.name === "Vikram Malhotra");
+      console.assert(hasVikram, "Incoming user request visible on Partner Home screen");
+
       console.log("\n✅ ALL PARTNER API & PERSISTENCE TESTS PASSED SUCCESSFULLY!");
       server.close();
       process.exit(0);
