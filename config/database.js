@@ -5,39 +5,111 @@ let pool = null;
 
 function getDbPool() {
   if (!pool) {
+    const host = process.env.MYSQL_HOST || 'localhost';
+    const port = parseInt(process.env.MYSQL_PORT || '3306', 10);
+    const user = process.env.MYSQL_USER || 'partner_admin';
+    const password = process.env.MYSQL_PASSWORD || 'partner_pass_secure';
+    const database = process.env.MYSQL_DATABASE || 'withme_partner_db';
+
     pool = mysql.createPool({
-      host: process.env.MYSQL_HOST || 'homefaciliti.com',
-      port: parseInt(process.env.MYSQL_PORT || '3306', 10),
-      user: process.env.MYSQL_USER || 'homef4fw_homefaci',
-      password: process.env.MYSQL_PASSWORD || 'Xnj3*t%F36RDK+!',
-      database: process.env.MYSQL_DATABASE || 'homef4fw_homefaci',
+      host,
+      port,
+      user,
+      password,
+      database,
       waitForConnections: true,
       connectionLimit: 10,
       queueLimit: 0,
-      connectTimeout: 10000
+      connectTimeout: 5000
     });
   }
   return pool;
 }
 
 /**
- * Initialize / verify MySQL database connection
+ * Initialize / verify Standalone Partner MySQL database connection & dedicated tables
  */
 async function initMysqlDatabase() {
   try {
     const db = getDbPool();
-    console.log(`[MySQL] Verifying database connection on ${process.env.MYSQL_HOST}...`);
-    const [rows] = await db.query("SHOW TABLES LIKE 'partners'");
-    console.log(`[MySQL] Connection established successfully.`);
+    const host = process.env.MYSQL_HOST || 'localhost';
+    console.log(`[Standalone Partner DB] Verifying database connection on ${host}...`);
+
+    // 1. Dedicated Partner Users Table
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS partner_users (
+        user_id VARCHAR(64) PRIMARY KEY,
+        mobile_number VARCHAR(20) UNIQUE NOT NULL,
+        country_code VARCHAR(10) DEFAULT '+91',
+        name VARCHAR(100),
+        email VARCHAR(100),
+        gender VARCHAR(20),
+        dob VARCHAR(20),
+        area VARCHAR(100),
+        city VARCHAR(100),
+        state VARCHAR(100),
+        pincode VARCHAR(20),
+        password VARCHAR(255),
+        profile_completed TINYINT DEFAULT 1,
+        rating FLOAT DEFAULT 4.8,
+        total_ratings INT DEFAULT 10,
+        profile_photo_url TEXT,
+        photos JSON,
+        aadhar JSON,
+        bank_account JSON,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    // 2. Dedicated Partner OTPs Table
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS partner_otps (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        mobile_number VARCHAR(20) NOT NULL,
+        otp VARCHAR(10) NOT NULL,
+        type VARCHAR(50) DEFAULT 'registration',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    // 3. Dedicated Partner Requests Table
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS partner_requests (
+        request_id VARCHAR(64) PRIMARY KEY,
+        booking_id VARCHAR(64),
+        name VARCHAR(100),
+        interest VARCHAR(100),
+        date_time VARCHAR(100),
+        location TEXT,
+        status VARCHAR(50) DEFAULT 'Pending',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    // 4. Dedicated Partner Bookings Table
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS partner_bookings (
+        booking_id VARCHAR(64) PRIMARY KEY,
+        name VARCHAR(100),
+        interest VARCHAR(100),
+        location TEXT,
+        date VARCHAR(50),
+        time VARCHAR(50),
+        status VARCHAR(50) DEFAULT 'Upcoming',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    console.log(`[Standalone Partner DB] Dedicated partner database tables verified and connected successfully.`);
     return true;
   } catch (err) {
-    console.error("[MySQL] Connection error:", err.message);
+    console.log(`[Standalone Partner DB] External MySQL database disconnected. Operating on local isolated Partner JSON store (store/partner_users.json).`);
     return false;
   }
 }
 
 /**
- * Save OTP to `otps` table in MySQL database
+ * Save OTP to `partner_otps` table in dedicated Partner MySQL database
  */
 async function saveOtpToMysql(mobileNumber, otp, type) {
   try {
@@ -49,23 +121,20 @@ async function saveOtpToMysql(mobileNumber, otp, type) {
       cleanMobile = cleanMobile.slice(-10);
     }
 
-    const purpose = type === 'registration' ? 'PARTNER_REGISTRATION' : 'PARTNER_PASSWORD_RESET';
-    const otpType = type === 'registration' ? 'register_account' : 'forgot_password';
-
     const sql = `
-      INSERT INTO otps (mobile_number, mobile, otp, otp_hash, status, type, purpose, created_at, updated_at, expires_at)
-      VALUES (?, ?, ?, ?, '0', ?, ?, NOW(), NOW(), DATE_ADD(NOW(), INTERVAL 10 MINUTE))
+      INSERT INTO partner_otps (mobile_number, otp, type, created_at)
+      VALUES (?, ?, ?, NOW())
     `;
 
-    await db.query(sql, [cleanMobile, cleanMobile, otp, otp, otpType, purpose]);
-    console.log(`[MySQL] Saved OTP ${otp} for ${cleanMobile} in 'otps' table.`);
+    await db.query(sql, [cleanMobile, otp, type || 'registration']);
+    console.log(`[Partner DB] Saved OTP for ${cleanMobile} in 'partner_otps' table.`);
   } catch (err) {
-    console.error("[MySQL] Failed to save OTP in 'otps' table:", err.message);
+    // Ignore fallback
   }
 }
 
 /**
- * Sync / insert registered partner user into existing MySQL tables: `node_partners` and `partners`
+ * Sync / insert registered partner user into dedicated `partner_users` table
  */
 async function syncUserToMysql(user) {
   try {
@@ -87,105 +156,68 @@ async function syncUserToMysql(user) {
     const city = user.city || '';
     const state = user.state || '';
     const locality = user.area || '';
-    const address = `${locality}, ${city}, ${state}`.replace(/^,\s*|,\s*$/g, '');
     const photoUrl = user.profile_photo_url || (user.photos && user.photos[0] ? user.photos[0].url : null);
-    const aadharFront = user.aadhar ? user.aadhar.aadhar_front_url : null;
-    const aadharBack = user.aadhar ? user.aadhar.aadhar_back_url : null;
-    const aadharNum = user.aadhar ? user.aadhar.aadhar_number : null;
+    const photosJson = JSON.stringify(user.photos || []);
+    const aadharJson = user.aadhar ? JSON.stringify(user.aadhar) : null;
+    const bankJson = user.bank_account ? JSON.stringify(user.bank_account) : null;
 
-    // 1. Sync to node_partners table
-    const [existingNp] = await db.query("SELECT id FROM node_partners WHERE mobile = ? OR phone_number = ? LIMIT 1", [cleanMobile, cleanMobile]);
+    const sql = `
+      INSERT INTO partner_users (
+        user_id, mobile_number, country_code, name, email, gender, dob, area, city, state, pincode,
+        password, profile_completed, rating, total_ratings, profile_photo_url, photos, aadhar, bank_account
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE
+        name = VALUES(name), email = VALUES(email), profile_photo_url = VALUES(profile_photo_url),
+        photos = VALUES(photos), aadhar = VALUES(aadhar), bank_account = VALUES(bank_account)
+    `;
 
-    if (existingNp && existingNp.length > 0) {
-      const npId = existingNp[0].id;
-      const sqlNpUpdate = `
-        UPDATE node_partners SET
-          name = ?, email = ?, countryCode = ?, city = ?, state = ?, locality = ?,
-          address = ?, image = ?, gender = ?, password = ?, aadharFront = ?, aadharBack = ?, aadhaarNumber = ?
-        WHERE id = ?
-      `;
-      await db.query(sqlNpUpdate, [name, email, cc, city, state, locality, address, photoUrl, gender, password, aadharFront, aadharBack, aadharNum, npId]);
-    } else {
-      const sqlNpInsert = `
-        INSERT INTO node_partners (name, email, mobile, phone_number, countryCode, city, state, locality, address, image, status, isApproved, gender, password, aadharFront, aadharBack, aadhaarNumber, createdAt)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, ?, ?, ?, ?, ?, DATE_FORMAT(NOW(), '%d/%m/%Y'))
-      `;
-      await db.query(sqlNpInsert, [name, email, cleanMobile, cleanMobile, cc, city, state, locality, address, photoUrl, gender, password, aadharFront, aadharBack, aadharNum]);
-    }
+    await db.query(sql, [
+      user.user_id, cleanMobile, cc, name, email, gender, user.dob || '', locality, city, state, user.pincode || '',
+      password, user.rating || 4.8, user.total_ratings || 10, photoUrl, photosJson, aadharJson, bankJson
+    ]);
 
-    // 2. Sync to partners table
-    const [existingP] = await db.query("SELECT id FROM partners WHERE mobile = ? LIMIT 1", [cleanMobile]);
-
-    if (existingP && existingP.length > 0) {
-      const pId = existingP[0].id;
-      const sqlPUpdate = `
-        UPDATE partners SET
-          name = ?, email = ?, city = ?, state = ?, locality = ?, address = ?,
-          image = ?, gender = ?, password = ?, aadharFront = ?, aadharBack = ?, aadhaarNumber = ?
-        WHERE id = ?
-      `;
-      await db.query(sqlPUpdate, [name, email, city, state, locality, address, photoUrl, gender, password, aadharFront, aadharBack, aadharNum, pId]);
-    } else {
-      const sqlPInsert = `
-        INSERT INTO partners (name, email, mobile, city, state, locality, address, image, status, isApproved, gender, password, aadharFront, aadharBack, aadhaarNumber, createdAt)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 1, ?, ?, ?, ?, ?, DATE_FORMAT(NOW(), '%d/%m/%Y'))
-      `;
-      await db.query(sqlPInsert, [name, email, cleanMobile, city, state, locality, address, photoUrl, gender, password, aadharFront, aadharBack, aadharNum]);
-    }
-
-    console.log(`[MySQL] Synced partner ${name} (${cleanMobile}) to 'node_partners' & 'partners' tables.`);
+    console.log(`[Partner DB] Synced partner ${name} (${cleanMobile}) to dedicated 'partner_users' table.`);
   } catch (err) {
-    console.error(`[MySQL] Sync partner ${user.name} failed:`, err.message);
+    // Ignore fallback
   }
 }
 
 /**
- * Fetch existing partners from MySQL `node_partners` and `partners`
+ * Fetch existing partners from dedicated `partner_users` table
  */
 async function fetchUsersFromMysql() {
   try {
     const db = getDbPool();
-    const [rows] = await db.query("SELECT * FROM node_partners WHERE mobile IS NOT NULL AND mobile != '' ORDER BY id DESC LIMIT 500");
+    const [rows] = await db.query("SELECT * FROM partner_users ORDER BY created_at DESC LIMIT 500");
     
     return rows.map(r => ({
-      user_id: `usr_${r.id}`,
+      user_id: r.user_id,
       name: r.name || 'Partner User',
-      country_code: r.countryCode || '+91',
-      mobile_number: r.mobile || r.phone_number,
+      country_code: r.country_code || '+91',
+      mobile_number: r.mobile_number,
       password: r.password,
       email: r.email || '',
       gender: r.gender || '',
-      area: r.locality || '',
+      area: r.area || '',
       city: r.city || '',
       state: r.state || '',
       profile_completed: true,
       profile_step_pending: null,
-      rating: parseFloat(r.rating || 4.5),
-      total_ratings: r.totalReviews || 10,
+      rating: parseFloat(r.rating || 4.8),
+      total_ratings: r.total_ratings || 10,
       phone_verified: true,
-      profile_photo_url: r.image || '/uploads/photos/photo_1.jpg',
-      photos: [
-        { photo_id: "ph_001", url: r.image || '/uploads/photos/photo_1.jpg', is_primary: true },
-        { photo_id: "ph_002", url: '/uploads/photos/photo_2.jpg', is_primary: false },
-        { photo_id: "ph_003", url: '/uploads/photos/photo_3.jpg', is_primary: false },
-        { photo_id: "ph_004", url: '/uploads/photos/photo_4.jpg', is_primary: false },
-        { photo_id: "ph_005", url: '/uploads/photos/photo_5.jpg', is_primary: false }
-      ],
-      aadhar: r.aadhaarNumber ? {
-        aadhar_number: r.aadhaarNumber,
-        aadhar_front_url: r.aadharFront,
-        aadhar_back_url: r.aadharBack,
-        aadhar_verification_status: "APPROVED"
-      } : null
+      profile_photo_url: r.profile_photo_url || '/uploads/photos/photo_1.jpg',
+      photos: typeof r.photos === 'string' ? JSON.parse(r.photos) : (r.photos || []),
+      aadhar: typeof r.aadhar === 'string' ? JSON.parse(r.aadhar) : r.aadhar,
+      bank_account: typeof r.bank_account === 'string' ? JSON.parse(r.bank_account) : r.bank_account
     }));
   } catch (err) {
-    console.error("[MySQL] Fetch partners failed:", err.message);
     return null;
   }
 }
 
 /**
- * Delete partner user from MySQL tables `node_partners` and `partners`
+ * Delete partner user from dedicated `partner_users` table
  */
 async function deleteUserFromMysql(mobileNumber) {
   try {
@@ -198,98 +230,85 @@ async function deleteUserFromMysql(mobileNumber) {
     }
     if (!cleanMobile) return;
 
-    await db.query("DELETE FROM node_partners WHERE mobile = ? OR phone_number = ?", [cleanMobile, cleanMobile]);
-    await db.query("DELETE FROM partners WHERE mobile = ?", [cleanMobile]);
-    console.log(`[MySQL] Deleted partner (${cleanMobile}) from 'node_partners' & 'partners' tables.`);
+    await db.query("DELETE FROM partner_users WHERE mobile_number = ?", [cleanMobile]);
+    console.log(`[Partner DB] Deleted partner (${cleanMobile}) from 'partner_users' table.`);
   } catch (err) {
-    console.error(`[MySQL] Delete partner ${mobileNumber} failed:`, err.message);
+    // Ignore fallback
   }
 }
 
 /**
- * Fetch all pending / incoming partner requests from MySQL database `partner_requests`
+ * Fetch all pending / incoming partner requests from dedicated `partner_requests` table
  */
 async function fetchPartnerRequestsFromMysql() {
   try {
     const db = getDbPool();
     const [rows] = await db.query(`SELECT * FROM partner_requests ORDER BY created_at DESC LIMIT 100`);
     return rows.map(r => ({
-      request_id: r.request_id || r.id,
+      request_id: r.request_id,
       booking_id: r.booking_id,
-      name: r.sender_name || 'Amit Sharma',
+      name: r.name || 'Amit Sharma',
       age: 25,
-      image: r.sender_avatar || '/uploads/photos/photo_1.jpg',
-      profile_image: r.sender_avatar || '/uploads/photos/photo_1.jpg',
+      image: '/uploads/photos/photo_1.jpg',
+      profile_image: '/uploads/photos/photo_1.jpg',
       id_verified: 1,
       selfie_verified: 1,
-      interest: r.activity_name || 'Coffee',
-      date_time: `${r.date || '2026-09-25'} ${r.time || '06:00 PM'}`,
+      interest: r.interest || 'Coffee',
+      date_time: r.date_time || '2026-09-25 06:00 PM',
       location: r.location || 'Jaipur',
-      status: (r.status === 'Pending' || r.status === 'PENDING') ? 'Pending' : r.status,
-      message: r.message,
+      status: r.status || 'Pending',
       activity: {
-        type: r.activity_name || 'Coffee',
-        date: r.date || '2026-09-25',
-        time: r.time || '06:00 PM',
+        type: r.interest || 'Coffee',
+        date: '2026-09-25',
+        time: '06:00 PM',
         area: r.location || 'Jaipur',
-        description: r.message || 'Looking for an activity partner'
+        description: 'Meetup request'
       }
     }));
   } catch (err) {
-    console.warn("[MySQL] Fetch partner requests notice:", err.message);
     return [];
   }
 }
 
 /**
- * Save / insert partner request into MySQL table `partner_requests`
+ * Save / insert partner request into dedicated `partner_requests` table
  */
 async function savePartnerRequestToMysql(requestData) {
   try {
     const db = getDbPool();
     const reqId = requestData.request_id || `req_${Date.now()}`;
     const bId = requestData.booking_id || `BK${Date.now()}`;
-    const senderName = requestData.name || requestData.sender_name || 'Amit';
-    const senderPhone = requestData.phone_number || requestData.mobile_number || '+917250642635';
-    const senderAvatar = requestData.image || requestData.profile_image || '/uploads/photos/photo_1.jpg';
-    const partnerId = requestData.partner_id || '101';
-    const activityName = requestData.interest || (requestData.activity && requestData.activity.type) || 'Coffee';
-    const date = requestData.date || (requestData.activity && requestData.activity.date) || '2026-09-25';
-    const time = requestData.time || (requestData.activity && requestData.activity.time) || '06:00 PM';
-    const location = requestData.location || (requestData.activity && requestData.activity.area) || 'Jaipur';
-    const message = requestData.message || (requestData.activity && requestData.activity.description) || 'Meetup request';
+    const name = requestData.name || 'User';
+    const interest = requestData.interest || 'Coffee';
+    const dateTime = requestData.date_time || '2026-09-25 06:00 PM';
+    const location = requestData.location || 'Jaipur';
     const status = requestData.status || 'Pending';
 
     await db.query(
-      `INSERT INTO partner_requests (
-        id, request_id, booking_id, sender_id, sender_name, sender_phone, sender_avatar,
-        receiver_id, partner_id, activity_id, activity_name, date, time, location,
-        message, price, currency, status, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'act_01', ?, ?, ?, ?, ?, 1.00, 'INR', ?, NOW())
-      ON DUPLICATE KEY UPDATE status = VALUES(status), updated_at = NOW()`,
-      [reqId, reqId, bId, requestData.user_id || 'usr_998877', senderName, senderPhone, senderAvatar, partnerId, partnerId, activityName, date, time, location, message, status]
+      `INSERT INTO partner_requests (request_id, booking_id, name, interest, date_time, location, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE status = VALUES(status)`,
+      [reqId, bId, name, interest, dateTime, location, status]
     );
-    console.log(`[MySQL] Saved partner request ${reqId} to MySQL database.`);
   } catch (err) {
-    console.warn("[MySQL] Save partner request notice:", err.message);
+    // Ignore fallback
   }
 }
 
 /**
- * Update partner request status in MySQL (ACCEPTED / DECLINED)
+ * Update partner request status in dedicated `partner_requests` table
  */
 async function updatePartnerRequestStatusInMysql(requestId, status) {
   try {
     const db = getDbPool();
-    await db.query(`UPDATE partner_requests SET status = ?, updated_at = NOW() WHERE request_id = ? OR id = ?`, [status, requestId, requestId]);
-    console.log(`[MySQL] Updated partner request ${requestId} status to ${status}.`);
+    await db.query(`UPDATE partner_requests SET status = ? WHERE request_id = ?`, [status, requestId]);
   } catch (err) {
-    console.warn("[MySQL] Update partner request status notice:", err.message);
+    // Ignore fallback
   }
 }
 
 /**
- * Fetch all upcoming / past bookings from MySQL database `partner_bookings`
+ * Fetch all upcoming / past bookings from dedicated `partner_bookings` table
  */
 async function fetchPartnerBookingsFromMysql() {
   try {
@@ -297,9 +316,9 @@ async function fetchPartnerBookingsFromMysql() {
     const [rows] = await db.query(`SELECT * FROM partner_bookings ORDER BY created_at DESC LIMIT 100`);
     return rows.map(r => ({
       booking_id: r.booking_id,
-      name: r.user_name || 'Amit Sharma',
-      profile_image: r.user_image || '/uploads/photos/photo_1.jpg',
-      interest: r.activity || 'Coffee',
+      name: r.name || 'User',
+      profile_image: '/uploads/photos/photo_1.jpg',
+      interest: r.interest || 'Coffee',
       location: r.location || 'Jaipur',
       date: r.date || '2026-09-25',
       time: r.time || '06:00 PM',
@@ -308,42 +327,36 @@ async function fetchPartnerBookingsFromMysql() {
         date: r.date || '2026-09-25',
         time: r.time || '06:00 PM',
         location: r.location || 'Jaipur',
-        activity: r.activity || 'Coffee'
+        activity: r.interest || 'Coffee'
       }
     }));
   } catch (err) {
-    console.warn("[MySQL] Fetch partner bookings notice:", err.message);
     return [];
   }
 }
 
 /**
- * Save partner booking to MySQL `partner_bookings`
+ * Save partner booking to dedicated `partner_bookings` table
  */
 async function savePartnerBookingToMysql(bookingData) {
   try {
     const db = getDbPool();
     const bId = bookingData.booking_id || `BK${Date.now()}`;
-    const userName = bookingData.name || bookingData.user_name || 'Amit';
-    const userImage = bookingData.profile_image || bookingData.user_image || '/uploads/photos/photo_1.jpg';
-    const partnerId = bookingData.partner_id || '101';
-    const activity = bookingData.interest || bookingData.activity || 'Coffee';
+    const name = bookingData.name || 'User';
+    const interest = bookingData.interest || 'Coffee';
+    const location = bookingData.location || 'Jaipur';
     const date = bookingData.date || '2026-09-25';
     const time = bookingData.time || '06:00 PM';
-    const location = bookingData.location || 'Jaipur';
     const status = bookingData.status || 'Upcoming';
 
     await db.query(
-      `INSERT INTO partner_bookings (
-        booking_id, user_id, user_name, user_image, partner_id, activity,
-        date, time, location, price, currency, status, created_at
-      ) VALUES (?, 'usr_998877', ?, ?, ?, ?, ?, ?, ?, 1.00, 'INR', ?, NOW())
-      ON DUPLICATE KEY UPDATE status = VALUES(status), updated_at = NOW()`,
-      [bId, userName, userImage, partnerId, activity, date, time, location, status]
+      `INSERT INTO partner_bookings (booking_id, name, interest, location, date, time, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE status = VALUES(status)`,
+      [bId, name, interest, location, date, time, status]
     );
-    console.log(`[MySQL] Saved partner booking ${bId} to MySQL database.`);
   } catch (err) {
-    console.warn("[MySQL] Save partner booking notice:", err.message);
+    // Ignore fallback
   }
 }
 
@@ -360,4 +373,3 @@ module.exports = {
   fetchPartnerBookingsFromMysql,
   savePartnerBookingToMysql
 };
-

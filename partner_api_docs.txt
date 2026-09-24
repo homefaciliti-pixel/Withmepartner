@@ -3,11 +3,11 @@
 ================================================================================
 
 BASE URL: http://localhost:5000 (or your Render domain e.g. https://your-app.onrender.com)
-PERSISTENT STORE: MySQL Database (homefaciliti.com / node_partner_users table) & store/users.json disk backup
+PERSISTENT STORE: Dedicated Standalone Partner Database (partner_users, partner_otps, partner_requests, partner_bookings) & store/users.json backup
 DLT SMS GATEWAY: SMSGATEWAYHUB (EntityID: 1201173444411453897, TemplateID: 1207173589889308632, Sender: HMFCLI)
 FEATURES:
  - Real DLT SMS OTPs: Dispatches SMS via SMSGATEWAYHUB API for registration & forgot-password.
- - MySQL Database Sync: Automatically initializes table `node_partner_users` on homefaciliti.com and syncs user profiles in real-time.
+ - Standalone Partner Database: Uses separate dedicated tables (`partner_users`, `partner_otps`, `partner_requests`, `partner_bookings`) separated from homefaciliti tables.
  - Dynamic Image URLs: Image URLs automatically detect your Render domain (via process.env.RENDER_EXTERNAL_URL / process.env.BASE_URL or request Host header).
  - Flexible Phone Matching: (+91 / 91 / 0 prefix normalization).
  - Non-Expiring JWT Access Tokens: Tokens do not expire (refresh token removed as requested).
