@@ -125,7 +125,7 @@ const seedUserObj = {
   user_id: seedUserId,
   name: "Priya Sharma",
   country_code: "+91",
-  mobile_number: "9876500001",
+  mobile_number: "9876543210",
   password: "MySecurePass123",
   email: "priya.sharma@withme.app",
   gender: "Female",

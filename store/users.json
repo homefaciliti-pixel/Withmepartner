@@ -3,7 +3,7 @@
     "user_id": "usr_203",
     "name": "Priya Sharma",
     "country_code": "+91",
-    "mobile_number": "9876500001",
+    "mobile_number": "9876543210",
     "password": "MySecurePass123",
     "email": "priya.sharma@withme.app",
     "gender": "Female",
@@ -11,8 +11,161 @@
     "area": "Malviya Nagar",
     "city": "Jaipur",
     "state": "Rajasthan",
-    "pincode": "302017",
     "profile_completed": true,
+    "profile_step_pending": null,
+    "rating": 4.8,
+    "total_ratings": 120,
+    "phone_verified": true,
+    "profile_photo_url": "/uploads/priya.jpg",
+    "photos": [
+      "/uploads/priya.jpg",
+      "/uploads/priya2.jpg",
+      "/uploads/priya3.jpg",
+      "/uploads/priya4.jpg"
+    ],
+    "aadhar": null,
+    "bank_account": null,
+    "failed_attempts": 0
+  },
+  {
+    "user_id": "usr_201",
+    "name": "Ananya Verma",
+    "country_code": "+91",
+    "mobile_number": "9876500002",
+    "password": "MySecurePass123",
+    "email": "ananya.verma@withme.app",
+    "gender": "Female",
+    "dob": "2001-05-14",
+    "area": "Vaishali Nagar",
+    "city": "Jaipur",
+    "state": "Rajasthan",
+    "profile_completed": true,
+    "profile_step_pending": null,
+    "rating": 4.9,
+    "total_ratings": 150,
+    "phone_verified": true,
+    "profile_photo_url": "/uploads/ananya.jpg",
+    "photos": [
+      "/uploads/ananya.jpg",
+      "/uploads/anjali.jpg"
+    ],
+    "aadhar": null,
+    "bank_account": null
+  },
+  {
+    "user_id": "usr_102",
+    "name": "Anjali Sharma",
+    "country_code": "+91",
+    "mobile_number": "9876500003",
+    "password": "MySecurePass123",
+    "email": "anjali.sharma@withme.app",
+    "gender": "Female",
+    "dob": "2001-05-14",
+    "area": "C-Scheme",
+    "city": "Jaipur",
+    "state": "Rajasthan",
+    "profile_completed": true,
+    "profile_step_pending": null,
+    "rating": 4.9,
+    "total_ratings": 135,
+    "phone_verified": true,
+    "profile_photo_url": "/uploads/anjali.jpg",
+    "photos": [
+      "/uploads/anjali.jpg",
+      "/uploads/ananya.jpg"
+    ],
+    "aadhar": null,
+    "bank_account": null
+  },
+  {
+    "user_id": "usr_404",
+    "name": "Riya Mehta",
+    "country_code": "+91",
+    "mobile_number": "9876500004",
+    "password": "MySecurePass123",
+    "email": "riya.mehta@withme.app",
+    "gender": "Female",
+    "dob": "2001-05-14",
+    "area": "Bandra West",
+    "city": "Mumbai",
+    "state": "Maharashtra",
+    "profile_completed": true,
+    "profile_step_pending": null,
+    "rating": 4.8,
+    "total_ratings": 145,
+    "phone_verified": true,
+    "profile_photo_url": "/uploads/riya.jpg",
+    "photos": [
+      "/uploads/riya.jpg",
+      "/uploads/neha.jpg"
+    ],
+    "aadhar": null,
+    "bank_account": null
+  },
+  {
+    "user_id": "usr_405",
+    "name": "Neha Kapoor",
+    "country_code": "+91",
+    "mobile_number": "9876500005",
+    "password": "MySecurePass123",
+    "email": "neha.kapoor@withme.app",
+    "gender": "Female",
+    "dob": "2001-05-14",
+    "area": "Andheri West",
+    "city": "Mumbai",
+    "state": "Maharashtra",
+    "profile_completed": true,
+    "profile_step_pending": null,
+    "rating": 4.9,
+    "total_ratings": 110,
+    "phone_verified": true,
+    "profile_photo_url": "/uploads/neha.jpg",
+    "photos": [
+      "/uploads/neha.jpg",
+      "/uploads/kavya.jpg"
+    ],
+    "aadhar": null,
+    "bank_account": null
+  },
+  {
+    "user_id": "usr_406",
+    "name": "Sneha Sharma",
+    "country_code": "+91",
+    "mobile_number": "9876500006",
+    "password": "MySecurePass123",
+    "email": "sneha.sharma@withme.app",
+    "gender": "Female",
+    "dob": "2001-05-14",
+    "area": "Connaught Place",
+    "city": "Delhi",
+    "state": "Delhi NCR",
+    "profile_completed": true,
+    "profile_step_pending": null,
+    "rating": 4.7,
+    "total_ratings": 95,
+    "phone_verified": true,
+    "profile_photo_url": "/uploads/sneha.jpg",
+    "photos": [
+      "/uploads/sneha.jpg",
+      "/uploads/kavya.jpg"
+    ],
+    "aadhar": null,
+    "bank_account": null
+  },
+  {
+    "user_id": "usr_kiya_9121",
+    "name": "Kiya Sharma",
+    "country_code": "+91",
+    "mobile_number": "9121212121",
+    "password": "MySecurePass123",
+    "email": "kiya.sharma@withme.app",
+    "gender": "Female",
+    "dob": "2001-07-15",
+    "area": "Vaishali Nagar",
+    "city": "Jaipur",
+    "state": "Rajasthan",
+    "profile_completed": true,
+    "profile_step_pending": null,
     "rating": 4.8,
     "total_ratings": 120,
     "phone_verified": true,
@@ -24,333 +177,55 @@
         "is_primary": true
       }
     ],
-    "about": {
-      "description": "Friendly, outgoing and loves exploring new places, coffee meetups, and meeting people.",
-      "interests": [
-        "Coffee",
-        "Travel",
-        "Music"
-      ]
-    },
-    "availability": {
-      "available_days": [
-        "Mon",
-        "Tue",
-        "Wed",
-        "Thu",
-        "Fri",
-        "Sat",
-        "Sun"
-      ],
-      "available_time": {
-        "from": "10:00 AM",
-        "to": "09:00 PM"
-      },
-      "receive_requests": true,
-      "availability_status": "Available",
-      "pricing": [
-        {
-          "interest": "Coffee",
-          "label": "Coffee / Cafe Meetups",
-          "price": 1,
-          "unit": "per session/2hrs"
-        }
-      ]
-    }
+    "aadhar": null,
+    "bank_account": null
   },
   {
-    "user_id": "usr_201",
-    "name": "Ananya Verma",
+    "user_id": "usr_92170",
+    "name": "Niya Sharma",
     "country_code": "+91",
-    "mobile_number": "9876500002",
-    "password": "MySecurePass123",
-    "email": "ananya.verma@withme.app",
+    "mobile_number": "9696969696",
+    "password": "12345678",
+    "email": "Niya@gmail.com",
     "gender": "Female",
-    "dob": "2000-08-20",
-    "area": "C-Scheme",
+    "dob": "2000-01-01",
+    "area": "Mansarovar",
     "city": "Jaipur",
     "state": "Rajasthan",
-    "pincode": "302001",
     "profile_completed": true,
-    "rating": 4.9,
-    "total_ratings": 95,
-    "phone_verified": true,
-    "profile_photo_url": "/uploads/photos/photo_2.jpg",
-    "photos": [
-      {
-        "photo_id": "ph_001",
-        "url": "/uploads/photos/photo_2.jpg",
-        "is_primary": true
-      }
-    ],
-    "about": {
-      "description": "Loves acoustic sessions, coffee dates, and deep conversations.",
-      "interests": [
-        "Coffee",
-        "Music",
-        "Books"
-      ]
-    },
-    "availability": {
-      "available_days": [
-        "Mon",
-        "Tue",
-        "Wed",
-        "Thu",
-        "Fri",
-        "Sat",
-        "Sun"
-      ],
-      "available_time": {
-        "from": "10:00 AM",
-        "to": "09:00 PM"
-      },
-      "receive_requests": true,
-      "availability_status": "Available",
-      "pricing": [
-        {
-          "interest": "Coffee",
-          "label": "Coffee / Cafe Meetups",
-          "price": 1,
-          "unit": "per session/2hrs"
-        }
-      ]
-    }
-  },
-  {
-    "user_id": "usr_102",
-    "name": "Anjali Sharma",
-    "country_code": "+91",
-    "mobile_number": "9876500003",
-    "password": "MySecurePass123",
-    "email": "anjali.sharma@withme.app",
-    "gender": "Female",
-    "dob": "2000-03-12",
-    "area": "Vaishali Nagar",
-    "city": "Jaipur",
-    "state": "Rajasthan",
-    "pincode": "302021",
-    "profile_completed": true,
-    "rating": 4.9,
-    "total_ratings": 135,
-    "phone_verified": true,
-    "profile_photo_url": "/uploads/photos/photo_3.jpg",
-    "photos": [
-      {
-        "photo_id": "ph_001",
-        "url": "/uploads/photos/photo_3.jpg",
-        "is_primary": true
-      }
-    ],
-    "about": {
-      "description": "Loves social gatherings, food dates, dinner events and live music.",
-      "interests": [
-        "Dinner",
-        "Coffee",
-        "Events"
-      ]
-    },
-    "availability": {
-      "available_days": [
-        "Mon",
-        "Tue",
-        "Wed",
-        "Thu",
-        "Fri",
-        "Sat",
-        "Sun"
-      ],
-      "available_time": {
-        "from": "10:00 AM",
-        "to": "09:00 PM"
-      },
-      "receive_requests": true,
-      "availability_status": "Available",
-      "pricing": [
-        {
-          "interest": "Dinner",
-          "label": "Dinner WithMe",
-          "price": 1,
-          "unit": "per session/2hrs"
-        }
-      ]
-    }
-  },
-  {
-    "user_id": "usr_404",
-    "name": "Riya Mehta",
-    "country_code": "+91",
-    "mobile_number": "9876500004",
-    "password": "MySecurePass123",
-    "email": "riya.mehta@withme.app",
-    "gender": "Female",
-    "dob": "1998-11-22",
-    "area": "Bandra West",
-    "city": "Mumbai",
-    "state": "Maharashtra",
-    "pincode": "400050",
-    "profile_completed": true,
+    "profile_step_pending": null,
     "rating": 4.8,
-    "total_ratings": 145,
+    "total_ratings": 120,
     "phone_verified": true,
-    "profile_photo_url": "/uploads/photos/photo_4.jpg",
+    "profile_photo_url": "/uploads/photos/usr_usr_92170_p1_1790251211380_9fkqy.jpg",
     "photos": [
       {
         "photo_id": "ph_001",
-        "url": "/uploads/photos/photo_4.jpg",
+        "url": "/uploads/photos/usr_usr_92170_p1_1790251211380_9fkqy.jpg",
         "is_primary": true
-      }
-    ],
-    "about": {
-      "description": "Tech enthusiast, guitarist, and outdoor trekking partner.",
-      "interests": [
-        "Travel",
-        "Coffee",
-        "Music"
-      ]
-    },
-    "availability": {
-      "available_days": [
-        "Mon",
-        "Tue",
-        "Wed",
-        "Thu",
-        "Fri",
-        "Sat",
-        "Sun"
-      ],
-      "available_time": {
-        "from": "10:00 AM",
-        "to": "09:00 PM"
       },
-      "receive_requests": true,
-      "availability_status": "Available",
-      "pricing": [
-        {
-          "interest": "Travel",
-          "label": "Travel WithMe",
-          "price": 1,
-          "unit": "per session/2hrs"
-        }
-      ]
-    }
-  },
-  {
-    "user_id": "usr_405",
-    "name": "Neha Kapoor",
-    "country_code": "+91",
-    "mobile_number": "9876500005",
-    "password": "MySecurePass123",
-    "email": "neha.kapoor@withme.app",
-    "gender": "Female",
-    "dob": "2001-02-18",
-    "area": "Andheri West",
-    "city": "Mumbai",
-    "state": "Maharashtra",
-    "pincode": "400058",
-    "profile_completed": true,
-    "rating": 4.9,
-    "total_ratings": 110,
-    "phone_verified": true,
-    "profile_photo_url": "/uploads/photos/photo_5.jpg",
-    "photos": [
       {
-        "photo_id": "ph_001",
-        "url": "/uploads/photos/photo_5.jpg",
-        "is_primary": true
-      }
-    ],
-    "about": {
-      "description": "Passionate about cinema, movies, coffee chats and music concerts.",
-      "interests": [
-        "Movie",
-        "Coffee",
-        "Music"
-      ]
-    },
-    "availability": {
-      "available_days": [
-        "Mon",
-        "Tue",
-        "Wed",
-        "Thu",
-        "Fri",
-        "Sat",
-        "Sun"
-      ],
-      "available_time": {
-        "from": "10:00 AM",
-        "to": "09:00 PM"
+        "photo_id": "ph_002",
+        "url": "/uploads/photos/usr_usr_92170_p2_1790251211380_cyc9n.jpg",
+        "is_primary": false
       },
-      "receive_requests": true,
-      "availability_status": "Available",
-      "pricing": [
-        {
-          "interest": "Movie",
-          "label": "Movie WithMe",
-          "price": 1,
-          "unit": "per session/2hrs"
-        }
-      ]
-    }
-  },
-  {
-    "user_id": "usr_406",
-    "name": "Sneha Sharma",
-    "country_code": "+91",
-    "mobile_number": "9876500006",
-    "password": "MySecurePass123",
-    "email": "sneha.sharma@withme.app",
-    "gender": "Female",
-    "dob": "1999-07-09",
-    "area": "Hauz Khas",
-    "city": "Delhi",
-    "state": "Delhi",
-    "pincode": "110016",
-    "profile_completed": true,
-    "rating": 4.7,
-    "total_reviews": 88,
-    "phone_verified": true,
-    "profile_photo_url": "/uploads/photos/photo_1.jpg",
-    "photos": [
       {
-        "photo_id": "ph_001",
-        "url": "/uploads/photos/photo_1.jpg",
-        "is_primary": true
+        "photo_id": "ph_003",
+        "url": "/uploads/photos/usr_usr_92170_p3_1790251211381_qkpj6.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_004",
+        "url": "/uploads/photos/usr_usr_92170_p4_1790251211381_cnz8n.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_005",
+        "url": "/uploads/photos/usr_usr_92170_p5_1790251211381_lv3gf.jpg",
+        "is_primary": false
       }
     ],
-    "about": {
-      "description": "Psychology reader, fitness lover and great listener for meaningful conversations.",
-      "interests": [
-        "Conversation",
-        "Coffee",
-        "Fitness"
-      ]
-    },
-    "availability": {
-      "available_days": [
-        "Mon",
-        "Tue",
-        "Wed",
-        "Thu",
-        "Fri",
-        "Sat",
-        "Sun"
-      ],
-      "available_time": {
-        "from": "10:00 AM",
-        "to": "09:00 PM"
-      },
-      "receive_requests": true,
-      "availability_status": "Available",
-      "pricing": [
-        {
-          "interest": "Conversation",
-          "label": "Conversation WithMe",
-          "price": 1,
-          "unit": "per session/2hrs"
-        }
-      ]
-    }
+    "aadhar": null,
+    "bank_account": null
   }
 ]
