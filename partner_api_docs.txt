@@ -685,5 +685,43 @@ Success Response — 200 OK:
     "support_note": "Please fill all the details carefully. If you need to change your account details and add new account details, please contact our support executive via Mail: me24with@gmail.com"
   }
 }
+
+
 ================================================================================
+16. DELETE ACCOUNT API
+================================================================================
+
+16.1 Delete / Permanently Remove Account
+Endpoints:
+  - DELETE /profile (Standard REST Profile Delete)
+  - POST /profile/delete (Alias Body Endpoint)
+  - POST /auth/delete-account (Alias Auth Endpoint)
+  - DELETE /partner/account (Alias Partner Endpoint)
+Auth required: Yes (Headers: Authorization: Bearer <access_token>)
+Content-Type: application/json
+
+Request Body (Optional):
+{
+  "reason": "No longer using the app"
+}
+
+Success Response — 200 OK:
+{
+  "status": true,
+  "message": "Account deleted successfully. All user data has been permanently removed.",
+  "data": {
+    "user_id": "usr_10234",
+    "reason": "No longer using the app",
+    "deleted_at": "2026-09-24T15:40:00.000Z"
+  }
+}
+
+Error Response (If Account Not Found or Already Deleted) — 404 Not Found:
+{
+  "status": false,
+  "message": "Account not found or already deleted",
+  "error_code": "USER_NOT_FOUND"
+}
+================================================================================
+
 

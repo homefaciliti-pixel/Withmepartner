@@ -184,10 +184,34 @@ async function fetchUsersFromMysql() {
   }
 }
 
+/**
+ * Delete partner user from MySQL tables `node_partners` and `partners`
+ */
+async function deleteUserFromMysql(mobileNumber) {
+  try {
+    const db = getDbPool();
+    let cleanMobile = String(mobileNumber || '').replace(/\D/g, '');
+    if (cleanMobile.length > 10 && cleanMobile.startsWith('91')) {
+      cleanMobile = cleanMobile.slice(-10);
+    } else if (cleanMobile.length === 11 && cleanMobile.startsWith('0')) {
+      cleanMobile = cleanMobile.slice(-10);
+    }
+    if (!cleanMobile) return;
+
+    await db.query("DELETE FROM node_partners WHERE mobile = ? OR phone_number = ?", [cleanMobile, cleanMobile]);
+    await db.query("DELETE FROM partners WHERE mobile = ?", [cleanMobile]);
+    console.log(`[MySQL] Deleted partner (${cleanMobile}) from 'node_partners' & 'partners' tables.`);
+  } catch (err) {
+    console.error(`[MySQL] Delete partner ${mobileNumber} failed:`, err.message);
+  }
+}
+
 module.exports = {
   getDbPool,
   initMysqlDatabase,
   saveOtpToMysql,
   syncUserToMysql,
-  fetchUsersFromMysql
+  fetchUsersFromMysql,
+  deleteUserFromMysql
 };
+

@@ -227,6 +227,11 @@ async function runTests() {
       console.assert(withdrawRes.status === 200, "Withdrawal 200");
       console.assert(withdrawRes.body.data.bank_account.bank_name === "State Bank of India", "Bank account included in withdrawal");
 
+      console.log("\n15. Testing Delete Account API (DELETE /profile)...");
+      const deleteRes = await request('DELETE', '/profile', { reason: "Testing account deletion" }, newAuthHeader);
+      console.assert(deleteRes.status === 200, "Delete account 200");
+      console.assert(deleteRes.body.data.user_id === newUserId, "Correct user deleted");
+
       console.log("\n✅ ALL PARTNER API & PERSISTENCE TESTS PASSED SUCCESSFULLY!");
       server.close();
       process.exit(0);

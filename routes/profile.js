@@ -5,6 +5,7 @@ const { users, partnerBookings, partnerTransactions, normalizeCountryCode, saveU
 const { authenticateToken } = require('../middleware/auth');
 const { validateVerhoeff } = require('../utils/verhoeff');
 const { encrypt, decrypt } = require('../utils/crypto');
+const { deleteUserFromMysql } = require('../config/database');
 
 // Configure multer storage
 const storage = multer.memoryStorage();
@@ -488,4 +489,49 @@ router.put('/', authenticateToken, (req, res) => {
   });
 });
 
+// -----------------------------------------------------------------------------
+// 8.4 DELETE ACCOUNT API
+// -----------------------------------------------------------------------------
+function handleDeleteAccount(req, res) {
+  const { reason } = req.body || {};
+  const userId = req.user ? req.user.user_id : null;
+
+  if (!userId || !users.has(userId)) {
+    return res.status(404).json({
+      status: false,
+      message: "Account not found or already deleted",
+      error_code: "USER_NOT_FOUND"
+    });
+  }
+
+  const targetUser = users.get(userId);
+  const mobileNumber = targetUser ? targetUser.mobile_number : null;
+
+  // Remove from in-memory store
+  users.delete(userId);
+  saveUsers();
+
+  // Async remove from MySQL database
+  if (mobileNumber && typeof deleteUserFromMysql === 'function') {
+    deleteUserFromMysql(mobileNumber).catch(err => console.error("MySQL delete error:", err.message));
+  }
+
+  return res.status(200).json({
+    status: true,
+    message: "Account deleted successfully. All user data has been permanently removed.",
+    data: {
+      user_id: userId,
+      reason: reason || "Account deleted by user",
+      deleted_at: new Date().toISOString()
+    }
+  });
+}
+
+// Bind Delete Account Route Aliases
+router.delete('/', authenticateToken, handleDeleteAccount);
+router.post('/delete', authenticateToken, handleDeleteAccount);
+router.delete('/delete', authenticateToken, handleDeleteAccount);
+router.delete('/account', authenticateToken, handleDeleteAccount);
+
 module.exports = router;
+

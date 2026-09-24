@@ -12,9 +12,9 @@ const {
   PHOTO_1,
   DEFAULT_PHOTOS
 } = require('../store/db');
-const { generateTokens } = require('../middleware/auth');
+const { generateTokens, authenticateToken } = require('../middleware/auth');
 const { sendDltOtpSms } = require('../utils/sms');
-const { saveOtpToMysql } = require('../config/database');
+const { saveOtpToMysql, deleteUserFromMysql } = require('../config/database');
 
 // 1.1 Login
 router.post('/login', (req, res) => {
@@ -446,4 +446,42 @@ router.post('/register', (req, res) => {
   });
 });
 
+// 3.4 Delete Account API (/auth/delete-account)
+function handleDeleteAuthAccount(req, res) {
+  const { reason } = req.body || {};
+  const userId = req.user ? req.user.user_id : null;
+
+  if (!userId || !users.has(userId)) {
+    return res.status(404).json({
+      status: false,
+      message: "Account not found or already deleted",
+      error_code: "USER_NOT_FOUND"
+    });
+  }
+
+  const targetUser = users.get(userId);
+  const mobileNumber = targetUser ? targetUser.mobile_number : null;
+
+  users.delete(userId);
+  saveUsers();
+
+  if (mobileNumber && typeof deleteUserFromMysql === 'function') {
+    deleteUserFromMysql(mobileNumber).catch(err => console.error("MySQL delete error:", err.message));
+  }
+
+  return res.status(200).json({
+    status: true,
+    message: "Account deleted successfully. All user data has been permanently removed.",
+    data: {
+      user_id: userId,
+      reason: reason || "Account deleted by user",
+      deleted_at: new Date().toISOString()
+    }
+  });
+}
+
+router.post('/delete-account', authenticateToken, handleDeleteAuthAccount);
+router.delete('/delete-account', authenticateToken, handleDeleteAuthAccount);
+
 module.exports = router;
+
