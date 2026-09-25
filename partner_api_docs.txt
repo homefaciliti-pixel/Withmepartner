@@ -471,6 +471,45 @@ Success Response — 200 OK:
 }
 
 
+9.3 Delete Account API
+Endpoints:
+  - GET /auth/delete-account
+  - POST /auth/delete-account
+  - DELETE /auth/delete-account
+  - GET /auth/delete
+  - POST /auth/delete
+  - DELETE /auth/delete
+  - GET /profile/delete-account
+  - POST /profile/delete-account
+  - DELETE /profile/delete-account
+  - GET /profile/delete
+  - POST /profile/delete
+  - DELETE /profile/delete
+  - GET /delete-account
+  - POST /delete-account
+  - DELETE /delete-account
+Auth required: Optional / Supported
+Content-Type: application/json
+
+Query Parameters / Request Body (GET / JSON - Optional):
+{
+  "reason": "I want to delete my partner account permanently",
+  "user_id": "usr_10234",
+  "mobile_number": "9876543210"
+}
+
+Success Response — 200 OK:
+{
+  "status": true,
+  "message": "Account deleted successfully. All user data has been permanently removed.",
+  "data": {
+    "user_id": "usr_10234",
+    "reason": "I want to delete my partner account permanently",
+    "deleted_at": "2026-09-25T16:55:00.000Z"
+  }
+}
+
+
 ================================================================================
 10. SURRENDER DEED DOCUMENT API (संयुक्त बिल्डकॉन प्रा. लि. जयपुर)
 ================================================================================

@@ -16,11 +16,11 @@
     "rating": 4.8,
     "total_ratings": 120,
     "phone_verified": true,
-    "profile_photo_url": "https://withmepartner.onrender.com/uploads/photos/usr_usr_203_p1_1790252133298_q4g64.jpg",
+    "profile_photo_url": "https://withmepartner.onrender.com/uploads/photos/usr_usr_203_p1_1790334915507_bvrn9.jpg",
     "photos": [
       {
         "photo_id": "ph_001",
-        "url": "/uploads/photos/usr_usr_203_p1_1790252133298_q4g64.jpg",
+        "url": "/uploads/photos/usr_usr_203_p1_1790334915507_bvrn9.jpg",
         "is_primary": true
       },
       {
@@ -45,8 +45,7 @@
       }
     ],
     "aadhar": null,
-    "bank_account": null,
-    "failed_attempts": 0
+    "bank_account": null
   },
   {
     "user_id": "usr_201",
