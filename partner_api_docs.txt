@@ -791,4 +791,59 @@ Payload:
 ================================================================================
 
 
+================================================================================
+18. PRIVACY POLICY API
+================================================================================
+
+18.1 Get Privacy Policy
+Endpoints:
+  - GET /meta/privacy-policy
+  - GET /privacy-policy (Alias)
+  - GET /privacy (Alias)
+Auth required: No
+Content-Type: application/json
+
+Success Response — 200 OK:
+{
+  "status": true,
+  "message": "Success",
+  "data": {
+    "title": "Privacy Policy",
+    "app_name": "WithMe Partner App",
+    "effective_date": "2026-01-01",
+    "last_updated": "2026-09-25",
+    "support_email": "me24with@gmail.com",
+    "sections": [
+      {
+        "id": 1,
+        "title": "1. Information We Collect",
+        "content": "We collect information you provide directly to us when registering as a partner or updating your profile. This includes your full name, mobile number, date of birth (DOB for minimum 19 years age verification), email address, gender, location (city, state, area), profile photos, government ID details (Aadhar card for KYC verification), and bank account details for processing withdrawals."
+      },
+      {
+        "id": 2,
+        "title": "2. How We Use Your Information",
+        "content": "Your information is used strictly to provide, maintain, and improve WithMe Partner services. Specifically, we use your data to:\n- Verify your identity and eligibility (minimum 19 years old requirement).\n- Facilitate partner discovery and booking requests between users and partners.\n- Process earnings payout withdrawals to your designated bank account.\n- Send essential notifications, OTPs for account login, and transaction updates."
+      },
+      {
+        "id": 3,
+        "title": "3. Data Protection & Security",
+        "content": "We implement industry-standard encryption and security measures to protect your personal information and sensitive documents (such as Aadhar and Bank details) against unauthorized access, loss, or misuse. We do not sell or rent your personal data to third parties."
+      },
+      {
+        "id": 4,
+        "title": "4. Account Details & Modification Rights",
+        "content": "You have the right to view, update, or request deletion of your account at any time via profile settings. To update sensitive information such as bank account details after initial submission, please contact our support team directly at me24with@gmail.com."
+      },
+      {
+        "id": 5,
+        "title": "5. Contact & Support",
+        "content": "If you have any questions, concerns, or requests regarding this Privacy Policy or your data, please contact our executive support team at:\nEmail: me24with@gmail.com"
+      }
+    ],
+    "html_content": "<div style=\"font-family: Arial, sans-serif; padding: 20px;\">...</div>"
+  }
+}
+================================================================================
+
+
 
