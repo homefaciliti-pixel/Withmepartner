@@ -25,6 +25,9 @@ app.use('/profile', profileRoutes);
 app.use('/meta', metaRoutes);
 app.use('/partner', partnerRoutes);
 app.use('/documents', documentRoutes);
+app.get(['/privacy-policy', '/privacy'], (req, res) => {
+  res.redirect('/meta/privacy-policy');
+});
 
 // Root route
 app.get('/', (req, res) => {

@@ -251,6 +251,14 @@ async function runTests() {
       const hasVikram = homeRes.body.data.new_requests.some(r => r.name === "Vikram Malhotra");
       console.assert(hasVikram, "Incoming user request visible on Partner Home screen");
 
+      console.log("\n17. Testing Privacy Policy API (/meta/privacy-policy & /privacy-policy)...");
+      const privacyRes1 = await request('GET', '/meta/privacy-policy');
+      console.assert(privacyRes1.status === 200, "Privacy policy /meta 200");
+      console.assert(privacyRes1.body.data.support_email === "me24with@gmail.com", "Support email present");
+
+      const privacyRes2 = await request('GET', '/privacy-policy');
+      console.assert(privacyRes2.status === 302 || privacyRes2.status === 200, "Privacy policy root 302/200");
+
       console.log("\n✅ ALL PARTNER API & PERSISTENCE TESTS PASSED SUCCESSFULLY!");
       server.close();
       process.exit(0);
