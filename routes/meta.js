@@ -97,8 +97,8 @@ const PRIVACY_POLICY = {
   title: "Privacy Policy",
   app_name: "WithMe Partner App",
   effective_date: "2026-01-01",
-  last_updated: "2026-09-25",
-  support_email: "me24with@gmail.com",
+  last_updated: "2026-09-27",
+  support_email: "officalwithme24@withme24.com",
   sections: [
     {
       id: 1,
@@ -118,18 +118,18 @@ const PRIVACY_POLICY = {
     {
       id: 4,
       title: "4. Account Details & Modification Rights",
-      content: "You have the right to view, update, or request deletion of your account at any time via profile settings. To update sensitive information such as bank account details after initial submission, please contact our support team directly at me24with@gmail.com."
+      content: "You have the right to view, update, or request deletion of your account at any time via profile settings. To update sensitive information such as bank account details after initial submission, please contact our support team directly at officalwithme24@withme24.com or Phone: 8209343434."
     },
     {
       id: 5,
       title: "5. Contact & Support",
-      content: "If you have any questions, concerns, or requests regarding this Privacy Policy or your data, please contact our executive support team at:\nEmail: me24with@gmail.com"
+      content: "If you have any questions, concerns, or requests regarding this Privacy Policy or your data, please contact our executive support team at:\nEmail: officalwithme24@withme24.com | Phone: 8209343434"
     }
   ],
   html_content: `
     <div style="font-family: Arial, sans-serif; padding: 20px; line-height: 1.6; color: #333;">
       <h1 style="color: #111;">Privacy Policy</h1>
-      <p style="font-size: 14px; color: #666;"><strong>App Name:</strong> WithMe Partner App | <strong>Last Updated:</strong> 25 Sept 2026</p>
+      <p style="font-size: 14px; color: #666;"><strong>App Name:</strong> WithMe Partner App | <strong>Last Updated:</strong> 27 Sept 2026</p>
       <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;" />
       <h3>1. Information We Collect</h3>
       <p>We collect information you provide directly to us when registering as a partner or updating your profile. This includes your full name, mobile number, date of birth (DOB for minimum 19 years age verification), email address, gender, location, profile photos, Aadhar card details for KYC verification, and bank account details for processing withdrawals.</p>
@@ -138,9 +138,9 @@ const PRIVACY_POLICY = {
       <h3>3. Data Protection & Security</h3>
       <p>We implement industry-standard encryption to protect your personal data and sensitive KYC/Bank documents against unauthorized access. We do not sell your personal data to third parties.</p>
       <h3>4. Account Details & Modification Rights</h3>
-      <p>You can update or delete your profile via app settings. If you need to change your registered bank account details, please contact our support executive at <a href="mailto:me24with@gmail.com">me24with@gmail.com</a>.</p>
+      <p>You can update or delete your profile via app settings. If you need to change your registered bank account details, please contact our support executive at <a href="mailto:officalwithme24@withme24.com">officalwithme24@withme24.com</a> or Phone: 8209343434.</p>
       <h3>5. Contact & Support</h3>
-      <p>For support or privacy inquiries, email us at <a href="mailto:me24with@gmail.com">me24with@gmail.com</a>.</p>
+      <p>For support or privacy inquiries, email us at <a href="mailto:officalwithme24@withme24.com">officalwithme24@withme24.com</a> or call 8209343434.</p>
     </div>
   `
 };
@@ -151,6 +151,32 @@ router.get(['/privacy-policy', '/privacy'], (req, res) => {
     status: true,
     message: "Success",
     data: PRIVACY_POLICY
+  });
+});
+
+// Meta Support Dataset
+const SUPPORT_DATA = {
+  app_name: "WithMe Partner App",
+  title: "Customer Support & Executive Helpdesk",
+  support_email: "officalwithme24@withme24.com",
+  email: "officalwithme24@withme24.com",
+  contact_email: "officalwithme24@withme24.com",
+  phone_number: "8209343434",
+  mobile_number: "8209343434",
+  helpline_number: "+91 8209343434",
+  whatsapp_number: "+91 8209343434",
+  working_hours: "10:00 AM - 07:00 PM (Monday to Saturday)",
+  address: "Jaipur, Rajasthan, India",
+  description: "If you have any questions, need to update your bank account details, or require account assistance, please contact our support executive.",
+  support_note: "Please fill all the details carefully. If you need to change your account details and add new account details, please contact our support executive via Mail: officalwithme24@withme24.com or Phone: 8209343434"
+};
+
+// GET /meta/support and GET /support
+router.get(['/support', '/contact', '/help'], (req, res) => {
+  return res.status(200).json({
+    status: true,
+    message: "Success",
+    data: SUPPORT_DATA
   });
 });
 

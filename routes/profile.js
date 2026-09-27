@@ -526,6 +526,7 @@ function handleDeleteAccount(req, res) {
 }
 
 // Bind Delete Account Route Aliases (GET, POST & DELETE)
+router.delete('/', authenticateToken, handleDeleteAccount);
 router.get('/delete-account', authenticateToken, handleDeleteAccount);
 router.post('/delete-account', authenticateToken, handleDeleteAccount);
 router.delete('/delete-account', authenticateToken, handleDeleteAccount);

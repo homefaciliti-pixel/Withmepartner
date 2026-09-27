@@ -659,19 +659,19 @@ Success Response — 200 OK:
       "added_at": "2026-09-24T15:25:00.000Z"
     },
     "account_added": true,
-    "support_note": "Please fill all the details carefully. If you need to change your account details and add new account details, please contact our support executive via Mail: me24with@gmail.com"
+    "support_note": "Please fill all the details carefully. If you need to change your account details and add new account details, please contact our support executive via Mail: officalwithme24@withme24.com or Phone: 8209343434"
   }
 }
 
 If Already Added (Locked Error) — 400 Bad Request:
 {
   "status": false,
-  "message": "Bank account details have already been submitted and locked. To change account details, please contact support at me24with@gmail.com",
+  "message": "Bank account details have already been submitted and locked. To change account details, please contact support at officalwithme24@withme24.com or Phone: 8209343434",
   "error_code": "BANK_ACCOUNT_LOCKED",
   "data": {
     "bank_account": { ... },
     "account_added": true,
-    "support_note": "Please fill all the details carefully. If you need to change your account details and add new account details, please contact our support executive via Mail: me24with@gmail.com"
+    "support_note": "Please fill all the details carefully. If you need to change your account details and add new account details, please contact our support executive via Mail: officalwithme24@withme24.com or Phone: 8209343434"
   }
 }
 
@@ -695,7 +695,7 @@ Success Response — 200 OK:
       "upi_id": "rahul@upi"
     },
     "account_added": true,
-    "support_note": "Please fill all the details carefully. If you need to change your account details and add new account details, please contact our support executive via Mail: me24with@gmail.com"
+    "support_note": "Please fill all the details carefully. If you need to change your account details and add new account details, please contact our support executive via Mail: officalwithme24@withme24.com or Phone: 8209343434"
   }
 }
 
@@ -721,7 +721,7 @@ Success Response — 200 OK:
     "amount": 1000,
     "status": "Pending",
     "bank_account": { ... },
-    "support_note": "Please fill all the details carefully. If you need to change your account details and add new account details, please contact our support executive via Mail: me24with@gmail.com"
+    "support_note": "Please fill all the details carefully. If you need to change your account details and add new account details, please contact our support executive via Mail: officalwithme24@withme24.com or Phone: 8209343434"
   }
 }
 
@@ -871,15 +871,51 @@ Success Response — 200 OK:
       {
         "id": 4,
         "title": "4. Account Details & Modification Rights",
-        "content": "You have the right to view, update, or request deletion of your account at any time via profile settings. To update sensitive information such as bank account details after initial submission, please contact our support team directly at me24with@gmail.com."
+        "content": "You have the right to view, update, or request deletion of your account at any time via profile settings. To update sensitive information such as bank account details after initial submission, please contact our support team directly at officalwithme24@withme24.com or Phone: 8209343434."
       },
       {
         "id": 5,
         "title": "5. Contact & Support",
-        "content": "If you have any questions, concerns, or requests regarding this Privacy Policy or your data, please contact our executive support team at:\nEmail: me24with@gmail.com"
+        "content": "If you have any questions, concerns, or requests regarding this Privacy Policy or your data, please contact our executive support team at:\nEmail: officalwithme24@withme24.com | Phone: 8209343434"
       }
     ],
     "html_content": "<div style=\"font-family: Arial, sans-serif; padding: 20px;\">...</div>"
+  }
+}
+================================================================================
+
+
+================================================================================
+19. META SUPPORT API (HELP & CUSTOMER SUPPORT)
+================================================================================
+
+19.1 Get Meta Support & Contact Information
+Endpoints:
+  - GET /meta/support
+  - GET /support (Alias)
+  - GET /contact (Alias)
+  - GET /help (Alias)
+Auth required: No
+Content-Type: application/json
+
+Success Response — 200 OK:
+{
+  "status": true,
+  "message": "Success",
+  "data": {
+    "app_name": "WithMe Partner App",
+    "title": "Customer Support & Executive Helpdesk",
+    "support_email": "officalwithme24@withme24.com",
+    "email": "officalwithme24@withme24.com",
+    "contact_email": "officalwithme24@withme24.com",
+    "phone_number": "8209343434",
+    "mobile_number": "8209343434",
+    "helpline_number": "+91 8209343434",
+    "whatsapp_number": "+91 8209343434",
+    "working_hours": "10:00 AM - 07:00 PM (Monday to Saturday)",
+    "address": "Jaipur, Rajasthan, India",
+    "description": "If you have any questions, need to update your bank account details, or require account assistance, please contact our support executive.",
+    "support_note": "Please fill all the details carefully. If you need to change your account details and add new account details, please contact our support executive via Mail: officalwithme24@withme24.com or Phone: 8209343434"
   }
 }
 ================================================================================

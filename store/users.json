@@ -45,7 +45,8 @@
       }
     ],
     "aadhar": null,
-    "bank_account": null
+    "bank_account": null,
+    "failed_attempts": 0
   },
   {
     "user_id": "usr_201",
@@ -295,5 +296,65 @@
     ],
     "aadhar": null,
     "bank_account": null
+  },
+  {
+    "user_id": "usr_70644",
+    "name": "Test User",
+    "country_code": "+91",
+    "mobile_number": "9123306297",
+    "email": "user_1790499053559@example.com",
+    "gender": "Female",
+    "dob": "2000-01-01",
+    "area": "Raja Park",
+    "city": "Jaipur",
+    "state": "Rajasthan",
+    "pincode": "302004",
+    "password": "NewUserPass123",
+    "profile_completed": false,
+    "profile_step_pending": "PROFILE_PHOTO",
+    "failed_attempts": 0,
+    "locked": false,
+    "rating": 0,
+    "total_ratings": 0,
+    "phone_verified": true,
+    "profile_photo_url": "/uploads/photos/photo_1.jpg",
+    "photos": [
+      {
+        "photo_id": "ph_001",
+        "url": "/uploads/photos/photo_1.jpg",
+        "is_primary": true
+      },
+      {
+        "photo_id": "ph_002",
+        "url": "/uploads/photos/photo_2.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_003",
+        "url": "/uploads/photos/photo_3.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_004",
+        "url": "/uploads/photos/photo_4.jpg",
+        "is_primary": false
+      },
+      {
+        "photo_id": "ph_005",
+        "url": "/uploads/photos/photo_5.jpg",
+        "is_primary": false
+      }
+    ],
+    "aadhar": null,
+    "about": null,
+    "availability": null,
+    "bank_account": {
+      "account_holder_name": "Rahul Sharma",
+      "bank_name": "State Bank of India",
+      "account_number": "30123456789",
+      "ifsc_code": "SBIN0001234",
+      "upi_id": "rahul@upi",
+      "added_at": "2026-09-27T08:50:53.732Z"
+    }
   }
 ]

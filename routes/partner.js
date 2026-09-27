@@ -820,7 +820,7 @@ router.patch('/availability/receive-requests', authenticateToken, (req, res) => 
 // 15. WITHDRAW & BANK ACCOUNT DETAILS API
 // -----------------------------------------------------------------------------
 
-const SUPPORT_NOTE = "Please fill all the details carefully. If you need to change your account details and add new account details, please contact our support executive via Mail: me24with@gmail.com";
+const SUPPORT_NOTE = "Please fill all the details carefully. If you need to change your account details and add new account details, please contact our support executive via Mail: officalwithme24@withme24.com or Phone: 8209343434";
 
 // Helper to save Bank Account Details
 function handleSaveBankAccount(req, res) {
@@ -834,7 +834,7 @@ function handleSaveBankAccount(req, res) {
   if (user.bank_account) {
     return res.status(400).json({
       status: false,
-      message: "Bank account details have already been submitted and locked. To change account details, please contact support at me24with@gmail.com",
+      message: "Bank account details have already been submitted and locked. To change account details, please contact support at officalwithme24@withme24.com or Phone: 8209343434",
       error_code: "BANK_ACCOUNT_LOCKED",
       data: {
         bank_account: user.bank_account,

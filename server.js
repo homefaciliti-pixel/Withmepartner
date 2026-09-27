@@ -30,6 +30,9 @@ app.use('/', profileRoutes);
 app.get(['/privacy-policy', '/privacy'], (req, res) => {
   res.redirect('/meta/privacy-policy');
 });
+app.get(['/support', '/contact', '/help'], (req, res) => {
+  res.redirect('/meta/support');
+});
 
 // Root route
 app.get('/', (req, res) => {

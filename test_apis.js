@@ -197,7 +197,7 @@ async function runTests() {
       console.log("\n11. Testing Get Bank Account API (/partner/withdraw/bank-account)...");
       const getBankRes = await request('GET', '/partner/withdraw/bank-account', null, newAuthHeader);
       console.assert(getBankRes.status === 200, "Get Bank Account 200");
-      console.assert(getBankRes.body.data.support_note.includes("me24with@gmail.com"), "Contains support email note");
+      console.assert(getBankRes.body.data.support_note.includes("officalwithme24@withme24.com"), "Contains support email note");
 
       console.log("\n12. Testing Save Bank Account API (/partner/withdraw/bank-account)...");
       const saveBankRes = await request('POST', '/partner/withdraw/bank-account', {
@@ -209,7 +209,7 @@ async function runTests() {
       }, newAuthHeader);
       console.assert(saveBankRes.status === 200, "Save Bank Account 200");
       console.assert(saveBankRes.body.data.bank_account.account_number === "30123456789", "Account number saved");
-      console.assert(saveBankRes.body.data.support_note.includes("me24with@gmail.com"), "Support note returned");
+      console.assert(saveBankRes.body.data.support_note.includes("officalwithme24@withme24.com"), "Support note returned");
 
       console.log("\n13. Testing Bank Account Single Addition Restriction (Second Save Attempt)...");
       const secondSaveBankRes = await request('POST', '/partner/withdraw/bank-account', {
@@ -220,7 +220,7 @@ async function runTests() {
       }, newAuthHeader);
       console.assert(secondSaveBankRes.status === 400, "Second save blocked with 400");
       console.assert(secondSaveBankRes.body.error_code === "BANK_ACCOUNT_LOCKED", "BANK_ACCOUNT_LOCKED code");
-      console.assert(secondSaveBankRes.body.data.support_note.includes("me24with@gmail.com"), "Support note present in locked response");
+      console.assert(secondSaveBankRes.body.data.support_note.includes("officalwithme24@withme24.com"), "Support note present in locked response");
 
       console.log("\n14. Testing Submit Withdrawal Request API (/partner/withdraw)...");
       const withdrawRes = await request('POST', '/partner/withdraw', { amount: 1000 }, newAuthHeader);
@@ -254,10 +254,19 @@ async function runTests() {
       console.log("\n17. Testing Privacy Policy API (/meta/privacy-policy & /privacy-policy)...");
       const privacyRes1 = await request('GET', '/meta/privacy-policy');
       console.assert(privacyRes1.status === 200, "Privacy policy /meta 200");
-      console.assert(privacyRes1.body.data.support_email === "me24with@gmail.com", "Support email present");
+      console.assert(privacyRes1.body.data.support_email === "officalwithme24@withme24.com", "Support email present");
 
       const privacyRes2 = await request('GET', '/privacy-policy');
       console.assert(privacyRes2.status === 302 || privacyRes2.status === 200, "Privacy policy root 302/200");
+
+      console.log("\n18. Testing Meta Support API (/meta/support & /support)...");
+      const supportRes1 = await request('GET', '/meta/support');
+      console.assert(supportRes1.status === 200, "Meta support 200");
+      console.assert(supportRes1.body.data.support_email === "officalwithme24@withme24.com", "Support email verified");
+      console.assert(supportRes1.body.data.phone_number === "8209343434", "Support phone number verified");
+
+      const supportRes2 = await request('GET', '/support');
+      console.assert(supportRes2.status === 302 || supportRes2.status === 200, "Support root 302/200");
 
       console.log("\n✅ ALL PARTNER API & PERSISTENCE TESTS PASSED SUCCESSFULLY!");
       server.close();
