@@ -921,4 +921,65 @@ Success Response — 200 OK:
 ================================================================================
 
 
+================================================================================
+20. CHILD SAFETY STANDARDS API (WITHME24)
+================================================================================
+
+20.1 Get Child Safety Standards
+Endpoints:
+  - GET /meta/child-safety
+  - GET /child-safety (Alias)
+  - GET /child-safety-standards (Alias)
+  - GET /childsafety (Alias)
+Auth required: No
+Content-Type: application/json
+
+Success Response — 200 OK:
+{
+  "status": true,
+  "message": "Success",
+  "data": {
+    "title": "Child Safety Standards",
+    "app_name": "WithMe24",
+    "last_updated": "September 26, 2026",
+    "contact_email": "officalwithme24@withme24.com",
+    "minimum_age": 18,
+    "sections": [
+      {
+        "id": 1,
+        "title": "1. Adults Only",
+        "content": "WithMe24 is strictly intended for users who are 18 years of age or older. Users under the age of 18 are not permitted to register, create an account, or use WithMe24."
+      },
+      {
+        "id": 2,
+        "title": "2. Child Safety",
+        "content": "WithMe24 has zero tolerance for child sexual abuse and exploitation (CSAE) and child sexual abuse material (CSAM). We do not permit any content, behavior, or activity that sexually exploits or endangers children."
+      },
+      {
+        "id": 3,
+        "title": "3. Reporting",
+        "content": "Users can report inappropriate or abusive content or behavior through the reporting functionality available in the WithMe24 application. Reports involving child safety are taken seriously and may result in content removal, account suspension, or account termination."
+      },
+      {
+        "id": 4,
+        "title": "4. Enforcement",
+        "content": "WithMe24 may take appropriate action against accounts that violate our safety standards, including removing content and suspending or permanently terminating accounts."
+      },
+      {
+        "id": 5,
+        "title": "5. Contact",
+        "content": "For child-safety concerns or to report suspected child sexual exploitation, please contact us at Email: officalwithme24@withme24.com. We review child-safety reports and take appropriate action in accordance with applicable laws and platform requirements."
+      },
+      {
+        "id": 6,
+        "title": "6. Age Restriction",
+        "content": "WithMe24 is an 18+ service. Individuals under 18 are not eligible to use the service."
+      }
+    ],
+    "html_content": "<div style=\"font-family: Arial, sans-serif; padding: 20px;\">...</div>"
+  }
+}
+================================================================================
+
+
 

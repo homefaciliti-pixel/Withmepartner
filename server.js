@@ -27,11 +27,15 @@ app.use('/partner', partnerRoutes);
 app.use('/documents', documentRoutes);
 app.use('/', authRoutes);
 app.use('/', profileRoutes);
+app.use('/', metaRoutes);
 app.get(['/privacy-policy', '/privacy'], (req, res) => {
   res.redirect('/meta/privacy-policy');
 });
 app.get(['/support', '/contact', '/help'], (req, res) => {
   res.redirect('/meta/support');
+});
+app.get(['/child-safety', '/child-safety-standards', '/child-safety-policy', '/childsafety'], (req, res) => {
+  res.redirect('/meta/child-safety');
 });
 
 // Root route

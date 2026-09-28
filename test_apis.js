@@ -268,9 +268,19 @@ async function runTests() {
       const supportRes2 = await request('GET', '/support');
       console.assert(supportRes2.status === 302 || supportRes2.status === 200, "Support root 302/200");
 
+      console.log("\n19. Testing Child Safety Standards API (/meta/child-safety & /child-safety)...");
+      const csRes1 = await request('GET', '/meta/child-safety');
+      console.assert(csRes1.status === 200, "Child safety /meta 200");
+      console.assert(csRes1.body.data.minimum_age === 18, "Minimum age 18 verified");
+      console.assert(csRes1.body.data.contact_email === "officalwithme24@withme24.com", "Child safety contact email verified");
+
+      const csRes2 = await request('GET', '/child-safety');
+      console.assert(csRes2.status === 302 || csRes2.status === 200, "Child safety root 302/200");
+
       console.log("\n✅ ALL PARTNER API & PERSISTENCE TESTS PASSED SUCCESSFULLY!");
-      server.close();
-      process.exit(0);
+      server.close(() => {
+        setTimeout(() => process.exit(0), 200);
+      });
     } catch (err) {
       console.error("\n❌ TEST FAILED:", err);
       if (server) server.close();
