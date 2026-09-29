@@ -1023,5 +1023,154 @@ router.get('/withdraw/history', authenticateToken, handleGetWithdrawals);
 router.post('/withdraw', authenticateToken, handleWithdrawRequest);
 router.post('/withdraw/request', authenticateToken, handleWithdrawRequest);
 
+// Helper to get Razorpay Withdrawable Balance & Payout Details
+function handleGetWithdrawable(req, res) {
+  const user = users.get(req.user.user_id);
+  if (!user) {
+    return res.status(404).json({ status: false, message: "User not found", error_code: "USER_NOT_FOUND" });
+  }
+
+  const withdrawals = user.withdrawals || [];
+  const totalWithdrawn = withdrawals
+    .filter(w => w.status === 'Completed' || w.status === 'Pending' || w.status === 'PROCESSING' || w.status === 'PAID')
+    .reduce((sum, w) => sum + (Number(w.amount) || 0), 0);
+
+  const totalEarnings = 4800;
+  const commissionPercent = 15;
+  const netEarnings = Math.round(totalEarnings * (1 - commissionPercent / 100));
+  const withdrawableBalance = Math.max(0, netEarnings - totalWithdrawn);
+  const minWithdrawalAmount = 100;
+
+  return res.status(200).json({
+    status: true,
+    message: "Success",
+    data: {
+      partner_id: user.user_id,
+      name: user.name,
+      total_earnings: totalEarnings,
+      platform_commission_percent: commissionPercent,
+      net_earnings: netEarnings,
+      total_withdrawn: totalWithdrawn,
+      withdrawable_balance: withdrawableBalance,
+      minimum_withdrawal_amount: minWithdrawalAmount,
+      currency: "INR",
+      razorpay_key_id: process.env.RAZORPAY_KEY_ID || 'rzp_live_SwFaJKQjU5ZOsH',
+      payout_enabled: true,
+      bank_account: user.bank_account || null,
+      account_added: Boolean(user.bank_account),
+      support_note: SUPPORT_NOTE
+    }
+  });
+}
+
+// Helper to initiate Razorpay Withdrawable Payout / Transfer
+function handlePostWithdrawable(req, res) {
+  const { amount, payment_mode } = req.body || {};
+  const user = users.get(req.user.user_id);
+  if (!user) {
+    return res.status(404).json({ status: false, message: "User not found", error_code: "USER_NOT_FOUND" });
+  }
+
+  if (!user.bank_account) {
+    return res.status(400).json({
+      status: false,
+      message: "Please add your bank account details before initiating a withdrawal payout",
+      error_code: "BANK_ACCOUNT_REQUIRED",
+      data: {
+        bank_account: null,
+        account_added: false,
+        support_note: SUPPORT_NOTE
+      }
+    });
+  }
+
+  const withdrawAmount = Number(amount) || 500;
+  const minLimit = 100;
+
+  if (withdrawAmount < minLimit) {
+    return res.status(400).json({
+      status: false,
+      message: `Minimum withdrawal amount is ₹${minLimit}`,
+      error_code: "BELOW_MINIMUM_WITHDRAWAL_LIMIT"
+    });
+  }
+
+  const withdrawals = user.withdrawals || [];
+  const totalWithdrawn = withdrawals
+    .filter(w => w.status === 'Completed' || w.status === 'Pending' || w.status === 'PROCESSING' || w.status === 'PAID')
+    .reduce((sum, w) => sum + (Number(w.amount) || 0), 0);
+
+  const totalEarnings = 4800;
+  const commissionPercent = 15;
+  const netEarnings = Math.round(totalEarnings * (1 - commissionPercent / 100));
+  const withdrawableBalance = Math.max(0, netEarnings - totalWithdrawn);
+
+  if (withdrawAmount > withdrawableBalance) {
+    return res.status(400).json({
+      status: false,
+      message: `Requested amount ₹${withdrawAmount} exceeds your withdrawable balance of ₹${withdrawableBalance}`,
+      error_code: "INSUFFICIENT_WITHDRAWABLE_BALANCE",
+      data: {
+        requested_amount: withdrawAmount,
+        withdrawable_balance: withdrawableBalance
+      }
+    });
+  }
+
+  const randomStr = Math.random().toString(36).substring(2, 10);
+  const withdrawal_id = `wth_razor_${Date.now()}`;
+  const razorpay_payout_id = `pout_${randomStr}`;
+  const razorpay_fund_account_id = `fa_${randomStr}`;
+  const selectedMode = payment_mode ? String(payment_mode).toUpperCase() : "IMPS";
+
+  const withdrawalRecord = {
+    withdrawal_id,
+    razorpay_payout_id,
+    razorpay_fund_account_id,
+    amount: withdrawAmount,
+    currency: "INR",
+    payment_mode: selectedMode,
+    status: "PROCESSING",
+    requested_at: new Date().toISOString(),
+    bank_account: {
+      account_holder_name: user.bank_account.account_holder_name,
+      bank_name: user.bank_account.bank_name,
+      account_number: user.bank_account.account_number,
+      ifsc_code: user.bank_account.ifsc_code
+    }
+  };
+
+  if (!user.withdrawals) user.withdrawals = [];
+  user.withdrawals.unshift(withdrawalRecord);
+  saveUsers();
+
+  const remainingBalance = Math.max(0, withdrawableBalance - withdrawAmount);
+
+  return res.status(200).json({
+    status: true,
+    message: "Withdrawal payout initiated successfully via Razorpay",
+    data: {
+      withdrawal_id,
+      razorpay_payout_id,
+      razorpay_fund_account_id,
+      amount: withdrawAmount,
+      currency: "INR",
+      payment_mode: selectedMode,
+      status: "PROCESSING",
+      processed_at: withdrawalRecord.requested_at,
+      remaining_withdrawable_balance: remainingBalance,
+      bank_account: user.bank_account,
+      support_note: SUPPORT_NOTE
+    }
+  });
+}
+
+// Register Withdrawable Routes
+router.get('/withdraw/withdrawable', authenticateToken, handleGetWithdrawable);
+router.get('/withdrawable', authenticateToken, handleGetWithdrawable);
+
+router.post('/withdraw/withdrawable', authenticateToken, handlePostWithdrawable);
+router.post('/withdrawable', authenticateToken, handlePostWithdrawable);
+
 module.exports = router;
 

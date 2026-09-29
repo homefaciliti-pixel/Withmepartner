@@ -767,6 +767,75 @@ Success Response — 200 OK:
 }
 
 
+15.5 Razorpay Withdrawable Payout & Balance Details
+Endpoints:
+  - GET /partner/withdraw/withdrawable (Get Withdrawable Balance & Razorpay Info)
+  - GET /withdrawable (Alias)
+  - POST /partner/withdraw/withdrawable (Initiate Razorpay Payout)
+  - POST /withdrawable (Alias)
+Auth required: Yes (Headers: Authorization: Bearer <access_token>)
+Content-Type: application/json
+
+15.5.1 Get Withdrawable Balance (GET /partner/withdraw/withdrawable)
+Success Response — 200 OK:
+{
+  "status": true,
+  "message": "Success",
+  "data": {
+    "partner_id": "usr_10234",
+    "name": "Rahul Sharma",
+    "total_earnings": 4800,
+    "platform_commission_percent": 15,
+    "net_earnings": 4080,
+    "total_withdrawn": 1000,
+    "withdrawable_balance": 3080,
+    "minimum_withdrawal_amount": 100,
+    "currency": "INR",
+    "razorpay_key_id": "rzp_live_SwFaJKQjU5ZOsH",
+    "payout_enabled": true,
+    "bank_account": {
+      "account_holder_name": "Rahul Sharma",
+      "bank_name": "State Bank of India",
+      "account_number": "30123456789",
+      "ifsc_code": "SBIN0001234",
+      "upi_id": "rahul@upi"
+    },
+    "account_added": true,
+    "support_note": "Please fill all the details carefully. If you need to change your account details and add new account details, please contact our support executive via Mail: officalwithme24@withme24.com or Phone: 8209343434"
+  }
+}
+
+15.5.2 Initiate Payout (POST /partner/withdraw/withdrawable)
+Request Body:
+{
+  "amount": 500,
+  "payment_mode": "IMPS" // Optional: "NEFT", "IMPS", "RTGS", "UPI"
+}
+
+Success Response — 200 OK:
+{
+  "status": true,
+  "message": "Withdrawal payout initiated successfully via Razorpay",
+  "data": {
+    "withdrawal_id": "wth_razor_1790200000000",
+    "razorpay_payout_id": "pout_a1b2c3d4",
+    "razorpay_fund_account_id": "fa_a1b2c3d4",
+    "amount": 500,
+    "currency": "INR",
+    "payment_mode": "IMPS",
+    "status": "PROCESSING",
+    "processed_at": "2026-09-29T17:57:34.000Z",
+    "remaining_withdrawable_balance": 2580,
+    "bank_account": {
+      "account_holder_name": "Rahul Sharma",
+      "bank_name": "State Bank of India",
+      "account_number": "30123456789"
+    },
+    "support_note": "Please fill all the details carefully. If you need to change your account details and add new account details, please contact our support executive via Mail: officalwithme24@withme24.com or Phone: 8209343434"
+  }
+}
+
+
 ================================================================================
 16. DELETE ACCOUNT API
 ================================================================================

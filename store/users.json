@@ -45,8 +45,33 @@
       }
     ],
     "aadhar": null,
-    "bank_account": null,
-    "failed_attempts": 0
+    "bank_account": {
+      "account_holder_name": "Priya Sharma",
+      "bank_name": "State Bank of India",
+      "account_number": "30123456789",
+      "ifsc_code": "SBIN0001234",
+      "upi_id": "priya@upi",
+      "added_at": "2026-09-29T12:32:40.231Z"
+    },
+    "failed_attempts": 0,
+    "withdrawals": [
+      {
+        "withdrawal_id": "wth_razor_1790685160240",
+        "razorpay_payout_id": "pout_tdo2t55n",
+        "razorpay_fund_account_id": "fa_tdo2t55n",
+        "amount": 500,
+        "currency": "INR",
+        "payment_mode": "IMPS",
+        "status": "PROCESSING",
+        "requested_at": "2026-09-29T12:32:40.240Z",
+        "bank_account": {
+          "account_holder_name": "Priya Sharma",
+          "bank_name": "State Bank of India",
+          "account_number": "30123456789",
+          "ifsc_code": "SBIN0001234"
+        }
+      }
+    ]
   },
   {
     "user_id": "usr_201",

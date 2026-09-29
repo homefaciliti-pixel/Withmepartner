@@ -282,6 +282,25 @@ async function runTests() {
       console.assert(getWithdrawRes.status === 200, "Get withdrawal history 200");
       console.assert(Array.isArray(getWithdrawRes.body.data.withdrawals), "Withdrawals list returned");
 
+      console.log("\n21. Testing Razorpay Withdrawable API (/partner/withdraw/withdrawable & /withdrawable)...");
+      await request('POST', '/partner/withdraw/bank-account', {
+        account_holder_name: "Priya Sharma",
+        bank_name: "State Bank of India",
+        account_number: "30123456789",
+        ifsc_code: "SBIN0001234",
+        upi_id: "priya@upi"
+      }, authHeader);
+
+      const getWithdrawableRes = await request('GET', '/partner/withdraw/withdrawable', null, authHeader);
+      console.assert(getWithdrawableRes.status === 200, "Get withdrawable 200");
+      console.assert(getWithdrawableRes.body.data.razorpay_key_id === "rzp_live_SwFaJKQjU5ZOsH", "Razorpay Key ID verified");
+      console.assert(typeof getWithdrawableRes.body.data.withdrawable_balance === "number", "Withdrawable balance number");
+
+      const postWithdrawableRes = await request('POST', '/partner/withdraw/withdrawable', { amount: 500, payment_mode: "IMPS" }, authHeader);
+      console.assert(postWithdrawableRes.status === 200, "Post withdrawable payout 200");
+      console.assert(postWithdrawableRes.body.data.amount === 500, "Payout amount 500 verified");
+      console.assert(postWithdrawableRes.body.data.status === "PROCESSING", "Payout status PROCESSING verified");
+
       console.log("\n✅ ALL PARTNER API & PERSISTENCE TESTS PASSED SUCCESSFULLY!");
       server.close(() => {
         setTimeout(() => process.exit(0), 200);

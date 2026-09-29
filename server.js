@@ -28,6 +28,7 @@ app.use('/documents', documentRoutes);
 app.use('/', authRoutes);
 app.use('/', profileRoutes);
 app.use('/', metaRoutes);
+app.use('/', partnerRoutes);
 app.get(['/privacy-policy', '/privacy'], (req, res) => {
   res.redirect('/meta/privacy-policy');
 });
