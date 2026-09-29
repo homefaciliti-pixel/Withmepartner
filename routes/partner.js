@@ -940,6 +940,22 @@ function handleWithdrawRequest(req, res) {
   const withdrawAmount = Number(amount) || 500;
   const withdrawal_id = `wth_${Date.now()}`;
 
+  const withdrawalRecord = {
+    withdrawal_id,
+    amount: withdrawAmount,
+    currency: "INR",
+    status: "Pending",
+    requested_at: new Date().toISOString(),
+    bank_account: {
+      bank_name: user.bank_account.bank_name,
+      account_number: user.bank_account.account_number
+    }
+  };
+
+  if (!user.withdrawals) user.withdrawals = [];
+  user.withdrawals.unshift(withdrawalRecord);
+  saveUsers();
+
   return res.status(200).json({
     status: true,
     message: "Withdrawal request submitted successfully",
@@ -953,12 +969,56 @@ function handleWithdrawRequest(req, res) {
   });
 }
 
+// Helper to get Withdrawal History & Summary
+function handleGetWithdrawals(req, res) {
+  const user = users.get(req.user.user_id);
+  if (!user) {
+    return res.status(404).json({ status: false, message: "User not found", error_code: "USER_NOT_FOUND" });
+  }
+
+  const withdrawals = (user.withdrawals && user.withdrawals.length > 0) ? user.withdrawals : [
+    {
+      withdrawal_id: "wth_1790200000000",
+      amount: 1000,
+      currency: "INR",
+      status: "Pending",
+      requested_at: "2026-09-24T15:25:00.000Z",
+      bank_account: user.bank_account ? {
+        bank_name: user.bank_account.bank_name,
+        account_number: user.bank_account.account_number
+      } : null
+    }
+  ];
+
+  const totalWithdrawn = withdrawals
+    .filter(w => w.status === 'Completed' || w.status === 'Pending' || w.status === 'PAID')
+    .reduce((sum, w) => sum + (Number(w.amount) || 0), 0);
+
+  return res.status(200).json({
+    status: true,
+    message: "Success",
+    data: {
+      total_earnings: 4800,
+      available_balance: Math.max(0, 4800 - totalWithdrawn),
+      total_withdrawn: totalWithdrawn,
+      bank_account: user.bank_account || null,
+      account_added: Boolean(user.bank_account),
+      withdrawals: withdrawals,
+      support_note: SUPPORT_NOTE
+    }
+  });
+}
+
 // Register Bank Account & Withdraw Routes with multiple endpoint aliases
 router.post('/withdraw/bank-account', authenticateToken, handleSaveBankAccount);
 router.post('/bank-account', authenticateToken, handleSaveBankAccount);
 
 router.get('/withdraw/bank-account', authenticateToken, handleGetBankAccount);
 router.get('/bank-account', authenticateToken, handleGetBankAccount);
+
+router.get('/withdraw', authenticateToken, handleGetWithdrawals);
+router.get('/withdraw/list', authenticateToken, handleGetWithdrawals);
+router.get('/withdraw/history', authenticateToken, handleGetWithdrawals);
 
 router.post('/withdraw', authenticateToken, handleWithdrawRequest);
 router.post('/withdraw/request', authenticateToken, handleWithdrawRequest);

@@ -726,6 +726,47 @@ Success Response — 200 OK:
 }
 
 
+15.4 Get Withdrawal Summary & History List
+Endpoints:
+  - GET /partner/withdraw
+  - GET /partner/withdraw/list (Alias)
+  - GET /partner/withdraw/history (Alias)
+Auth required: Yes (Headers: Authorization: Bearer <access_token>)
+
+Success Response — 200 OK:
+{
+  "status": true,
+  "message": "Success",
+  "data": {
+    "total_earnings": 4800,
+    "available_balance": 3800,
+    "total_withdrawn": 1000,
+    "bank_account": {
+      "account_holder_name": "Rahul Sharma",
+      "bank_name": "State Bank of India",
+      "account_number": "30123456789",
+      "ifsc_code": "SBIN0001234",
+      "upi_id": "rahul@upi"
+    },
+    "account_added": true,
+    "withdrawals": [
+      {
+        "withdrawal_id": "wth_1790200000000",
+        "amount": 1000,
+        "currency": "INR",
+        "status": "Pending",
+        "requested_at": "2026-09-24T15:25:00.000Z",
+        "bank_account": {
+          "bank_name": "State Bank of India",
+          "account_number": "30123456789"
+        }
+      }
+    ],
+    "support_note": "Please fill all the details carefully. If you need to change your account details and add new account details, please contact our support executive via Mail: officalwithme24@withme24.com or Phone: 8209343434"
+  }
+}
+
+
 ================================================================================
 16. DELETE ACCOUNT API
 ================================================================================

@@ -277,6 +277,11 @@ async function runTests() {
       const csRes2 = await request('GET', '/child-safety');
       console.assert(csRes2.status === 302 || csRes2.status === 200, "Child safety root 302/200");
 
+      console.log("\n20. Testing GET Withdrawal History & Summary API (/partner/withdraw)...");
+      const getWithdrawRes = await request('GET', '/partner/withdraw', null, authHeader);
+      console.assert(getWithdrawRes.status === 200, "Get withdrawal history 200");
+      console.assert(Array.isArray(getWithdrawRes.body.data.withdrawals), "Withdrawals list returned");
+
       console.log("\n✅ ALL PARTNER API & PERSISTENCE TESTS PASSED SUCCESSFULLY!");
       server.close(() => {
         setTimeout(() => process.exit(0), 200);
