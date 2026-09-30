@@ -1,15 +1,22 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const http = require('http');
 
 const authRoutes = require('./routes/auth');
 const profileRoutes = require('./routes/profile');
 const metaRoutes = require('./routes/meta');
 const partnerRoutes = require('./routes/partner');
 const documentRoutes = require('./routes/documents');
+const chatRoutes = require('./routes/chat');
+const { initChatSocket } = require('./sockets/chatSocket');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+const server = http.createServer(app);
+
+// Initialize Socket.IO with existing HTTP Server
+const io = initChatSocket(server);
 
 // Middlewares
 app.use(cors());
@@ -20,6 +27,8 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Register routes
+app.use('/api/chat', chatRoutes);
+app.use('/chat', chatRoutes);
 app.use('/auth', authRoutes);
 app.use('/profile', profileRoutes);
 app.use('/meta', metaRoutes);
@@ -68,9 +77,11 @@ app.use((err, req, res, next) => {
 });
 
 if (require.main === module) {
-  app.listen(PORT, () => {
+  server.listen(PORT, () => {
     console.log(`🚀 Partner App API server running at http://localhost:${PORT}`);
   });
 }
 
 module.exports = app;
+module.exports.server = server;
+

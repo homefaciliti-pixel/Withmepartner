@@ -56,6 +56,54 @@
     "failed_attempts": 0,
     "withdrawals": [
       {
+        "withdrawal_id": "wth_razor_1790751762906",
+        "razorpay_payout_id": "pout_vu7ga67t",
+        "razorpay_fund_account_id": "fa_vu7ga67t",
+        "amount": 500,
+        "currency": "INR",
+        "payment_mode": "IMPS",
+        "status": "PROCESSING",
+        "requested_at": "2026-09-30T07:02:42.906Z",
+        "bank_account": {
+          "account_holder_name": "Priya Sharma",
+          "bank_name": "State Bank of India",
+          "account_number": "30123456789",
+          "ifsc_code": "SBIN0001234"
+        }
+      },
+      {
+        "withdrawal_id": "wth_razor_1790751711309",
+        "razorpay_payout_id": "pout_5eopiare",
+        "razorpay_fund_account_id": "fa_5eopiare",
+        "amount": 500,
+        "currency": "INR",
+        "payment_mode": "IMPS",
+        "status": "PROCESSING",
+        "requested_at": "2026-09-30T07:01:51.309Z",
+        "bank_account": {
+          "account_holder_name": "Priya Sharma",
+          "bank_name": "State Bank of India",
+          "account_number": "30123456789",
+          "ifsc_code": "SBIN0001234"
+        }
+      },
+      {
+        "withdrawal_id": "wth_razor_1790751577594",
+        "razorpay_payout_id": "pout_o5sgqapw",
+        "razorpay_fund_account_id": "fa_o5sgqapw",
+        "amount": 500,
+        "currency": "INR",
+        "payment_mode": "IMPS",
+        "status": "PROCESSING",
+        "requested_at": "2026-09-30T06:59:37.594Z",
+        "bank_account": {
+          "account_holder_name": "Priya Sharma",
+          "bank_name": "State Bank of India",
+          "account_number": "30123456789",
+          "ifsc_code": "SBIN0001234"
+        }
+      },
+      {
         "withdrawal_id": "wth_razor_1790748995236",
         "razorpay_payout_id": "pout_o8yu3dpn",
         "razorpay_fund_account_id": "fa_o8yu3dpn",
@@ -120,7 +168,8 @@
       }
     ],
     "aadhar": null,
-    "bank_account": null
+    "bank_account": null,
+    "failed_attempts": 0
   },
   {
     "user_id": "usr_102",

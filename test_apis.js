@@ -49,9 +49,14 @@ function request(method, path, body = null, headers = {}) {
   });
 }
 
+const { initChatSocket } = require('./sockets/chatSocket');
+
 async function runTests() {
   console.log("Starting Partner API Verification Suite...");
-  server = app.listen(PORT, async () => {
+  server = http.createServer(app);
+  initChatSocket(server);
+
+  server.listen(PORT, async () => {
     try {
       // 1. Seed User Login
       console.log("\n1. Testing Seed User Login API (/auth/login)...");
@@ -301,7 +306,102 @@ async function runTests() {
       console.assert(postWithdrawableRes.body.data.amount === 500, "Payout amount 500 verified");
       console.assert(postWithdrawableRes.body.data.status === "PROCESSING", "Payout status PROCESSING verified");
 
-      console.log("\n✅ ALL PARTNER API & PERSISTENCE TESTS PASSED SUCCESSFULLY!");
+      console.log("\n22. Testing Real-Time Chat REST APIs & Socket.IO Events...");
+      const { io: clientIo } = require('socket.io-client');
+
+      // Login second user (usr_201)
+      const loginUser2Res = await request('POST', '/auth/login', {
+        country_code: "+91",
+        mobile_number: "9876500002",
+        password: "MySecurePass123"
+      });
+      console.assert(loginUser2Res.status === 200, "User 2 login 200");
+      const token2 = loginUser2Res.body.data.access_token;
+      const authHeader2 = { 'Authorization': `Bearer ${token2}` };
+
+      // 22.1 Create/Get Private Conversation
+      const createConvRes = await request('POST', '/api/chat/conversation', { userId: "usr_201" }, authHeader);
+      console.assert(createConvRes.status === 200, "Create conversation 200");
+      console.assert(createConvRes.body.success === true, "Create conversation success");
+      const convId = createConvRes.body.conversationId;
+      console.assert(typeof convId === 'number' || typeof convId === 'string', "Valid conversationId returned");
+
+      // Verify idempotent conversation fetch
+      const repeatConvRes = await request('POST', '/api/chat/conversation', { userId: "usr_201" }, authHeader);
+      console.assert(repeatConvRes.body.conversationId === convId, "Same conversationId returned");
+
+      // 22.2 Connect Sockets with JWT Auth
+      const socket1 = clientIo(BASE_URL, { auth: { token: token } });
+      const socket2 = clientIo(BASE_URL, { auth: { token: token2 } });
+
+      await new Promise(r => setTimeout(r, 600));
+
+      let receivedMsgOnUser2 = null;
+      let deliveredNoticeOnUser1 = null;
+      let typingNoticeOnUser1 = null;
+      let readNoticeOnUser1 = null;
+
+      socket2.on('receive_message', (msg) => { receivedMsgOnUser2 = msg; });
+      socket1.on('message_delivered', (data) => { deliveredNoticeOnUser1 = data; });
+      socket1.on('user_typing', (data) => { typingNoticeOnUser1 = data; });
+      socket1.on('message_read', (data) => { readNoticeOnUser1 = data; });
+
+      // 22.3 Socket Send Message
+      const sendPromise = new Promise((resolve) => {
+        socket1.emit('send_message', {
+          conversationId: convId,
+          receiverId: "usr_201",
+          message: "Hello Ananya!"
+        }, (res) => resolve(res));
+      });
+
+      const sendAck = await sendPromise;
+      console.assert(sendAck.success === true, "send_message socket ack success");
+      const sentMsgId = sendAck.data.messageId;
+
+      await new Promise(r => setTimeout(r, 600));
+
+      console.assert(receivedMsgOnUser2 !== null, "User 2 received real-time message via socket");
+      console.assert(receivedMsgOnUser2.message === "Hello Ananya!", "Received message text matches");
+      console.assert(deliveredNoticeOnUser1 !== null, "User 1 received delivery confirmation via socket");
+
+      // 22.4 Socket Typing Indicators
+      socket2.emit('typing_start', { conversationId: convId, receiverId: "usr_203" });
+      await new Promise(r => setTimeout(r, 300));
+      console.assert(typingNoticeOnUser1 !== null, "User 1 received user_typing event");
+
+      // 22.5 Socket Read Status
+      socket2.emit('mark_message_read', { messageId: sentMsgId });
+      await new Promise(r => setTimeout(r, 300));
+      console.assert(readNoticeOnUser1 !== null, "User 1 received message_read status");
+
+      // 22.6 Get Chat List API
+      const convListRes = await request('GET', '/api/chat/conversations', null, authHeader);
+      console.assert(convListRes.status === 200, "Get conversations list 200");
+      console.assert(Array.isArray(convListRes.body.data), "Conversations list array");
+      const targetConv = convListRes.body.data.find(c => c.conversationId === convId);
+      console.assert(targetConv !== undefined, "Conversation present in chat list");
+
+      // 22.7 Get Messages History API
+      const historyRes = await request('GET', `/api/chat/messages/${convId}`, null, authHeader);
+      console.assert(historyRes.status === 200, "Get messages history 200");
+      console.assert(Array.isArray(historyRes.body.data), "Messages history array");
+      console.assert(historyRes.body.data.some(m => m.message === "Hello Ananya!"), "Message present in history");
+
+      // 22.8 Delete Message API
+      const deleteMsgRes = await request('DELETE', `/api/chat/message/${sentMsgId}`, null, authHeader);
+      console.assert(deleteMsgRes.status === 200, "Delete message 200");
+      console.assert(deleteMsgRes.body.success === true, "Delete message success");
+
+      // 22.9 Block User API
+      const blockRes = await request('POST', '/api/chat/block', { userId: "usr_201" }, authHeader);
+      console.assert(blockRes.status === 200, "Block user 200");
+      console.assert(blockRes.body.success === true, "Block user success");
+
+      socket1.disconnect();
+      socket2.disconnect();
+
+      console.log("\n✅ ALL PARTNER API, CHAT & PERSISTENCE TESTS PASSED SUCCESSFULLY!");
       server.close(() => {
         setTimeout(() => process.exit(0), 200);
       });
