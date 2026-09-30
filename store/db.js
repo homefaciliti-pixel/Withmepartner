@@ -75,20 +75,30 @@ function formatPhotoUrl(urlOrPath, req) {
     return `${baseUrl}/uploads/photos/photo_1.jpg`;
   }
 
-  // If it's hardcoded localhost:5000, replace with active server/Render domain
-  if (urlOrPath.includes("localhost:5000")) {
-    return urlOrPath.replace(/https?:\/\/localhost:5000/, baseUrl);
+  let formatted = urlOrPath;
+
+  // Replace hardcoded domains with active server domain
+  if (formatted.includes("localhost:5000")) {
+    formatted = formatted.replace(/https?:\/\/localhost:5000/, baseUrl);
+  } else if (formatted.includes("withmepartner.onrender.com")) {
+    formatted = formatted.replace(/https?:\/\/withmepartner\.onrender\.com/, baseUrl);
+  } else if (formatted.startsWith('/uploads')) {
+    formatted = `${baseUrl}${formatted}`;
+  } else if (formatted.startsWith('uploads/')) {
+    formatted = `${baseUrl}/${formatted}`;
   }
 
-  // If relative path starting with /uploads or uploads
-  if (urlOrPath.startsWith('/uploads')) {
-    return `${baseUrl}${urlOrPath}`;
-  }
-  if (urlOrPath.startsWith('uploads/')) {
-    return `${baseUrl}/${urlOrPath}`;
+  // Check if target file exists on disk if it points to /uploads/
+  if (formatted.startsWith(`${baseUrl}/uploads/`)) {
+    const relPath = formatted.substring(baseUrl.length);
+    const diskPath = path.join(__dirname, '..', relPath);
+    if (!fs.existsSync(diskPath)) {
+      // Missing photo on disk, map/fallback to photo_1.jpg
+      return `${baseUrl}/uploads/photos/photo_1.jpg`;
+    }
   }
 
-  return urlOrPath;
+  return formatted;
 }
 
 // User-uploaded profile photos relative paths
