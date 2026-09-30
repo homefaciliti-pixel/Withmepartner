@@ -514,6 +514,10 @@ async function markMessageRead(messageId, receiverId) {
   let targetMsg = memoryMessages.get(mId) || memoryMessages.get(String(messageId));
 
   if (!targetMsg) {
+    targetMsg = Array.from(memoryMessages.values()).find(m => Number(m.id) === mId);
+  }
+
+  if (!targetMsg) {
     try {
       const db = getDbPool();
       const [rows] = await db.query(`SELECT * FROM messages WHERE id = ? LIMIT 1`, [mId]);

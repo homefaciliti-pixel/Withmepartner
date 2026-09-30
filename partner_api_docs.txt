@@ -1092,4 +1092,150 @@ Success Response — 200 OK:
 ================================================================================
 
 
+================================================================================
+21. REAL-TIME CHAT & MESSAGING SYSTEM (SOCKET.IO & REST APIs)
+================================================================================
+
+21.1 Create or Get Private Conversation
+Endpoint: POST /api/chat/conversation
+Auth required: Yes (Bearer Token)
+Content-Type: application/json
+
+Request Body:
+{
+  "userId": "usr_201"
+}
+
+Success Response — 200 OK:
+{
+  "success": true,
+  "conversationId": 101
+}
+
+Error Response:
+{ "success": false, "message": "User is blocked", "error_code": "BAD_REQUEST" }
+
+
+21.2 Get Chat List (User Conversations)
+Endpoint: GET /api/chat/conversations
+Auth required: Yes (Bearer Token)
+Content-Type: application/json
+
+Success Response — 200 OK:
+{
+  "success": true,
+  "data": [
+    {
+      "conversationId": 101,
+      "otherUserId": "usr_201",
+      "otherUserName": "Ananya Verma",
+      "otherUserProfileImage": "http://localhost:5000/uploads/photos/photo_2.jpg",
+      "lastMessage": "Hello Ananya!",
+      "lastMessageTime": "2026-09-30T12:30:00.000Z",
+      "unreadCount": 1,
+      "isOnline": true
+    }
+  ]
+}
+
+
+21.3 Get Chat History
+Endpoint: GET /api/chat/messages/:conversationId
+Auth required: Yes (Bearer Token)
+Content-Type: application/json
+
+Success Response — 200 OK:
+{
+  "success": true,
+  "data": [
+    {
+      "messageId": 1001,
+      "conversationId": 101,
+      "senderId": "usr_203",
+      "receiverId": "usr_201",
+      "message": "Hello Ananya!",
+      "messageType": "text",
+      "isDelivered": true,
+      "isRead": true,
+      "createdAt": "2026-09-30T12:30:00.000Z"
+    }
+  ]
+}
+
+
+21.4 Delete Message
+Endpoint: DELETE /api/chat/message/:messageId
+Auth required: Yes (Bearer Token)
+
+Success Response — 200 OK:
+{
+  "success": true,
+  "message": "Message deleted successfully"
+}
+
+
+21.5 Block User
+Endpoint: POST /api/chat/block
+Auth required: Yes (Bearer Token)
+
+Request Body:
+{
+  "userId": "usr_201"
+}
+
+Success Response — 200 OK:
+{
+  "success": true,
+  "message": "User blocked successfully"
+}
+
+
+================================================================================
+21.6 SOCKET.IO REAL-TIME EVENTS REFERENCE
+================================================================================
+Connection Setup (Client):
+const socket = io('https://your-domain.onrender.com', {
+  auth: { token: 'YOUR_JWT_ACCESS_TOKEN' }
+});
+
+Socket Events:
+1. send_message (Client -> Server):
+   Payload: { "conversationId": 101, "receiverId": "usr_201", "message": "Hello" }
+
+2. message_sent (Server -> Sender):
+   Payload: Message Object { id, conversationId, senderId, receiverId, message, isDelivered, isRead, createdAt }
+
+3. receive_message (Server -> Receiver):
+   Payload: Message Object
+
+4. message_delivered (Server -> Sender):
+   Payload: { "messageId": 1001, "conversationId": 101 }
+
+5. mark_message_read (Client -> Server):
+   Payload: { "messageId": 1001 }
+
+6. message_read (Server -> Sender):
+   Payload: { "messageId": 1001, "conversationId": 101 }
+
+7. typing_start (Client -> Server):
+   Payload: { "conversationId": 101, "receiverId": "usr_201" }
+
+8. typing_stop (Client -> Server):
+   Payload: { "conversationId": 101, "receiverId": "usr_201" }
+
+9. user_typing (Server -> Receiver):
+   Payload: { "conversationId": 101, "userId": "usr_203" }
+
+10. user_stopped_typing (Server -> Receiver):
+    Payload: { "conversationId": 101, "userId": "usr_203" }
+
+11. user_online (Server -> Broadcast):
+    Payload: { "userId": "usr_203" }
+
+12. user_offline (Server -> Broadcast):
+    Payload: { "userId": "usr_203" }
+================================================================================
+
+
+
 
