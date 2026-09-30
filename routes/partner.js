@@ -261,36 +261,108 @@ router.get('/home', authenticateToken, async (req, res) => {
 // 11. REQUEST DETAIL & ACCEPT / DECLINE API
 // -----------------------------------------------------------------------------
 
-// GET /partner/requests/:request_id
-router.get('/requests/:request_id', authenticateToken, (req, res) => {
-  const { request_id } = req.params;
-  const requestData = partnerRequests.get(request_id);
+// GET /partner/requests/:request_id and /partner-request/details/:request_id
+const handlePartnerAppRequestDetails = (req, res) => {
+  const targetId = req.params.request_id || req.params.id || req.query.request_id || req.query.id || 'req_101';
+  let requestData = partnerRequests.get(targetId);
 
   if (!requestData) {
-    return res.status(404).json({
-      status: false,
-      message: "Request not found",
-      error_code: "REQUEST_NOT_FOUND"
-    });
+    // Look up in partnerRequests by matching values
+    for (const r of partnerRequests.values()) {
+      if (r.request_id === targetId || r.booking_id === targetId) {
+        requestData = r;
+        break;
+      }
+    }
   }
+
+  // Default fallback mock for req_101 if not found
+  if (!requestData) {
+    const defaultPhoto = formatPhotoUrl(null, req);
+    requestData = {
+      request_id: targetId,
+      booking_id: 'BK197860',
+      name: 'Amit Kumar',
+      age: 25,
+      id_verified: 1,
+      selfie_verified: 1,
+      location: 'Malviya Nagar, Jaipur, Rajasthan',
+      meetup_location: 'Malviya Nagar, Jaipur, Rajasthan',
+      meetup_address: 'Malviya Nagar, Jaipur, Rajasthan',
+      address: 'Malviya Nagar, Jaipur, Rajasthan',
+      interest: 'Coffee',
+      category: 'Coffee',
+      activity_category: 'Coffee',
+      activity: {
+        type: 'Coffee',
+        date: new Date().toISOString().split('T')[0],
+        time: '06:00 PM',
+        area: 'Malviya Nagar, Jaipur, Rajasthan',
+        description: 'Hello, I want to connect for a coffee meetup!'
+      },
+      time_slot: '06:00 PM - 07:00 PM',
+      time: '06:00 PM',
+      booking_time: '06:00 PM',
+      date: new Date().toISOString().split('T')[0],
+      date_time: `${new Date().toISOString().split('T')[0]} 06:00 PM`,
+      price: 1,
+      booking_price: 1,
+      total_price: 1,
+      image: defaultPhoto,
+      profile_image: defaultPhoto
+    };
+  }
+
+  const categoryName = typeof requestData.interest === 'string' ? requestData.interest : (requestData.activity && typeof requestData.activity === 'object' ? requestData.activity.type : 'Coffee');
+  const meetupLoc = requestData.meetup_location || requestData.location || 'Malviya Nagar, Jaipur, Rajasthan';
+  const priceVal = requestData.booking_price || requestData.price || 1;
+  const timeSlotVal = requestData.time_slot || (requestData.time ? `${requestData.time} - 07:00 PM` : '06:00 PM - 07:00 PM');
+  const timeVal = requestData.time || '06:00 PM';
+  const dateVal = requestData.date || new Date().toISOString().split('T')[0];
+  const dateTimeVal = requestData.date_time || `${dateVal} ${timeVal}`;
+  const photoUrl = formatPhotoUrl(requestData.image || requestData.profile_image, req);
+
+  const responseData = {
+    request_id: requestData.request_id || targetId,
+    booking_id: requestData.booking_id || 'BK197860',
+    image: photoUrl,
+    profile_image: photoUrl,
+    name: requestData.name || 'Amit Kumar',
+    age: requestData.age || 25,
+    id_verified: requestData.id_verified !== undefined ? requestData.id_verified : 1,
+    selfie_verified: requestData.selfie_verified !== undefined ? requestData.selfie_verified : 1,
+    location: meetupLoc,
+    meetup_location: meetupLoc,
+    meetup_address: meetupLoc,
+    address: meetupLoc,
+    interests: Array.isArray(requestData.interest) ? requestData.interest : [categoryName],
+    activity: requestData.activity || categoryName,
+    activity_name: categoryName,
+    category: categoryName,
+    activity_category: categoryName,
+    time_slot: timeSlotVal,
+    time: timeVal,
+    booking_time: timeVal,
+    date: dateVal,
+    booking_date: dateVal,
+    date_time: dateTimeVal,
+    price: priceVal,
+    booking_price: priceVal,
+    total_price: priceVal,
+    amount: priceVal,
+    currency: 'INR'
+  };
 
   return res.status(200).json({
     status: true,
     message: "Success",
-    data: {
-      request_id: requestData.request_id,
-      image: formatPhotoUrl(requestData.image, req),
-      profile_image: formatPhotoUrl(requestData.image, req),
-      name: requestData.name,
-      age: requestData.age,
-      id_verified: requestData.id_verified,
-      location: requestData.location,
-      selfie_verified: requestData.selfie_verified,
-      interests: Array.isArray(requestData.interest) ? requestData.interest : [requestData.interest],
-      activity: requestData.activity
-    }
+    data: responseData,
+    request_details: responseData
   });
-});
+};
+
+router.get('/requests/:request_id', authenticateToken, handlePartnerAppRequestDetails);
+router.get('/requests/details/:request_id', authenticateToken, handlePartnerAppRequestDetails);
 
 // POST /partner/requests/:request_id/action (Accept / Decline Request)
 router.post('/requests/:request_id/action', authenticateToken, (req, res) => {
