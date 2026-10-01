@@ -73,13 +73,15 @@ async function isUserBlocked(user1Id, user2Id) {
     return true;
   }
 
-  // Check MySQL
+  // Fast MySQL check
   try {
     const db = getDbPool();
-    const [rows] = await db.query(
+    const queryPromise = db.query(
       `SELECT id FROM user_blocks WHERE (blocker_id = ? AND blocked_id = ?) OR (blocker_id = ? AND blocked_id = ?) LIMIT 1`,
       [u1, u2, u2, u1]
     );
+    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('DB Timeout')), 200));
+    const [rows] = await Promise.race([queryPromise, timeoutPromise]);
     if (rows && rows.length > 0) {
       return true;
     }
@@ -133,13 +135,19 @@ async function isUserInConversation(conversationId, userId) {
   const inMem = memoryMembers.some(m => m.conversation_id === convId && toUserIdStr(m.user_id) === uId);
   if (inMem) return true;
 
-  // MySQL check
+  if (memoryConversations.has(convId)) {
+    return false; // Conversation exists in memory, user is not a member
+  }
+
+  // Fast MySQL check
   try {
     const db = getDbPool();
-    const [rows] = await db.query(
+    const queryPromise = db.query(
       `SELECT id FROM conversation_members WHERE conversation_id = ? AND user_id = ? LIMIT 1`,
       [convId, uId]
     );
+    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('DB Timeout')), 200));
+    const [rows] = await Promise.race([queryPromise, timeoutPromise]);
     return rows && rows.length > 0;
   } catch (err) {
     return false;
@@ -150,7 +158,7 @@ async function isUserInConversation(conversationId, userId) {
  * Find existing private conversation between two users
  */
 async function findPrivateConversation(user1Id, user2Id) {
-  const u1 = toUserIdStr(user11 = user1Id);
+  const u1 = toUserIdStr(user1Id);
   const u2 = toUserIdStr(user2Id);
 
   // Check memory
@@ -176,7 +184,13 @@ async function findPrivateConversation(user1Id, user2Id) {
       [u1, u2]
     );
     if (rows && rows.length > 0) {
-      return Number(rows[0].conversation_id);
+      const convId = Number(rows[0].conversation_id);
+      // Cache in memory
+      memoryMembers.push(
+        { id: memoryMembers.length + 1, conversation_id: convId, user_id: u1, joined_at: new Date().toISOString() },
+        { id: memoryMembers.length + 2, conversation_id: convId, user_id: u2, joined_at: new Date().toISOString() }
+      );
+      return convId;
     }
   } catch (err) {
     // Ignore MySQL error
@@ -240,19 +254,19 @@ async function createOrGetConversation(currentUserId, targetUserId) {
     // Fallback in-memory creation if MySQL unavailable
     autoConversationId += 1;
     newConvId = autoConversationId;
-
-    memoryConversations.set(newConvId, {
-      id: newConvId,
-      type: 'private',
-      created_at: nowStr,
-      updated_at: nowStr
-    });
-
-    memoryMembers.push(
-      { id: memoryMembers.length + 1, conversation_id: newConvId, user_id: u1, joined_at: nowStr },
-      { id: memoryMembers.length + 2, conversation_id: newConvId, user_id: u2, joined_at: nowStr }
-    );
   }
+
+  memoryConversations.set(newConvId, {
+    id: newConvId,
+    type: 'private',
+    created_at: nowStr,
+    updated_at: nowStr
+  });
+
+  memoryMembers.push(
+    { id: memoryMembers.length + 1, conversation_id: newConvId, user_id: u1, joined_at: nowStr },
+    { id: memoryMembers.length + 2, conversation_id: newConvId, user_id: u2, joined_at: nowStr }
+  );
 
   return {
     success: true,
@@ -451,23 +465,8 @@ async function saveMessage({ conversationId, senderId, receiverId, message, mess
   const cleanMsg = String(message).trim();
   const nowStr = new Date().toISOString();
 
-  let newId = null;
-
-  try {
-    const db = getDbPool();
-    const [res] = await db.query(
-      `INSERT INTO messages (conversation_id, sender_id, receiver_id, message_type, message) VALUES (?, ?, ?, ?, ?)`,
-      [convId, sId, rId, messageType, cleanMsg]
-    );
-    newId = Number(res.insertId);
-    await db.query(
-      `UPDATE conversations SET updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
-      [convId]
-    );
-  } catch (err) {
-    autoMessageId += 1;
-    newId = autoMessageId;
-  }
+  autoMessageId += 1;
+  const newId = autoMessageId;
 
   const msgObj = {
     id: newId,
@@ -484,6 +483,23 @@ async function saveMessage({ conversationId, senderId, receiverId, message, mess
 
   memoryMessages.set(newId, msgObj);
 
+  // Background MySQL insert without blocking real-time socket delivery
+  (async () => {
+    try {
+      const db = getDbPool();
+      await db.query(
+        `INSERT INTO messages (conversation_id, sender_id, receiver_id, message_type, message) VALUES (?, ?, ?, ?, ?)`,
+        [convId, sId, rId, messageType, cleanMsg]
+      );
+      await db.query(
+        `UPDATE conversations SET updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+        [convId]
+      );
+    } catch (err) {
+      // Ignore MySQL connection / query error
+    }
+  })();
+
   return msgObj;
 }
 
@@ -496,12 +512,14 @@ async function markMessageDelivered(messageId) {
     memoryMessages.get(mId).is_delivered = 1;
   }
 
-  try {
-    const db = getDbPool();
-    await db.query(`UPDATE messages SET is_delivered = 1 WHERE id = ?`, [mId]);
-  } catch (err) {
-    // Ignore MySQL error
-  }
+  (async () => {
+    try {
+      const db = getDbPool();
+      await db.query(`UPDATE messages SET is_delivered = 1 WHERE id = ?`, [mId]);
+    } catch (err) {
+      // Ignore MySQL error
+    }
+  })();
 }
 
 /**
@@ -520,7 +538,9 @@ async function markMessageRead(messageId, receiverId) {
   if (!targetMsg) {
     try {
       const db = getDbPool();
-      const [rows] = await db.query(`SELECT * FROM messages WHERE id = ? LIMIT 1`, [mId]);
+      const queryPromise = db.query(`SELECT * FROM messages WHERE id = ? LIMIT 1`, [mId]);
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('DB Timeout')), 200));
+      const [rows] = await Promise.race([queryPromise, timeoutPromise]);
       if (rows && rows.length > 0) {
         targetMsg = rows[0];
       }
@@ -539,12 +559,14 @@ async function markMessageRead(messageId, receiverId) {
   memoryMessages.set(mId, targetMsg);
   if (targetMsg.id) memoryMessages.set(Number(targetMsg.id), targetMsg);
 
-  try {
-    const db = getDbPool();
-    await db.query(`UPDATE messages SET is_read = 1 WHERE id = ? AND receiver_id = ?`, [mId, rId]);
-  } catch (err) {
-    // Ignore MySQL error
-  }
+  (async () => {
+    try {
+      const db = getDbPool();
+      await db.query(`UPDATE messages SET is_read = 1 WHERE id = ? AND receiver_id = ?`, [mId, rId]);
+    } catch (err) {
+      // Ignore MySQL error
+    }
+  })();
 
   return targetMsg;
 }
@@ -561,7 +583,9 @@ async function deleteMessage(messageId, senderId) {
   if (!msg) {
     try {
       const db = getDbPool();
-      const [rows] = await db.query(`SELECT * FROM messages WHERE id = ? LIMIT 1`, [mId]);
+      const queryPromise = db.query(`SELECT * FROM messages WHERE id = ? LIMIT 1`, [mId]);
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('DB Timeout')), 200));
+      const [rows] = await Promise.race([queryPromise, timeoutPromise]);
       if (rows && rows.length > 0) {
         msg = rows[0];
       }
@@ -585,12 +609,14 @@ async function deleteMessage(messageId, senderId) {
   msg.is_deleted = 1;
   memoryMessages.set(mId, msg);
 
-  try {
-    const db = getDbPool();
-    await db.query(`UPDATE messages SET is_deleted = 1 WHERE id = ? AND sender_id = ?`, [mId, sId]);
-  } catch (err) {
-    // Ignore MySQL error
-  }
+  (async () => {
+    try {
+      const db = getDbPool();
+      await db.query(`UPDATE messages SET is_deleted = 1 WHERE id = ? AND sender_id = ?`, [mId, sId]);
+    } catch (err) {
+      // Ignore MySQL error
+    }
+  })();
 
   return {
     success: true,

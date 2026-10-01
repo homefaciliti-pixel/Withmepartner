@@ -288,6 +288,10 @@ async function runTests() {
       console.assert(Array.isArray(getWithdrawRes.body.data.withdrawals), "Withdrawals list returned");
 
       console.log("\n21. Testing Razorpay Withdrawable API (/partner/withdraw/withdrawable & /withdrawable)...");
+      // Reset withdrawals for test user to ensure idempotent balance test
+      const { users } = require('./store/db');
+      const testU = users.get('usr_203');
+      if (testU) testU.withdrawals = [];
       await request('POST', '/partner/withdraw/bank-account', {
         account_holder_name: "Priya Sharma",
         bank_name: "State Bank of India",

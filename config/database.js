@@ -20,7 +20,7 @@ function getDbPool() {
       waitForConnections: true,
       connectionLimit: 10,
       queueLimit: 0,
-      connectTimeout: 5000
+      connectTimeout: 1500
     });
   }
   return pool;

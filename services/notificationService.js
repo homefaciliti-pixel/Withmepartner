@@ -242,9 +242,159 @@ async function markNotificationRead(notificationId, userId) {
   return { success: true };
 }
 
+/**
+ * Trigger Event-Based Push Notification for WithMe24 Business Events:
+ * 1. booking_request
+ * 2. booking_confirmed
+ * 3. booking_cancelled
+ * 4. booking_completed
+ * 5. request_cancelled
+ * 6. booking_reminder
+ * 7. safe_meet_alert
+ * 8. wallet_credit
+ * 9. withdraw_success
+ * 10. withdraw_failed
+ * 11. chat_message
+ * 12. review_rating
+ */
+async function sendEventNotification(eventType, params = {}) {
+  try {
+    const recipientId = params.userId || params.targetUserId || params.user_id || params.target_user_id || params.partner_id;
+
+    if (!recipientId) {
+      return { sent: false, reason: "NO_RECIPIENT_ID" };
+    }
+
+  const name = params.name || params.customer_name || params.sender_name || 'User';
+  const activity = params.activity || params.interest || 'Date';
+  const location = params.location || 'Jaipur';
+  const bookingId = params.booking_id || params.bookingId || '';
+  const requestId = params.request_id || params.requestId || '';
+  const amount = params.amount || 0;
+  const dateStr = params.date || '';
+  const timeStr = params.time || '';
+  const ratingVal = params.rating || 5;
+
+  let title = "WithMe24 Alert 🔔";
+  let body = `You have a new update regarding ${eventType}.`;
+  let dataPayload = { event_type: String(eventType).toLowerCase(), ...params };
+
+  switch (String(eventType).toLowerCase()) {
+    case 'booking_request':
+    case 'request':
+      title = "New Booking Request 💌";
+      body = `You received a new booking request from ${name} for ${activity} at ${location}!`;
+      dataPayload = { type: "booking_request", request_id: requestId || `req_${Date.now()}` };
+      break;
+
+    case 'booking_confirmed':
+    case 'confirm':
+    case 'booking_confirm':
+      title = "Booking Confirmed! ✅";
+      body = `Your booking ${bookingId} with ${name} for ${activity} is confirmed for ${dateStr} ${timeStr}!`;
+      dataPayload = { type: "booking_confirmed", booking_id: bookingId, request_id: requestId };
+      break;
+
+    case 'booking_cancelled':
+    case 'cancel':
+    case 'booking_cancel':
+      title = "Booking Cancelled ❌";
+      body = `Booking ${bookingId} with ${name} has been cancelled.`;
+      dataPayload = { type: "booking_cancelled", booking_id: bookingId };
+      break;
+
+    case 'booking_completed':
+    case 'complete':
+    case 'booking_complete':
+      title = "Booking Completed 🎉";
+      body = `Booking ${bookingId} with ${name} has been marked as completed. Thank you!`;
+      dataPayload = { type: "booking_completed", booking_id: bookingId };
+      break;
+
+    case 'request_cancelled':
+    case 'request_cancel':
+      title = "Request Cancelled ❌";
+      body = `Booking request ${requestId} has been cancelled.`;
+      dataPayload = { type: "request_cancelled", request_id: requestId };
+      break;
+
+    case 'booking_reminder':
+    case 'remind_booking':
+    case 'remind':
+      title = "Upcoming Booking Reminder ⏰";
+      body = `Reminder: You have an upcoming booking with ${name} on ${dateStr} at ${timeStr}. Location: ${location}.`;
+      dataPayload = { type: "booking_reminder", booking_id: bookingId, date: dateStr, time: timeStr, location };
+      break;
+
+    case 'safe_meet_alert':
+    case 'safe_meet':
+      title = "Safe Meet Mode Active 🛡️";
+      body = `Safe Meet protection is active for booking ${bookingId}. Your emergency contacts and live location monitoring are enabled.`;
+      dataPayload = { type: "safe_meet_alert", booking_id: bookingId };
+      break;
+
+    case 'wallet_credit':
+    case 'credit_wallet':
+    case 'earning_credit':
+      title = "Wallet Credited 💰";
+      body = `₹${amount} has been credited to your WithMe earnings wallet!`;
+      dataPayload = { type: "wallet_credit", amount: Number(amount), booking_id: bookingId };
+      break;
+
+    case 'withdraw_success':
+    case 'withdraw_sucess':
+    case 'withdrawal_success':
+      title = "Withdrawal Successful 🏦";
+      body = `Your withdrawal payout request of ₹${amount} has been processed successfully to your bank account.`;
+      dataPayload = { type: "withdraw_success", amount: Number(amount) };
+      break;
+
+    case 'withdraw_failed':
+    case 'withdrawal_failed':
+      title = "Withdrawal Failed ❌";
+      body = `Your withdrawal request of ₹${amount} failed. ${params.reason ? `Reason: ${params.reason}. ` : ''}Amount has been refunded to your wallet.`;
+      dataPayload = { type: "withdraw_failed", amount: Number(amount), reason: params.reason || 'Processing error' };
+      break;
+
+    case 'chat_message':
+    case 'chat':
+    case 'message':
+      title = `New Message from ${name} 💬`;
+      body = params.message ? (params.message.length > 80 ? params.message.substring(0, 80) + '...' : params.message) : "Sent you a new chat message.";
+      dataPayload = { type: "chat_message", conversation_id: params.conversation_id || '', sender_id: params.sender_id || '' };
+      break;
+
+    case 'review_rating':
+    case 'review':
+    case 'rating':
+      title = `New Review (${ratingVal}⭐) Received`;
+      body = `${name} rated you ${ratingVal} stars${params.review ? `: "${params.review}"` : ''}!`;
+      dataPayload = { type: "review_rating", rating: Number(ratingVal), review: params.review || '' };
+      break;
+
+    default:
+      title = params.title || `WithMe24 Alert: ${eventType}`;
+      body = params.body || `Event update for ${eventType}`;
+      dataPayload = { type: eventType, ...params };
+      break;
+  }
+
+    return await sendNotification({
+      userId: recipientId,
+      title,
+      body,
+      data: dataPayload
+    });
+  } catch (err) {
+    console.error("[Event Notification Error]:", err.message);
+    return { sent: false, error: err.message };
+  }
+}
+
 module.exports = {
   saveUserFcmToken,
   sendNotification,
   getUserNotifications,
-  markNotificationRead
+  markNotificationRead,
+  sendEventNotification
 };

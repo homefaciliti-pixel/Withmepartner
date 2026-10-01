@@ -112,9 +112,56 @@ async function handleMarkRead(req, res, next) {
   }
 }
 
+/**
+ * 5. Trigger Business Event Push Notification
+ * Supported event types:
+ * - booking_request
+ * - booking_confirmed
+ * - booking_cancelled
+ * - booking_completed
+ * - request_cancelled
+ * - booking_reminder
+ * - safe_meet_alert
+ * - wallet_credit
+ * - withdraw_success
+ * - withdraw_failed
+ * - chat_message
+ * - review_rating
+ * POST /api/notification/event
+ */
+async function handleTriggerEventNotification(req, res, next) {
+  try {
+    const currentUserId = (req.user && (req.user.user_id || req.user.id)) || null;
+    const eventType = req.body ? (req.body.event_type || req.body.event || req.body.type) : null;
+    const targetUserId = req.body ? (req.body.user_id || req.body.target_user_id || req.body.userId || currentUserId) : currentUserId;
+
+    if (!eventType || !targetUserId) {
+      return res.status(400).json({
+        status: false,
+        message: "event_type and user_id are required in request body",
+        error_code: "BAD_REQUEST"
+      });
+    }
+
+    const result = await notificationService.sendEventNotification(eventType, {
+      ...req.body,
+      user_id: targetUserId
+    });
+
+    return res.status(200).json({
+      status: true,
+      message: `Event notification '${eventType}' triggered successfully`,
+      data: result
+    });
+  } catch (err) {
+    return next(err);
+  }
+}
+
 module.exports = {
   handleSaveFcmToken,
   handleSendNotification,
   handleGetNotifications,
-  handleMarkRead
+  handleMarkRead,
+  handleTriggerEventNotification
 };

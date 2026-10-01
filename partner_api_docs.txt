@@ -1338,7 +1338,75 @@ Success Response — 200 OK:
     "success": true
   }
 }
+
+
+22.5 Trigger Business Event Push Notification (12 Business Events)
+Endpoint: POST /api/notification/event (or /api/notification/trigger)
+Auth required: Yes (Bearer Token)
+Content-Type: application/json
+
+Supported Event Types (`event_type`):
+ 1. booking_request       - Triggered when a new booking request is sent.
+ 2. booking_confirmed     - Triggered when a booking is confirmed/accepted.
+ 3. booking_cancelled     - Triggered when a booking is cancelled.
+ 4. booking_completed     - Triggered when a booking is completed.
+ 5. request_cancelled     - Triggered when a request is cancelled/declined.
+ 6. booking_reminder      - Triggered for upcoming booking reminders.
+ 7. safe_meet_alert       - Triggered when Safe Meet Mode is activated/alerted.
+ 8. wallet_credit         - Triggered when earnings are credited to partner wallet.
+ 9. withdraw_success      - Triggered when a withdrawal payout succeeds.
+10. withdraw_failed       - Triggered when a withdrawal payout fails.
+11. chat_message          - Triggered when a new chat message is received.
+12. review_rating         - Triggered when a new review/rating is submitted.
+
+Example Request Body (booking_request):
+{
+  "event_type": "booking_request",
+  "user_id": "usr_201",
+  "sender_name": "Priya",
+  "activity": "Coffee",
+  "location": "Jaipur",
+  "request_id": "req_101"
+}
+
+Example Request Body (wallet_credit):
+{
+  "event_type": "wallet_credit",
+  "user_id": "usr_201",
+  "amount": 500,
+  "booking_id": "bk_202"
+}
+
+Example Request Body (booking_reminder):
+{
+  "event_type": "booking_reminder",
+  "user_id": "usr_201",
+  "name": "Ananya",
+  "date": "2026-10-02",
+  "time": "06:00 PM",
+  "location": "WTP Mall, Jaipur",
+  "booking_id": "bk_202"
+}
+
+Success Response — 200 OK:
+{
+  "status": true,
+  "message": "Event notification 'booking_request' triggered successfully",
+  "data": {
+    "notification_id": "ntf_1790829988",
+    "target_user_id": "usr_201",
+    "title": "New Booking Request 💌",
+    "body": "You received a new booking request from Priya for Coffee at Jaipur!",
+    "data": {
+      "type": "booking_request",
+      "request_id": "req_101"
+    },
+    "fcm_sent": true,
+    "sent_at": "2026-10-01T18:05:04.000Z"
+  }
+}
 ================================================================================
+
 
 
 

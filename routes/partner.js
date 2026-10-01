@@ -13,6 +13,7 @@ const {
 } = require('../store/db');
 const { fetchPartnerRequestsFromMysql, fetchPartnerBookingsFromMysql } = require('../config/database');
 const { authenticateToken } = require('../middleware/auth');
+const { sendEventNotification } = require('../services/notificationService');
 
 const getUserAppApiUrl = () => {
   return process.env.USER_APP_API_URL || 'https://withmeapi-userapp.onrender.com';
@@ -99,12 +100,19 @@ const handleIncomingUserRequest = async (req, res) => {
 
   partnerRequests.set(requestId, newRequest);
 
-  // Save to MySQL database
-  try {
-    await savePartnerRequestToMysql(newRequest);
-  } catch (err) {
-    console.warn("MySQL save partner request error:", err.message);
-  }
+  // Trigger push notification to partner
+  sendEventNotification('booking_request', {
+    targetUserId: newRequest.partner_id,
+    sender_name: senderName,
+    activity: interest,
+    location,
+    request_id: requestId
+  }).catch(() => {});
+
+  // Save to MySQL database async
+  savePartnerRequestToMysql(newRequest).catch(err => {
+    console.warn("MySQL save partner request notice:", err.message);
+  });
 
   console.log(`[Partner API] Successfully received and registered incoming user request: ${requestId} for ${interest} in ${location}`);
 
@@ -154,6 +162,21 @@ const handleIncomingUserBooking = async (req, res) => {
   };
 
   partnerBookings.set(bookingId, newBooking);
+
+  // Trigger booking_confirmed & wallet_credit push notifications
+  sendEventNotification('booking_confirmed', {
+    targetUserId: newBooking.partner_id,
+    name: userName,
+    activity: interest,
+    location,
+    booking_id: bookingId
+  }).catch(() => {});
+
+  sendEventNotification('wallet_credit', {
+    targetUserId: newBooking.partner_id,
+    amount: bookingPayload.price || 500,
+    booking_id: bookingId
+  }).catch(() => {});
 
   // Save to MySQL
   try {

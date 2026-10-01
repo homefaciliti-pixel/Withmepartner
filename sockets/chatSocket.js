@@ -2,6 +2,7 @@ const socketIo = require('socket.io');
 const jwt = require('jsonwebtoken');
 const { JWT_SECRET } = require('../middleware/auth');
 const chatService = require('../services/chatService');
+const { sendEventNotification } = require('../services/notificationService');
 
 // Active socket connection map: userId -> Set of socketId(s)
 const onlineUsersMap = new Map();
@@ -60,6 +61,8 @@ function initChatSocket(server) {
   io.on('connection', (socket) => {
     const userId = socket.userId;
     console.log(`[Socket.IO] User connected: ${userId} (Socket ID: ${socket.id})`);
+
+    socket.join(String(userId));
 
     // Track online user socket
     if (!onlineUsersMap.has(userId)) {
@@ -150,6 +153,7 @@ function initChatSocket(server) {
           await chatService.markMessageDelivered(savedMsg.id);
           msgPayload.isDelivered = true;
 
+          io.to(rIdStr).emit('receive_message', msgPayload);
           receiverSockets.forEach(sId => {
             io.to(sId).emit('receive_message', msgPayload);
           });
@@ -160,6 +164,16 @@ function initChatSocket(server) {
             conversationId: Number(conversationId)
           });
         }
+
+        // Trigger chat_message push notification async in background
+        setImmediate(() => {
+          sendEventNotification('chat_message', {
+            targetUserId: receiverId,
+            sender_id: senderId,
+            message: cleanMessage,
+            conversation_id: conversationId
+          }).catch(() => {});
+        });
       } catch (err) {
         console.error("[Socket.IO Error send_message]:", err);
         const errRes = { success: false, message: "Failed to process send_message" };
