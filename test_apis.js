@@ -401,7 +401,36 @@ async function runTests() {
       socket1.disconnect();
       socket2.disconnect();
 
-      console.log("\n✅ ALL PARTNER API, CHAT & PERSISTENCE TESTS PASSED SUCCESSFULLY!");
+      console.log("\n23. Testing Firebase Push Notification APIs (/api/notification/*)...");
+      // 23.1 Register FCM Token
+      const saveTokenRes = await request('POST', '/api/notification/fcm-token', {
+        fcm_token: "test_fcm_token_string_998877",
+        device_type: "android"
+      }, authHeader);
+      console.assert(saveTokenRes.status === 200, "Save FCM token 200");
+      console.assert(saveTokenRes.body.status === true, "Save FCM token status true");
+
+      // 23.2 Send Push Notification
+      const sendNtfRes = await request('POST', '/api/notification/send', {
+        user_id: "usr_203",
+        title: "Test Notification Title",
+        body: "Test notification body message content",
+        data: { type: "test", id: 123 }
+      }, authHeader);
+      console.assert(sendNtfRes.status === 200, "Send notification 200");
+      console.assert(sendNtfRes.body.status === true, "Send notification status true");
+      const createdNtfId = sendNtfRes.body.data.notification_id;
+
+      // 23.3 Get Notifications List
+      const getNtfRes = await request('GET', '/api/notification', null, authHeader);
+      console.assert(getNtfRes.status === 200, "Get notifications 200");
+      console.assert(Array.isArray(getNtfRes.body.data.notifications), "Notifications array returned");
+
+      // 23.4 Mark Notification Read
+      const markReadRes = await request('POST', `/api/notification/${createdNtfId}/read`, null, authHeader);
+      console.assert(markReadRes.status === 200, "Mark notification read 200");
+
+      console.log("\n✅ ALL PARTNER API, CHAT, NOTIFICATION & PERSISTENCE TESTS PASSED SUCCESSFULLY!");
       server.close(() => {
         setTimeout(() => process.exit(0), 200);
       });

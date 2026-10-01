@@ -56,6 +56,54 @@
     "failed_attempts": 0,
     "withdrawals": [
       {
+        "withdrawal_id": "wth_razor_1790848085269",
+        "razorpay_payout_id": "pout_2sd17w20",
+        "razorpay_fund_account_id": "fa_2sd17w20",
+        "amount": 500,
+        "currency": "INR",
+        "payment_mode": "IMPS",
+        "status": "PROCESSING",
+        "requested_at": "2026-10-01T09:48:05.269Z",
+        "bank_account": {
+          "account_holder_name": "Priya Sharma",
+          "bank_name": "State Bank of India",
+          "account_number": "30123456789",
+          "ifsc_code": "SBIN0001234"
+        }
+      },
+      {
+        "withdrawal_id": "wth_razor_1790756668818",
+        "razorpay_payout_id": "pout_n55bxw85",
+        "razorpay_fund_account_id": "fa_n55bxw85",
+        "amount": 500,
+        "currency": "INR",
+        "payment_mode": "IMPS",
+        "status": "PROCESSING",
+        "requested_at": "2026-09-30T08:24:28.818Z",
+        "bank_account": {
+          "account_holder_name": "Priya Sharma",
+          "bank_name": "State Bank of India",
+          "account_number": "30123456789",
+          "ifsc_code": "SBIN0001234"
+        }
+      },
+      {
+        "withdrawal_id": "wth_razor_1790756620749",
+        "razorpay_payout_id": "pout_v3plqxuu",
+        "razorpay_fund_account_id": "fa_v3plqxuu",
+        "amount": 500,
+        "currency": "INR",
+        "payment_mode": "IMPS",
+        "status": "PROCESSING",
+        "requested_at": "2026-09-30T08:23:40.749Z",
+        "bank_account": {
+          "account_holder_name": "Priya Sharma",
+          "bank_name": "State Bank of India",
+          "account_number": "30123456789",
+          "ifsc_code": "SBIN0001234"
+        }
+      },
+      {
         "withdrawal_id": "wth_razor_1790751762906",
         "razorpay_payout_id": "pout_vu7ga67t",
         "razorpay_fund_account_id": "fa_vu7ga67t",
@@ -135,7 +183,9 @@
           "ifsc_code": "SBIN0001234"
         }
       }
-    ]
+    ],
+    "fcm_token": "test_fcm_token_string_998877",
+    "device_type": "android"
   },
   {
     "user_id": "usr_201",

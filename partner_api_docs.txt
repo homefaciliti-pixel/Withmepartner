@@ -1237,5 +1237,110 @@ Socket Events:
 ================================================================================
 
 
+================================================================================
+22. FIREBASE PUSH NOTIFICATION APIs
+================================================================================
+
+22.1 Register / Update Device FCM Token
+Endpoint: POST /api/notification/fcm-token
+Auth required: Yes (Bearer Token)
+Content-Type: application/json
+
+Request Body:
+{
+  "fcm_token": "eXamPle_FCM_Device_Token_String_123456789",
+  "device_type": "android"  // Optional: "android", "ios", "web"
+}
+
+Success Response — 200 OK:
+{
+  "status": true,
+  "message": "FCM token updated successfully",
+  "data": {
+    "user_id": "usr_203",
+    "fcm_token": "eXamPle_FCM_Device_Token_String_123456789",
+    "device_type": "android"
+  }
+}
+
+
+22.2 Send / Trigger Push Notification
+Endpoint: POST /api/notification/send
+Auth required: Yes (Bearer Token)
+Content-Type: application/json
+
+Request Body:
+{
+  "user_id": "usr_201",  // Target user ID to receive notification
+  "title": "New Booking Request",
+  "body": "You have received a new date request from Priya!",
+  "data": {
+    "type": "booking_request",
+    "request_id": "req_001"
+  }
+}
+
+Success Response — 200 OK:
+{
+  "status": true,
+  "message": "Notification sent successfully",
+  "data": {
+    "notification_id": "ntf_1790829102",
+    "target_user_id": "usr_201",
+    "title": "New Booking Request",
+    "body": "You have received a new date request from Priya!",
+    "data": {
+      "type": "booking_request",
+      "request_id": "req_001"
+    },
+    "fcm_sent": true,
+    "sent_at": "2026-10-01T15:12:39.000Z"
+  }
+}
+
+
+22.3 Get User Notifications List & Unread Count
+Endpoint: GET /api/notification
+Auth required: Yes (Bearer Token)
+
+Success Response — 200 OK:
+{
+  "status": true,
+  "message": "Notifications retrieved successfully",
+  "data": {
+    "notifications": [
+      {
+        "notification_id": "ntf_1790829102",
+        "title": "New Booking Request",
+        "body": "You have received a new date request from Priya!",
+        "data": {
+          "type": "booking_request",
+          "request_id": "req_001"
+        },
+        "is_read": false,
+        "created_at": "2026-10-01T15:12:39.000Z"
+      }
+    ],
+    "unread_count": 1
+  }
+}
+
+
+22.4 Mark Notification as Read
+Endpoint: POST /api/notification/:notification_id/read
+Auth required: Yes (Bearer Token)
+
+Success Response — 200 OK:
+{
+  "status": true,
+  "message": "Notification marked as read",
+  "data": {
+    "success": true
+  }
+}
+================================================================================
+
+
+
 
 

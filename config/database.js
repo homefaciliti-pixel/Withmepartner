@@ -193,13 +193,29 @@ async function initMysqlDatabase() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
 
+    // 9. withme_notifications
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS withme_notifications (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        notification_id VARCHAR(50) UNIQUE,
+        user_id VARCHAR(50) NOT NULL,
+        title VARCHAR(255) NOT NULL,
+        body TEXT NOT NULL,
+        data_payload TEXT,
+        is_read TINYINT(1) DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_user_read (user_id, is_read)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
     // Ensure missing columns are dynamically added if table was pre-created
     const alterStatements = [
       'ALTER TABLE withme_partners ADD COLUMN dob VARCHAR(20) DEFAULT NULL',
       'ALTER TABLE withme_partners ADD COLUMN bank_account TEXT DEFAULT NULL',
       'ALTER TABLE withme_partners ADD COLUMN aadhar_number VARCHAR(50) DEFAULT NULL',
       'ALTER TABLE withme_partners ADD COLUMN aadhar_front_url TEXT DEFAULT NULL',
-      'ALTER TABLE withme_partners ADD COLUMN aadhar_back_url TEXT DEFAULT NULL'
+      'ALTER TABLE withme_partners ADD COLUMN aadhar_back_url TEXT DEFAULT NULL',
+      'ALTER TABLE withme_partners ADD COLUMN fcm_token TEXT DEFAULT NULL'
     ];
 
     for (const sql of alterStatements) {

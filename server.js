@@ -9,6 +9,7 @@ const metaRoutes = require('./routes/meta');
 const partnerRoutes = require('./routes/partner');
 const documentRoutes = require('./routes/documents');
 const chatRoutes = require('./routes/chat');
+const notificationRoutes = require('./routes/notification');
 const { initChatSocket } = require('./sockets/chatSocket');
 
 const app = express();
@@ -27,6 +28,8 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Register routes
+app.use('/api/notification', notificationRoutes);
+app.use('/notification', notificationRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/chat', chatRoutes);
 app.use('/auth', authRoutes);
