@@ -197,6 +197,48 @@ const handleIncomingUserBooking = async (req, res) => {
 router.post('/incoming-booking', handleIncomingUserBooking);
 router.post('/sync-booking', handleIncomingUserBooking);
 
+// GET /partner/all or GET /partners (Retrieve all registered partners for User App integration)
+router.get(['/all', '/list-all', '/registered', '/partners'], (req, res) => {
+  const allUsers = Array.from(users.values());
+  const partnerList = allUsers.map(u => {
+    const rawPhoto = u.profile_photo_url || (u.photos && u.photos[0] ? u.photos[0].url : "");
+    const photoUrl = rawPhoto ? formatPhotoUrl(rawPhoto, req) : "";
+    const formattedPhotos = (u.photos || []).map(p => ({
+      ...p,
+      url: formatPhotoUrl(p.url, req)
+    }));
+
+    return {
+      partner_id: u.user_id,
+      user_id: u.user_id,
+      name: u.name,
+      email: u.email,
+      mobile_number: u.mobile_number,
+      phone: u.mobile_number,
+      gender: u.gender,
+      dob: u.dob,
+      area: u.area || "",
+      city: u.city || "",
+      state: u.state || "",
+      pincode: u.pincode || "",
+      image: photoUrl,
+      profile_image: photoUrl,
+      profile_photo_url: photoUrl,
+      photos: formattedPhotos,
+      rating: u.rating !== undefined ? u.rating : 0.0,
+      total_ratings: u.total_ratings || 0,
+      profile_completed: u.profile_completed || false,
+      created_at: u.created_at || new Date().toISOString()
+    };
+  });
+
+  return res.status(200).json({
+    status: true,
+    message: "Registered partners list retrieved successfully",
+    data: partnerList
+  });
+});
+
 // -----------------------------------------------------------------------------
 // 10. HOME SCREEN API
 // -----------------------------------------------------------------------------

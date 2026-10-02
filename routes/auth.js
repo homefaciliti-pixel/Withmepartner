@@ -427,9 +427,11 @@ router.post('/register', (req, res) => {
     locked: false,
     rating: 0.0,
     total_ratings: 0,
+    total_booking: 0,
+    total_earning: 0,
     phone_verified: true,
     profile_photo_url: PHOTO_1,
-    photos: DEFAULT_PHOTOS,
+    photos: [],
     aadhar: null,
     about: null,
     availability: null
@@ -445,7 +447,7 @@ router.post('/register', (req, res) => {
   syncPartnerToUserApp(newUser).catch(() => {});
 
   const tokens = generateTokens(userId);
-  const userPhoto = formatPhotoUrl(PHOTO_1, req);
+  const userPhoto = newUser.profile_photo_url ? formatPhotoUrl(newUser.profile_photo_url, req) : "";
 
   return res.status(201).json({
     status: true,

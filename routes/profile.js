@@ -328,8 +328,8 @@ router.get('/', authenticateToken, (req, res) => {
   }
 
   const primaryPhoto = (user.photos && user.photos.find(p => p.is_primary)) || (user.photos && user.photos[0]);
-  const rawPhoto = primaryPhoto ? primaryPhoto.url : (user.profile_photo_url || PHOTO_1);
-  const photoUrl = formatPhotoUrl(rawPhoto, req);
+  const rawPhoto = primaryPhoto ? primaryPhoto.url : (user.profile_photo_url || "");
+  const photoUrl = rawPhoto ? formatPhotoUrl(rawPhoto, req) : "";
   const formattedPhotos = (user.photos || []).map(p => ({
     ...p,
     url: formatPhotoUrl(p.url, req)
@@ -338,9 +338,12 @@ router.get('/', authenticateToken, (req, res) => {
   const avail = user.availability || {};
   const cc = user.country_code || "+91";
 
-  const totalBookingsCount = partnerBookings.size || 4;
-  const completedTx = partnerTransactions.filter(t => t.status === "Complete");
-  const totalEarningAmount = completedTx.reduce((sum, t) => sum + (t.earn_money || 0), 0) || 2500;
+  const uIdStr = String(user.user_id);
+  const myBookings = Array.from(partnerBookings.values()).filter(b => String(b.partner_id) === uIdStr || String(b.user_id) === uIdStr);
+  const totalBookingsCount = user.total_booking !== undefined ? user.total_booking : myBookings.length;
+
+  const myTx = partnerTransactions.filter(t => (String(t.partner_id) === uIdStr || String(t.user_id) === uIdStr) && t.status === "Complete");
+  const totalEarningAmount = user.total_earning !== undefined ? user.total_earning : myTx.reduce((sum, t) => sum + (t.earn_money || 0), 0);
 
   return res.status(200).json({
     status: true,
@@ -353,8 +356,8 @@ router.get('/', authenticateToken, (req, res) => {
       photo_url: photoUrl,
       photos: formattedPhotos,
       name: user.name,
-      rating: user.rating || 4.6,
-      total_ratings: user.total_ratings || 128,
+      rating: user.rating !== undefined ? user.rating : 0.0,
+      total_ratings: user.total_ratings || 0,
       mail: user.email,
       email: user.email,
       total_booking: totalBookingsCount,

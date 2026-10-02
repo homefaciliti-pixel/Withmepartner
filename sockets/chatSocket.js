@@ -62,15 +62,36 @@ function initChatSocket(server) {
     const userId = socket.userId;
     console.log(`[Socket.IO] User connected: ${userId} (Socket ID: ${socket.id})`);
 
-    socket.join(String(userId));
-    socket.join(`user_${userId}`);
-    socket.join(`partner_${userId}`);
+    const uIdStr = String(userId).trim();
+    const digitsOnly = uIdStr.replace(/\D/g, '');
 
-    // Track online user socket
-    if (!onlineUsersMap.has(userId)) {
-      onlineUsersMap.set(userId, new Set());
+    socket.join(uIdStr);
+    socket.join(`user_${uIdStr}`);
+    socket.join(`partner_${uIdStr}`);
+    if (digitsOnly) {
+      socket.join(digitsOnly);
+      socket.join(`usr_${digitsOnly}`);
+      socket.join(`user_${digitsOnly}`);
+      socket.join(`partner_${digitsOnly}`);
     }
-    onlineUsersMap.get(userId).add(socket.id);
+
+    // Track online user socket across all key variants
+    const trackKeys = new Set([
+      uIdStr,
+      digitsOnly,
+      `usr_${digitsOnly}`,
+      `user_${digitsOnly}`,
+      `partner_${digitsOnly}`
+    ]);
+
+    trackKeys.forEach(k => {
+      if (k) {
+        if (!onlineUsersMap.has(k)) {
+          onlineUsersMap.set(k, new Set());
+        }
+        onlineUsersMap.get(k).add(socket.id);
+      }
+    });
 
     // Broadcast user online event
     io.emit('user_online', { userId: isNaN(userId) ? userId : Number(userId) });
@@ -168,23 +189,35 @@ function initChatSocket(server) {
         socket.emit('message_sent', msgPayload);
         if (typeof callback === 'function') callback({ success: true, data: msgPayload });
 
-        // Deliver to receiver & conversation rooms
-        const rIdStr = String(receiverId);
+        // Deliver to receiver & conversation rooms across all key variants
+        const rIdStr = String(receiverId).trim();
+        const rDigits = rIdStr.replace(/\D/g, '');
         const convRoom = `conv_${conversationId}`;
-        const receiverSockets = onlineUsersMap.get(rIdStr);
+
+        // Gather all sockets registered for receiver ID
+        const activeSockets = new Set();
+        [rIdStr, rDigits, `usr_${rDigits}`, `user_${rDigits}`, `partner_${rDigits}`].forEach(k => {
+          if (k && onlineUsersMap.has(k)) {
+            onlineUsersMap.get(k).forEach(sId => activeSockets.add(sId));
+          }
+        });
 
         io.to(convRoom).emit('receive_message', msgPayload);
         io.to(convRoom).emit('new_message', msgPayload);
         io.to(rIdStr).emit('receive_message', msgPayload);
         io.to(rIdStr).emit('new_message', msgPayload);
-        io.to(`user_${rIdStr}`).emit('receive_message', msgPayload);
-        io.to(`partner_${rIdStr}`).emit('receive_message', msgPayload);
+        if (rDigits) {
+          io.to(rDigits).emit('receive_message', msgPayload);
+          io.to(`usr_${rDigits}`).emit('receive_message', msgPayload);
+          io.to(`user_${rDigits}`).emit('receive_message', msgPayload);
+          io.to(`partner_${rDigits}`).emit('receive_message', msgPayload);
+        }
 
-        if (receiverSockets && receiverSockets.size > 0) {
+        if (activeSockets.size > 0) {
           await chatService.markMessageDelivered(savedMsg.id);
           msgPayload.isDelivered = true;
 
-          receiverSockets.forEach(sId => {
+          activeSockets.forEach(sId => {
             io.to(sId).emit('receive_message', msgPayload);
             io.to(sId).emit('new_message', msgPayload);
           });
