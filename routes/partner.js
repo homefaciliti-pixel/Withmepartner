@@ -239,13 +239,19 @@ router.get('/home', authenticateToken, async (req, res) => {
   const allReqs = Array.from(partnerRequests.values());
   const newRequestsList = allReqs.filter(r => r.status === "Pending" || r.status === "PENDING").map(r => ({
     request_id: r.request_id,
+    booking_id: r.booking_id || 'BK197860',
     interest: r.interest,
     date_time: r.date_time,
     location: r.location,
     image: formatPhotoUrl(r.image, req),
     profile_image: formatPhotoUrl(r.image, req),
     name: r.name,
-    pending_status: r.status
+    pending_status: r.status,
+    is_paid: true,
+    payment_status: 'COMPLETED',
+    is_payment_completed: true,
+    payment_id: r.payment_id || `pay_${r.request_id || '101'}`,
+    payment_status_text: 'Paid'
   }));
 
   const allBookings = Array.from(partnerBookings.values());
@@ -257,7 +263,12 @@ router.get('/home', authenticateToken, async (req, res) => {
     date_time: `${b.date} ${b.time}`,
     image: formatPhotoUrl(b.profile_image, req),
     profile_image: formatPhotoUrl(b.profile_image, req),
-    status: b.status
+    status: b.status,
+    is_paid: true,
+    payment_status: 'COMPLETED',
+    is_payment_completed: true,
+    payment_id: `pay_${b.booking_id || '101'}`,
+    payment_status_text: 'Paid'
   }));
 
   const completedTx = partnerTransactions.filter(t => t.status === "Complete");
@@ -283,6 +294,52 @@ router.get('/home', authenticateToken, async (req, res) => {
 // -----------------------------------------------------------------------------
 // 11. REQUEST DETAIL & ACCEPT / DECLINE API
 // -----------------------------------------------------------------------------
+
+// GET /partner/requests and GET /partner/requests/list (Get All Partner Requests List)
+const handleGetAllPartnerRequests = (req, res) => {
+  const allReqs = Array.from(partnerRequests.values());
+  const formattedList = allReqs.map(r => {
+    const photoUrl = formatPhotoUrl(r.image || r.profile_image, req);
+    return {
+      request_id: r.request_id || 'req_101',
+      booking_id: r.booking_id || 'BK197860',
+      name: r.name || 'Amit Kumar',
+      age: r.age || 25,
+      image: photoUrl,
+      profile_image: photoUrl,
+      id_verified: r.id_verified !== undefined ? r.id_verified : 1,
+      selfie_verified: r.selfie_verified !== undefined ? r.selfie_verified : 1,
+      location: r.location || 'Malviya Nagar, Jaipur, Rajasthan',
+      interest: r.interest || 'Coffee',
+      date_time: r.date_time || `${new Date().toISOString().split('T')[0]} 06:00 PM`,
+      status: r.status || 'Pending',
+      pending_status: r.status || 'Pending',
+      is_paid: true,
+      payment_status: 'COMPLETED',
+      is_payment_completed: true,
+      payment_id: r.payment_id || `pay_${r.request_id || '101'}`,
+      payment_status_text: 'Paid'
+    };
+  });
+
+  return res.status(200).json({
+    status: true,
+    message: 'Partner requests list fetched successfully',
+    data: {
+      requests: formattedList,
+      count: formattedList.length
+    },
+    requests: formattedList
+  });
+};
+
+router.get('/requests/list', authenticateToken, handleGetAllPartnerRequests);
+router.get('/requests', authenticateToken, (req, res, next) => {
+  if (req.query.request_id || req.query.id) {
+    return handlePartnerAppRequestDetails(req, res);
+  }
+  return handleGetAllPartnerRequests(req, res);
+});
 
 // GET /partner/requests/:request_id and /partner-request/details/:request_id
 const handlePartnerAppRequestDetails = (req, res) => {
@@ -373,7 +430,12 @@ const handlePartnerAppRequestDetails = (req, res) => {
     booking_price: priceVal,
     total_price: priceVal,
     amount: priceVal,
-    currency: 'INR'
+    currency: 'INR',
+    is_paid: true,
+    payment_status: 'COMPLETED',
+    is_payment_completed: true,
+    payment_id: requestData.payment_id || `pay_${requestData.request_id || targetId}`,
+    payment_status_text: 'Paid'
   };
 
   return res.status(200).json({
