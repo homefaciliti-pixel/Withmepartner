@@ -23,32 +23,60 @@ async function findUser(userId) {
   const uId = toUserIdStr(userId);
   if (!uId) return null;
 
+  const rawId = uId.replace(/^usr_/, '');
+  const formattedId = uId.startsWith('usr_') ? uId : `usr_${uId}`;
+
   // 1. Check in-memory store
-  if (users.has(uId)) {
-    return users.get(uId);
-  }
+  if (users.has(uId)) return users.get(uId);
   const matchMem = Array.from(users.values()).find(u =>
     toUserIdStr(u.user_id) === uId ||
     toUserIdStr(u.id) === uId ||
+    toUserIdStr(u.user_id) === formattedId ||
+    toUserIdStr(u.id) === rawId ||
     toUserIdStr(u.mobile_number) === uId
   );
   if (matchMem) return matchMem;
 
-  // 2. Check MySQL database
+  // 2. Check MySQL withme_partners
   try {
     const db = getDbPool();
     const [rows] = await db.query(
-      `SELECT * FROM withme_partners WHERE user_id = ? OR partner_id = ? OR mobile_number = ? LIMIT 1`,
-      [uId, uId, uId]
+      `SELECT * FROM withme_partners WHERE partner_id = ? OR id = ? OR user_id = ? OR mobile_number = ? LIMIT 1`,
+      [uId, rawId, formattedId, uId]
     );
     if (rows && rows.length > 0) {
-      return rows[0];
+      const p = rows[0];
+      return {
+        user_id: p.user_id || p.partner_id || p.id || uId,
+        name: p.name || p.full_name || `Partner ${uId}`,
+        full_name: p.full_name || p.name || `Partner ${uId}`,
+        profile_photo_url: p.image || p.profile_photo_url || "/uploads/photos/photo_1.jpg"
+      };
     }
   } catch (err) {
-    // Ignore database connection error, fallback to memory
+    // Ignore database connection error
   }
 
-  // 3. Fallback pseudo-user for test numeric user IDs if valid
+  // 3. Check MySQL users table
+  try {
+    const db = getDbPool();
+    const [rows] = await db.query(
+      `SELECT * FROM users WHERE id = ? OR user_id = ? OR id = ? OR phone_number = ? LIMIT 1`,
+      [uId, formattedId, rawId, uId]
+    );
+    if (rows && rows.length > 0) {
+      const u = rows[0];
+      return {
+        user_id: u.id || u.user_id || uId,
+        name: u.name || u.full_name || `User ${uId}`,
+        full_name: u.full_name || u.name || `User ${uId}`,
+        profile_photo_url: u.profile_image || u.image || "/uploads/photos/photo_1.jpg"
+      };
+    }
+  } catch (err) {
+    // Ignore
+  }
+
   if (uId.length > 0) {
     return {
       user_id: uId,

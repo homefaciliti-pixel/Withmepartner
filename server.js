@@ -18,6 +18,7 @@ const server = http.createServer(app);
 
 // Initialize Socket.IO with existing HTTP Server
 const io = initChatSocket(server);
+app.set('io', io);
 
 // Middlewares
 app.use(cors());

@@ -1163,7 +1163,40 @@ Success Response — 200 OK:
 }
 
 
-21.4 Delete Message
+21.4 Send Message via HTTP REST
+Endpoints:
+  - POST /api/chat/message
+  - POST /api/chat/send (Alias)
+Auth required: Yes (Bearer Token)
+Content-Type: application/json
+
+Request Body:
+{
+  "conversationId": 101,
+  "receiverId": "usr_201",
+  "message": "Hello Ananya!"
+}
+
+Success Response — 200 OK:
+{
+  "success": true,
+  "message": "Message sent successfully",
+  "data": {
+    "id": 1001,
+    "messageId": 1001,
+    "conversationId": 101,
+    "senderId": "usr_203",
+    "receiverId": "usr_201",
+    "messageType": "text",
+    "message": "Hello Ananya!",
+    "isDelivered": false,
+    "isRead": false,
+    "createdAt": "2026-09-30T12:30:00.000Z"
+  }
+}
+
+
+21.5 Delete Message
 Endpoint: DELETE /api/chat/message/:messageId
 Auth required: Yes (Bearer Token)
 
@@ -1174,7 +1207,7 @@ Success Response — 200 OK:
 }
 
 
-21.5 Block User
+21.6 Block User
 Endpoint: POST /api/chat/block
 Auth required: Yes (Bearer Token)
 

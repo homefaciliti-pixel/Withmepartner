@@ -63,6 +63,8 @@ function initChatSocket(server) {
     console.log(`[Socket.IO] User connected: ${userId} (Socket ID: ${socket.id})`);
 
     socket.join(String(userId));
+    socket.join(`user_${userId}`);
+    socket.join(`partner_${userId}`);
 
     // Track online user socket
     if (!onlineUsersMap.has(userId)) {
@@ -72,6 +74,23 @@ function initChatSocket(server) {
 
     // Broadcast user online event
     io.emit('user_online', { userId: isNaN(userId) ? userId : Number(userId) });
+
+    // Handle join_conversation room
+    socket.on('join_conversation', (data) => {
+      const cId = data ? (data.conversationId || data.conversation_id) : null;
+      if (cId) {
+        socket.join(`conv_${cId}`);
+        socket.join(String(cId));
+      }
+    });
+
+    socket.on('join_room', (data) => {
+      const cId = data ? (data.conversationId || data.conversation_id || data.room) : null;
+      if (cId) {
+        socket.join(`conv_${cId}`);
+        socket.join(String(cId));
+      }
+    });
 
     // Handle send_message
     socket.on('send_message', async (data, callback) => {
@@ -100,6 +119,10 @@ function initChatSocket(server) {
           socket.emit('error', errRes);
           return;
         }
+
+        // Auto-join sender to conversation room
+        socket.join(`conv_${conversationId}`);
+        socket.join(String(conversationId));
 
         // Verify sender is in conversation
         const isMember = await chatService.isUserInConversation(conversationId, senderId);
@@ -145,17 +168,25 @@ function initChatSocket(server) {
         socket.emit('message_sent', msgPayload);
         if (typeof callback === 'function') callback({ success: true, data: msgPayload });
 
-        // Deliver to receiver if online
+        // Deliver to receiver & conversation rooms
         const rIdStr = String(receiverId);
+        const convRoom = `conv_${conversationId}`;
         const receiverSockets = onlineUsersMap.get(rIdStr);
+
+        io.to(convRoom).emit('receive_message', msgPayload);
+        io.to(convRoom).emit('new_message', msgPayload);
+        io.to(rIdStr).emit('receive_message', msgPayload);
+        io.to(rIdStr).emit('new_message', msgPayload);
+        io.to(`user_${rIdStr}`).emit('receive_message', msgPayload);
+        io.to(`partner_${rIdStr}`).emit('receive_message', msgPayload);
 
         if (receiverSockets && receiverSockets.size > 0) {
           await chatService.markMessageDelivered(savedMsg.id);
           msgPayload.isDelivered = true;
 
-          io.to(rIdStr).emit('receive_message', msgPayload);
           receiverSockets.forEach(sId => {
             io.to(sId).emit('receive_message', msgPayload);
+            io.to(sId).emit('new_message', msgPayload);
           });
 
           // Notify sender of delivery status

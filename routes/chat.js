@@ -6,7 +6,8 @@ const {
   handleGetConversations,
   handleGetMessages,
   handleDeleteMessage,
-  handleBlockUser
+  handleBlockUser,
+  handleSendMessage
 } = require('../controllers/chatController');
 
 // 1. Create/Get Conversation
@@ -17,7 +18,11 @@ router.post('/conversations', authenticateToken, handleCreateOrGetConversation);
 router.get('/conversations', authenticateToken, handleGetConversations);
 router.get('/conversation', authenticateToken, handleGetConversations);
 
-// 3. Get Chat History
+// 3. Send Message via HTTP REST
+router.post('/message', authenticateToken, handleSendMessage);
+router.post('/send', authenticateToken, handleSendMessage);
+
+// 4. Get Chat History
 router.get('/messages/:conversationId', authenticateToken, handleGetMessages);
 router.get('/messages', authenticateToken, (req, res, next) => {
   if (req.query && req.query.conversationId) {
@@ -31,11 +36,11 @@ router.get('/messages', authenticateToken, (req, res, next) => {
   });
 });
 
-// 4. Delete Message
+// 5. Delete Message
 router.delete('/message/:messageId', authenticateToken, handleDeleteMessage);
 router.post('/message/:messageId/delete', authenticateToken, handleDeleteMessage);
 
-// 5. Block User
+// 6. Block User
 router.post('/block', authenticateToken, handleBlockUser);
 
 module.exports = router;

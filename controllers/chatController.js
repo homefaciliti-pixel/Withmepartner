@@ -153,10 +153,107 @@ async function handleBlockUser(req, res, next) {
   }
 }
 
+/**
+ * API 6 – Send Message via HTTP REST
+ * POST /api/chat/message or POST /api/chat/send
+ */
+async function handleSendMessage(req, res, next) {
+  try {
+    const currentUserId = (req.user && (req.user.user_id || req.user.id)) || 'usr_10001';
+    const { conversationId, receiverId, message, messageType } = req.body || {};
+
+    if (!conversationId || !receiverId || message === undefined || message === null) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required fields: conversationId, receiverId, message",
+        error_code: "BAD_REQUEST"
+      });
+    }
+
+    const cleanMessage = String(message).trim();
+    if (!cleanMessage) {
+      return res.status(400).json({
+        success: false,
+        message: "Message cannot be empty",
+        error_code: "BAD_REQUEST"
+      });
+    }
+
+    const isMember = await chatService.isUserInConversation(conversationId, currentUserId);
+    if (!isMember) {
+      return res.status(403).json({
+        success: false,
+        message: "Unauthorized: You are not a member of this conversation",
+        error_code: "FORBIDDEN"
+      });
+    }
+
+    const isBlocked = await chatService.isUserBlocked(currentUserId, receiverId);
+    if (isBlocked) {
+      return res.status(400).json({
+        success: false,
+        message: "Cannot send message. User is blocked",
+        error_code: "BAD_REQUEST"
+      });
+    }
+
+    const savedMsg = await chatService.saveMessage({
+      conversationId,
+      senderId: currentUserId,
+      receiverId,
+      message: cleanMessage,
+      messageType: messageType || 'text'
+    });
+
+    const msgPayload = {
+      id: Number(savedMsg.id),
+      messageId: Number(savedMsg.id),
+      conversationId: Number(conversationId),
+      senderId: isNaN(currentUserId) ? currentUserId : Number(currentUserId),
+      receiverId: isNaN(receiverId) ? String(receiverId) : Number(receiverId),
+      messageType: messageType || 'text',
+      message: savedMsg.message,
+      isDelivered: false,
+      isRead: false,
+      createdAt: typeof savedMsg.created_at === 'string' ? savedMsg.created_at : new Date(savedMsg.created_at).toISOString()
+    };
+
+    // Broadcast Socket.IO real-time event if io instance is attached
+    if (req.app && req.app.get('io')) {
+      const io = req.app.get('io');
+      const rIdStr = String(receiverId);
+      io.to(rIdStr).emit('receive_message', msgPayload);
+      io.to(rIdStr).emit('new_message', msgPayload);
+      io.to(`conv_${conversationId}`).emit('receive_message', msgPayload);
+      io.to(`conv_${conversationId}`).emit('new_message', msgPayload);
+    }
+
+    // Trigger FCM Push Notification
+    const { sendEventNotification } = require('../services/notificationService');
+    setImmediate(() => {
+      sendEventNotification('chat_message', {
+        targetUserId: receiverId,
+        sender_id: currentUserId,
+        message: cleanMessage,
+        conversation_id: conversationId
+      }).catch(() => {});
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Message sent successfully",
+      data: msgPayload
+    });
+  } catch (err) {
+    return next(err);
+  }
+}
+
 module.exports = {
   handleCreateOrGetConversation,
   handleGetConversations,
   handleGetMessages,
   handleDeleteMessage,
-  handleBlockUser
+  handleBlockUser,
+  handleSendMessage
 };

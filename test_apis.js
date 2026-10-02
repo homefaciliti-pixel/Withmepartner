@@ -379,6 +379,15 @@ async function runTests() {
       await new Promise(r => setTimeout(r, 300));
       console.assert(readNoticeOnUser1 !== null, "User 1 received message_read status");
 
+      // 22.5b HTTP REST Send Message API
+      const httpSendRes = await request('POST', '/api/chat/send', {
+        conversationId: convId,
+        receiverId: "usr_201",
+        message: "Hello from Partner via REST!"
+      }, authHeader);
+      console.assert(httpSendRes.status === 200, "HTTP REST Send Message 200");
+      console.assert(httpSendRes.body.success === true, "HTTP REST Send Message success");
+
       // 22.6 Get Chat List API
       const convListRes = await request('GET', '/api/chat/conversations', null, authHeader);
       console.assert(convListRes.status === 200, "Get conversations list 200");
