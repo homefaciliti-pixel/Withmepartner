@@ -10,10 +10,23 @@ const memoryBlocks = new Set(); // "blockerId:blockedId"
 let autoMessageId = 1000;
 let autoConversationId = 100;
 
+function formatNumericUserId(id) {
+  if (id === null || id === undefined || id === '') return 101;
+  const str = String(id).trim();
+  const digits = str.replace(/\D/g, '');
+  if (digits.length > 0) {
+    const num = Number(digits);
+    return isNaN(num) ? digits : num;
+  }
+  return 101;
+}
+
 // Helper to normalize user ID string
 function toUserIdStr(id) {
   if (id === null || id === undefined) return "";
-  return String(id).trim();
+  const str = String(id).trim();
+  const digits = str.replace(/\D/g, '');
+  return digits.length > 0 ? digits : str;
 }
 
 /**
@@ -47,7 +60,7 @@ async function findUser(userId) {
     if (rows && rows.length > 0) {
       const p = rows[0];
       return {
-        user_id: p.user_id || p.partner_id || p.id || uId,
+        user_id: formatNumericUserId(p.user_id || p.partner_id || p.id || uId),
         name: p.name || p.full_name || `Partner ${uId}`,
         full_name: p.full_name || p.name || `Partner ${uId}`,
         profile_photo_url: p.image || p.profile_photo_url || "/uploads/photos/photo_1.jpg"
@@ -67,7 +80,7 @@ async function findUser(userId) {
     if (rows && rows.length > 0) {
       const u = rows[0];
       return {
-        user_id: u.id || u.user_id || uId,
+        user_id: formatNumericUserId(u.id || u.user_id || uId),
         name: u.name || u.full_name || `User ${uId}`,
         full_name: u.full_name || u.name || `User ${uId}`,
         profile_photo_url: u.profile_image || u.image || "/uploads/photos/photo_1.jpg"
@@ -79,7 +92,7 @@ async function findUser(userId) {
 
   if (uId.length > 0) {
     return {
-      user_id: uId,
+      user_id: formatNumericUserId(uId),
       name: `User ${uId}`,
       profile_photo_url: "/uploads/photos/photo_1.jpg"
     };
@@ -404,7 +417,7 @@ async function getUserConversations(userId, req, isUserOnlineFn) {
 
     list.push({
       conversationId: convId,
-      otherUserId: isNaN(otherUserId) ? otherUserId : Number(otherUserId),
+      otherUserId: formatNumericUserId(otherUserId),
       otherUserName,
       otherUserProfileImage,
       lastMessage: lastMsg ? lastMsg.message : "",
@@ -468,8 +481,8 @@ async function getConversationMessages(conversationId, userId) {
   const formatted = allMsgs.map(m => ({
     messageId: Number(m.id),
     conversationId: Number(m.conversation_id),
-    senderId: isNaN(m.sender_id) ? String(m.sender_id) : Number(m.sender_id),
-    receiverId: isNaN(m.receiver_id) ? String(m.receiver_id) : Number(m.receiver_id),
+    senderId: formatNumericUserId(m.sender_id),
+    receiverId: formatNumericUserId(m.receiver_id),
     message: m.message,
     messageType: m.message_type || 'text',
     isDelivered: Boolean(m.is_delivered),
