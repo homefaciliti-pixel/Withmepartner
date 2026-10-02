@@ -402,9 +402,15 @@ const handlePartnerAppRequestDetails = (req, res) => {
   const dateTimeVal = requestData.date_time || `${dateVal} ${timeVal}`;
   const photoUrl = formatPhotoUrl(requestData.image || requestData.profile_image, req);
 
+  const paymentIdVal = String(requestData.payment_id || requestData.paymentId || `pay_${requestData.request_id || targetId}`);
+  const partnerUserIdVal = String(requestData.partner_user_id || requestData.partnerUserId || requestData.partner_id || requestData.user_id || 'usr_101');
+
   const responseData = {
     request_id: requestData.request_id || targetId,
     booking_id: requestData.booking_id || 'BK197860',
+    partner_id: requestData.partner_id || '101',
+    partner_user_id: partnerUserIdVal,
+    partnerUserId: partnerUserIdVal,
     image: photoUrl,
     profile_image: photoUrl,
     name: requestData.name || 'Amit Kumar',
@@ -432,9 +438,12 @@ const handlePartnerAppRequestDetails = (req, res) => {
     amount: priceVal,
     currency: 'INR',
     is_paid: true,
+    isPaid: true,
     payment_status: 'COMPLETED',
+    paymentStatus: 'COMPLETED',
     is_payment_completed: true,
-    payment_id: requestData.payment_id || `pay_${requestData.request_id || targetId}`,
+    payment_id: paymentIdVal,
+    paymentId: paymentIdVal,
     payment_status_text: 'Paid'
   };
 
