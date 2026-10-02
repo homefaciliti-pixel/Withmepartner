@@ -297,7 +297,9 @@ async function sendEventNotification(eventType, params = {}) {
 
     case 'booking_cancelled':
     case 'cancel':
+    case 'cancle':
     case 'booking_cancel':
+    case 'booking_cancle':
       title = "Booking Cancelled ❌";
       body = `Booking ${bookingId} with ${name} has been cancelled.`;
       dataPayload = { type: "booking_cancelled", booking_id: bookingId };
@@ -313,6 +315,7 @@ async function sendEventNotification(eventType, params = {}) {
 
     case 'request_cancelled':
     case 'request_cancel':
+    case 'request_cancle':
       title = "Request Cancelled ❌";
       body = `Booking request ${requestId} has been cancelled.`;
       dataPayload = { type: "request_cancelled", request_id: requestId };
@@ -320,6 +323,8 @@ async function sendEventNotification(eventType, params = {}) {
 
     case 'booking_reminder':
     case 'remind_booking':
+    case 'remind_about_booking_details':
+    case 'remind_booking_details':
     case 'remind':
       title = "Upcoming Booking Reminder ⏰";
       body = `Reminder: You have an upcoming booking with ${name} on ${dateStr} at ${timeStr}. Location: ${location}.`;
@@ -335,6 +340,7 @@ async function sendEventNotification(eventType, params = {}) {
 
     case 'wallet_credit':
     case 'credit_wallet':
+    case 'credit_wallet_in_earning':
     case 'earning_credit':
       title = "Wallet Credited 💰";
       body = `₹${amount} has been credited to your WithMe earnings wallet!`;

@@ -1300,7 +1300,7 @@ Success Response — 200 OK:
 
 
 22.3 Get User Notifications List & Unread Count
-Endpoint: GET /api/notification
+Endpoint: GET /api/notification (or /api/notification/list, /api/notification/history)
 Auth required: Yes (Bearer Token)
 
 Success Response — 200 OK:
@@ -1340,52 +1340,128 @@ Success Response — 200 OK:
 }
 
 
-22.5 Trigger Business Event Push Notification (12 Business Events)
+22.5 Trigger Business Event Push Notification
 Endpoint: POST /api/notification/event (or /api/notification/trigger)
 Auth required: Yes (Bearer Token)
 Content-Type: application/json
 
 Supported Event Types (`event_type`):
- 1. booking_request       - Triggered when a new booking request is sent.
- 2. booking_confirmed     - Triggered when a booking is confirmed/accepted.
- 3. booking_cancelled     - Triggered when a booking is cancelled.
- 4. booking_completed     - Triggered when a booking is completed.
- 5. request_cancelled     - Triggered when a request is cancelled/declined.
- 6. booking_reminder      - Triggered for upcoming booking reminders.
- 7. safe_meet_alert       - Triggered when Safe Meet Mode is activated/alerted.
- 8. wallet_credit         - Triggered when earnings are credited to partner wallet.
- 9. withdraw_success      - Triggered when a withdrawal payout succeeds.
-10. withdraw_failed       - Triggered when a withdrawal payout fails.
-11. chat_message          - Triggered when a new chat message is received.
-12. review_rating         - Triggered when a new review/rating is submitted.
+ 1. booking_request        - Triggered when a new booking request is sent.
+ 2. booking_confirmed      - Triggered when a booking is confirmed/accepted.
+ 3. booking_cancelled      - Triggered when a booking is cancelled.
+ 4. booking_completed      - Triggered when a booking is completed.
+ 5. request_cancelled      - Triggered when a request is cancelled/declined.
+ 6. booking_reminder       - Triggered for upcoming booking reminders.
+ 7. safe_meet_alert        - Triggered when Safe Meet Mode is activated/alerted.
+ 8. wallet_credit          - Triggered when earnings are credited to partner wallet.
+ 9. withdraw_success       - Triggered when a withdrawal payout succeeds.
+10. withdraw_failed        - Triggered when a withdrawal payout fails.
+11. chat_message           - Triggered when a new chat message is received.
+12. review_rating          - Triggered when a new review/rating is submitted.
 
-Example Request Body (booking_request):
+--- EVENT REQUEST BODY EXAMPLES ---
+
+1. Booking Request (`booking_request`):
 {
   "event_type": "booking_request",
   "user_id": "usr_201",
-  "sender_name": "Priya",
+  "sender_name": "Amit",
   "activity": "Coffee",
   "location": "Jaipur",
   "request_id": "req_101"
 }
 
-Example Request Body (wallet_credit):
+2. Booking Confirm (`booking_confirmed` or `confirm`):
+{
+  "event_type": "booking_confirmed",
+  "user_id": "usr_201",
+  "name": "Priya",
+  "activity": "Dinner",
+  "booking_id": "BK197860",
+  "date": "2026-10-02",
+  "time": "07:00 PM"
+}
+
+3. Booking Cancel (`booking_cancelled` or `cancel` or `cancle`):
+{
+  "event_type": "booking_cancelled",
+  "user_id": "usr_201",
+  "name": "Priya",
+  "booking_id": "BK197860"
+}
+
+4. Booking Complete (`booking_completed` or `complete`):
+{
+  "event_type": "booking_completed",
+  "user_id": "usr_201",
+  "name": "Priya",
+  "booking_id": "BK197860"
+}
+
+5. Request Cancel (`request_cancelled` or `request_cancel`):
+{
+  "event_type": "request_cancelled",
+  "user_id": "usr_201",
+  "request_id": "req_101"
+}
+
+6. Remind About Booking Details (`booking_reminder` or `remind_booking_details`):
+{
+  "event_type": "booking_reminder",
+  "user_id": "usr_201",
+  "name": "Priya",
+  "date": "2026-10-02",
+  "time": "06:00 PM",
+  "location": "Malviya Nagar, Jaipur",
+  "booking_id": "BK197860"
+}
+
+7. Safe Meet (`safe_meet_alert` or `safe_meet`):
+{
+  "event_type": "safe_meet_alert",
+  "user_id": "usr_201",
+  "booking_id": "BK197860"
+}
+
+8. Credit Wallet in Earning (`wallet_credit` or `credit_wallet_in_earning`):
 {
   "event_type": "wallet_credit",
   "user_id": "usr_201",
   "amount": 500,
-  "booking_id": "bk_202"
+  "booking_id": "BK197860"
 }
 
-Example Request Body (booking_reminder):
+9. Withdraw Success (`withdraw_success` or `withdraw_sucess`):
 {
-  "event_type": "booking_reminder",
+  "event_type": "withdraw_success",
   "user_id": "usr_201",
-  "name": "Ananya",
-  "date": "2026-10-02",
-  "time": "06:00 PM",
-  "location": "WTP Mall, Jaipur",
-  "booking_id": "bk_202"
+  "amount": 1200
+}
+
+10. Withdraw Failed (`withdraw_failed`):
+{
+  "event_type": "withdraw_failed",
+  "user_id": "usr_201",
+  "amount": 1200,
+  "reason": "Invalid IFSC code"
+}
+
+11. Chat Message (`chat_message` or `chat`):
+{
+  "event_type": "chat_message",
+  "user_id": "usr_201",
+  "sender_name": "Priya",
+  "message": "See you at 6 PM!",
+  "conversation_id": "conv_991"
+}
+
+12. Review / Rating (`review_rating` or `review`):
+{
+  "event_type": "review_rating",
+  "user_id": "usr_201",
+  "name": "Amit",
+  "rating": 5,
+  "review": "Great meetup experience!"
 }
 
 Success Response — 200 OK:
@@ -1396,13 +1472,13 @@ Success Response — 200 OK:
     "notification_id": "ntf_1790829988",
     "target_user_id": "usr_201",
     "title": "New Booking Request 💌",
-    "body": "You received a new booking request from Priya for Coffee at Jaipur!",
+    "body": "You received a new booking request from Amit for Coffee at Jaipur!",
     "data": {
       "type": "booking_request",
       "request_id": "req_101"
     },
     "fcm_sent": true,
-    "sent_at": "2026-10-01T18:05:04.000Z"
+    "sent_at": "2026-10-02T14:25:04.000Z"
   }
 }
 ================================================================================
