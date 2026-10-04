@@ -242,11 +242,66 @@ const CHILD_SAFETY_STANDARDS = {
 
 // GET /meta/child-safety, GET /child-safety, GET /child-safety-standards
 router.get(['/child-safety', '/child-safety-standards', '/childsafety'], (req, res) => {
+  if (req.query && (req.query.format === 'html' || req.query.view === 'web' || req.headers.accept?.includes('text/html'))) {
+    return res.type('text/html').send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WithMe24 — Child Safety Standards</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #222; max-width: 800px; margin: 0 auto; padding: 24px; background: #fafafa; }
+    .card { background: #ffffff; border-radius: 12px; padding: 32px; box-shadow: 0 4px 20px rgba(0,0,0,0.06); border: 1px solid #eaeaea; }
+    h1 { color: #111; margin-top: 0; font-size: 26px; border-bottom: 2px solid #f0f0f0; padding-bottom: 12px; }
+    h3 { color: #222; margin-top: 24px; font-size: 18px; }
+    p { margin: 8px 0 16px; color: #444; }
+    .badge { display: inline-block; background: #e0f2fe; color: #0369a1; padding: 4px 12px; border-radius: 20px; font-size: 13px; font-weight: 600; margin-bottom: 16px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <span class="badge">18+ Only Platform</span>
+    ${CHILD_SAFETY_STANDARDS.html_content}
+  </div>
+</body>
+</html>`);
+  }
+
   return res.status(200).json({
     status: true,
     message: "Success",
     data: CHILD_SAFETY_STANDARDS
   });
+});
+
+// GET /child-safety.html web page view
+router.get(['/child-safety.html', '/child-safety-page'], (req, res) => {
+  return res.type('text/html').send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WithMe24 — Child Safety Standards</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #222; max-width: 800px; margin: 0 auto; padding: 24px; background: #fafafa; }
+    .card { background: #ffffff; border-radius: 12px; padding: 32px; box-shadow: 0 4px 20px rgba(0,0,0,0.06); border: 1px solid #eaeaea; }
+    h1 { color: #111; margin-top: 0; font-size: 26px; border-bottom: 2px solid #f0f0f0; padding-bottom: 12px; }
+    h3 { color: #222; margin-top: 24px; font-size: 18px; }
+    p { margin: 8px 0 16px; color: #444; }
+    .badge { display: inline-block; background: #e0f2fe; color: #0369a1; padding: 4px 12px; border-radius: 20px; font-size: 13px; font-weight: 600; margin-bottom: 16px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <span class="badge">18+ Only Platform</span>
+    ${CHILD_SAFETY_STANDARDS.html_content}
+  </div>
+</body>
+</html>`);
 });
 
 module.exports = router;
