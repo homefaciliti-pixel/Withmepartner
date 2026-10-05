@@ -506,12 +506,23 @@ async function getConversationMessages(conversationId, userId) {
     .filter(m => m.conversation_id === convId && !m.is_deleted)
     .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
 
-  // Merge and deduplicate by id
+  // Merge and deduplicate by id first
   const msgMap = new Map();
   dbMessages.forEach(m => msgMap.set(Number(m.id), m));
   memMsgs.forEach(m => msgMap.set(Number(m.id), m));
 
-  const allMsgs = Array.from(msgMap.values()).sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+  // Secondary dedup by content fingerprint — catches temp-ID vs MySQL-ID duplicates
+  // Fingerprint = sender_id + message_text + minute-truncated timestamp
+  const seen = new Set();
+  const allMsgs = Array.from(msgMap.values())
+    .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+    .filter(m => {
+      const ts = String(m.created_at || '').substring(0, 16); // YYYY-MM-DDTHH:MM
+      const fp = `${toUserIdStr(m.sender_id)}|${m.message}|${ts}`;
+      if (seen.has(fp)) return false;
+      seen.add(fp);
+      return true;
+    });
 
   const formatted = allMsgs.map(m => ({
     messageId: Number(m.id),
@@ -558,21 +569,33 @@ async function saveMessage({ conversationId, senderId, receiverId, message, mess
   };
 
   memoryMessages.set(newId, msgObj);
+  // Also store a temp-ID reference for lookup before MySQL resolves
+  memoryMessages.set(`tmp_${newId}`, msgObj);
 
   // Background MySQL insert without blocking real-time socket delivery
   (async () => {
     try {
       const db = getDbPool();
-      await db.query(
+      const [result] = await db.query(
         `INSERT INTO messages (conversation_id, sender_id, receiver_id, message_type, message) VALUES (?, ?, ?, ?, ?)`,
         [convId, sId, rId, messageType, cleanMsg]
       );
+      const mysqlId = Number(result.insertId);
+
+      // Remap memory entry from temp ID to real MySQL ID to prevent duplicates
+      if (mysqlId && mysqlId !== newId) {
+        msgObj.id = mysqlId;
+        memoryMessages.delete(newId);
+        memoryMessages.delete(`tmp_${newId}`);
+        memoryMessages.set(mysqlId, msgObj);
+      }
+
       await db.query(
         `UPDATE conversations SET updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
         [convId]
       );
     } catch (err) {
-      // Ignore MySQL connection / query error
+      // Ignore MySQL connection / query error — message stays in memory with temp ID
     }
   })();
 
