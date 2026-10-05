@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken');
 const { JWT_SECRET } = require('../middleware/auth');
 const chatService = require('../services/chatService');
 const { sendEventNotification } = require('../services/notificationService');
+const { toIST } = chatService;
 
 // Active socket connection map: userId -> Set of socketId(s)
 const onlineUsersMap = new Map();
@@ -182,7 +183,7 @@ function initChatSocket(server) {
           message: savedMsg.message,
           isDelivered: false,
           isRead: false,
-          createdAt: typeof savedMsg.created_at === 'string' ? savedMsg.created_at : new Date(savedMsg.created_at).toISOString()
+          createdAt: toIST(savedMsg.created_at)
         };
 
         // Emit message_sent to sender
@@ -279,16 +280,18 @@ function initChatSocket(server) {
       const { conversationId, receiverId } = data || {};
       if (!conversationId || !receiverId) return;
 
-      const rIdStr = String(receiverId);
-      const receiverSockets = onlineUsersMap.get(rIdStr);
-      if (receiverSockets && receiverSockets.size > 0) {
-        receiverSockets.forEach(sId => {
-          io.to(sId).emit('user_typing', {
-            conversationId: Number(conversationId),
-            userId: isNaN(socket.userId) ? socket.userId : Number(socket.userId)
-          });
+      const rIdStr = String(receiverId).trim();
+      const rDigits = rIdStr.replace(/\D/g, '');
+      const receiverSockets = new Set();
+      [rIdStr, rDigits, `usr_${rDigits}`, `user_${rDigits}`].forEach(k => {
+        if (k && onlineUsersMap.has(k)) onlineUsersMap.get(k).forEach(s => receiverSockets.add(s));
+      });
+      receiverSockets.forEach(sId => {
+        io.to(sId).emit('user_typing', {
+          conversationId: Number(conversationId),
+          userId: isNaN(socket.userId) ? socket.userId : Number(socket.userId)
         });
-      }
+      });
     });
 
     // Handle typing_stop
@@ -296,28 +299,49 @@ function initChatSocket(server) {
       const { conversationId, receiverId } = data || {};
       if (!conversationId || !receiverId) return;
 
-      const rIdStr = String(receiverId);
-      const receiverSockets = onlineUsersMap.get(rIdStr);
-      if (receiverSockets && receiverSockets.size > 0) {
-        receiverSockets.forEach(sId => {
-          io.to(sId).emit('user_stopped_typing', {
-            conversationId: Number(conversationId),
-            userId: isNaN(socket.userId) ? socket.userId : Number(socket.userId)
-          });
+      const rIdStr = String(receiverId).trim();
+      const rDigits = rIdStr.replace(/\D/g, '');
+      const receiverSockets = new Set();
+      [rIdStr, rDigits, `usr_${rDigits}`, `user_${rDigits}`].forEach(k => {
+        if (k && onlineUsersMap.has(k)) onlineUsersMap.get(k).forEach(s => receiverSockets.add(s));
+      });
+      receiverSockets.forEach(sId => {
+        io.to(sId).emit('user_stopped_typing', {
+          conversationId: Number(conversationId),
+          userId: isNaN(socket.userId) ? socket.userId : Number(socket.userId)
         });
-      }
+      });
     });
 
-    // Handle disconnect
+    // Handle disconnect — clean up ALL key variants
     socket.on('disconnect', () => {
       console.log(`[Socket.IO] User disconnected: ${userId} (Socket ID: ${socket.id})`);
-      const userSockets = onlineUsersMap.get(userId);
-      if (userSockets) {
-        userSockets.delete(socket.id);
-        if (userSockets.size === 0) {
-          onlineUsersMap.delete(userId);
-          io.emit('user_offline', { userId: isNaN(userId) ? userId : Number(userId) });
+
+      // Remove socketId from every key variant we registered on connect
+      trackKeys.forEach(k => {
+        if (!k) return;
+        const sockets = onlineUsersMap.get(k);
+        if (sockets) {
+          sockets.delete(socket.id);
+          if (sockets.size === 0) {
+            onlineUsersMap.delete(k);
+          }
         }
+      });
+
+      // Also clean up the raw userId key in case it differs from trackKeys
+      const rawSockets = onlineUsersMap.get(String(userId));
+      if (rawSockets) {
+        rawSockets.delete(socket.id);
+        if (rawSockets.size === 0) {
+          onlineUsersMap.delete(String(userId));
+        }
+      }
+
+      // Emit offline only if user has no remaining active sockets anywhere
+      const stillOnline = Array.from(trackKeys).some(k => k && onlineUsersMap.has(k) && onlineUsersMap.get(k).size > 0);
+      if (!stillOnline) {
+        io.emit('user_offline', { userId: isNaN(userId) ? userId : Number(userId) });
       }
     });
   });

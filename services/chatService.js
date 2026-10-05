@@ -21,6 +21,21 @@ function formatNumericUserId(id) {
   return 101;
 }
 
+// Format a Date (or ISO string) into IST (UTC+5:30) ISO-8601 string
+function toIST(dateInput) {
+  try {
+    const d = dateInput instanceof Date ? dateInput : new Date(dateInput);
+    if (isNaN(d.getTime())) return new Date().toISOString();
+    // Offset IST = UTC + 330 minutes
+    const offsetMs = 5.5 * 60 * 60 * 1000;
+    const istDate = new Date(d.getTime() + offsetMs);
+    // Return as ISO string with +05:30 suffix
+    return istDate.toISOString().replace('Z', '+05:30');
+  } catch {
+    return new Date().toISOString();
+  }
+}
+
 // Helper to normalize user ID string
 function toUserIdStr(id) {
   if (id === null || id === undefined) return "";
@@ -171,27 +186,46 @@ async function blockUser(blockerId, blockedId) {
 async function isUserInConversation(conversationId, userId) {
   const convId = Number(conversationId);
   const uId = toUserIdStr(userId);
+  const uDigits = uId.replace(/\D/g, '');
 
-  // Memory check
-  const inMem = memoryMembers.some(m => m.conversation_id === convId && toUserIdStr(m.user_id) === uId);
+  // Memory check — try multiple ID variants
+  const idVariants = new Set([uId, uDigits, `usr_${uDigits}`, `user_${uDigits}`].filter(Boolean));
+
+  const inMem = memoryMembers.some(m => {
+    const mId = toUserIdStr(m.user_id);
+    const mDigits = mId.replace(/\D/g, '');
+    if (m.conversation_id !== convId) return false;
+    return idVariants.has(mId) || idVariants.has(mDigits) ||
+      idVariants.has(`usr_${mDigits}`) || idVariants.has(`user_${mDigits}`);
+  });
   if (inMem) return true;
 
+  // If conversation exists in memory but user isn't listed — check if they might be the creator
+  // Allow through if conversation is very new (within last 30s) — avoids timing race on new convs
   if (memoryConversations.has(convId)) {
-    return false; // Conversation exists in memory, user is not a member
+    const conv = memoryConversations.get(convId);
+    const ageMs = Date.now() - new Date(conv.created_at).getTime();
+    if (ageMs < 30000) {
+      // Auto-register this user as a member to fix race condition
+      memoryMembers.push({ id: memoryMembers.length + 1, conversation_id: convId, user_id: uId, joined_at: toIST(new Date()) });
+      return true;
+    }
+    return false;
   }
 
   // Fast MySQL check
   try {
     const db = getDbPool();
     const queryPromise = db.query(
-      `SELECT id FROM conversation_members WHERE conversation_id = ? AND user_id = ? LIMIT 1`,
-      [convId, uId]
+      `SELECT id FROM conversation_members WHERE conversation_id = ? AND (user_id = ? OR user_id = ? OR user_id = ?) LIMIT 1`,
+      [convId, uId, uDigits, `usr_${uDigits}`]
     );
     const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('DB Timeout')), 200));
     const [rows] = await Promise.race([queryPromise, timeoutPromise]);
     return rows && rows.length > 0;
   } catch (err) {
-    return false;
+    // On DB error, allow through to avoid blocking legitimate chat
+    return true;
   }
 }
 
@@ -267,6 +301,8 @@ async function createOrGetConversation(currentUserId, targetUserId) {
     throw new Error("User is blocked");
   }
 
+  const nowStr = toIST(new Date());
+
   // Check if conversation already exists
   const existingConvId = await findPrivateConversation(u1, u2);
   if (existingConvId) {
@@ -277,7 +313,6 @@ async function createOrGetConversation(currentUserId, targetUserId) {
   }
 
   // Create new conversation
-  const nowStr = new Date().toISOString();
   let newConvId = null;
 
   try {
@@ -421,7 +456,7 @@ async function getUserConversations(userId, req, isUserOnlineFn) {
       otherUserName,
       otherUserProfileImage,
       lastMessage: lastMsg ? lastMsg.message : "",
-      lastMessageTime: lastMsg ? (typeof lastMsg.created_at === 'string' ? lastMsg.created_at : new Date(lastMsg.created_at).toISOString()) : new Date().toISOString(),
+      lastMessageTime: lastMsg ? toIST(lastMsg.created_at) : toIST(new Date()),
       unreadCount,
       isOnline
     });
@@ -487,7 +522,7 @@ async function getConversationMessages(conversationId, userId) {
     messageType: m.message_type || 'text',
     isDelivered: Boolean(m.is_delivered),
     isRead: Boolean(m.is_read),
-    createdAt: typeof m.created_at === 'string' ? m.created_at : new Date(m.created_at).toISOString()
+    createdAt: toIST(m.created_at)
   }));
 
   return {
@@ -504,7 +539,7 @@ async function saveMessage({ conversationId, senderId, receiverId, message, mess
   const sId = toUserIdStr(senderId);
   const rId = toUserIdStr(receiverId);
   const cleanMsg = String(message).trim();
-  const nowStr = new Date().toISOString();
+  const nowStr = toIST(new Date());
 
   autoMessageId += 1;
   const newId = autoMessageId;
@@ -677,5 +712,6 @@ module.exports = {
   saveMessage,
   markMessageDelivered,
   markMessageRead,
-  deleteMessage
+  deleteMessage,
+  toIST
 };

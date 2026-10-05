@@ -58,6 +58,14 @@ function parseTimeMinutes(timeStr) {
   return hrs * 60 + mins;
 }
 
+// Get current date string in IST (YYYY-MM-DD)
+function getISTDateString() {
+  const now = new Date();
+  const offsetMs = 5.5 * 60 * 60 * 1000;
+  const istDate = new Date(now.getTime() + offsetMs);
+  return istDate.toISOString().split('T')[0];
+}
+
 // -----------------------------------------------------------------------------
 // 0. INCOMING USER REQUEST & BOOKING SYNC (From WithMe User App API)
 // -----------------------------------------------------------------------------
@@ -321,7 +329,7 @@ router.get('/home', authenticateToken, async (req, res) => {
     message: "Success",
     data: {
       todays_overview: {
-        date: new Date().toISOString().split('T')[0],
+        date: getISTDateString(),
         new_requests_count: newRequestsList.length,
         upcoming_bookings_count: upcomingBookingsList.length,
         earnings_count: totalEarnings || 2500
