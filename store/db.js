@@ -58,7 +58,7 @@ function getBaseUrl(req) {
     const host = req.get('host') || 'localhost:5000';
     return `${protocol}://${host}`;
   }
-  return 'http://localhost:5000';
+  return process.env.RENDER_EXTERNAL_URL || 'https://withmepartner.onrender.com';
 }
 
 // Format any photo URL or relative path dynamically to full URL using active host/Render domain
