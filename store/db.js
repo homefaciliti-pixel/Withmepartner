@@ -341,6 +341,31 @@ partnerRequests.set("req_004", {
   }
 });
 
+const NIAA_PHOTO_1 = "/uploads/photos/niaa_1.jpg";
+const NIAA_PHOTO_2 = "/uploads/photos/niaa_2.jpg";
+const NIAA_PHOTO_3 = "/uploads/photos/niaa_3.jpg";
+const NIAA_PHOTO_4 = "/uploads/photos/niaa_4.jpg";
+
+partnerRequests.set("req_005", {
+  request_id: "req_005",
+  name: "niaa",
+  age: 23,
+  image: NIAA_PHOTO_1,
+  id_verified: 1,
+  selfie_verified: 1,
+  interest: "Coffee",
+  date_time: "5:00 PM to 7:00 PM",
+  location: "Jaipur",
+  status: "Pending",
+  activity: {
+    type: "Coffee",
+    date: "2026-10-06",
+    time: "5:00 PM to 7:00 PM",
+    area: "Jaipur",
+    description: "Looking for a coffee hangout partner in Jaipur."
+  }
+});
+
 // Seed Partner Bookings with User-Uploaded Photos
 partnerBookings.set("bk_001", {
   booking_id: "bk_001",
