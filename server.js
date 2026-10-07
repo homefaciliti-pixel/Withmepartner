@@ -80,15 +80,21 @@ app.use((err, req, res, next) => {
   });
 });
 
-const { users } = require('./store/db');
+const { fetchUsersFromMysql } = require('./config/database');
 const { syncAllPartnersToUserApp } = require('./services/userAppSyncService');
 
 if (require.main === module) {
   server.listen(PORT, () => {
     console.log(`🚀 Partner App API server running at http://localhost:${PORT}`);
     // Auto-sync all stored partners to User App backend on startup
-    syncAllPartnersToUserApp(Array.from(users.values())).catch(err => {
-      console.warn("Startup partner sync error:", err.message);
+    fetchUsersFromMysql().then(partners => {
+      if (partners && partners.length > 0) {
+        syncAllPartnersToUserApp(partners).catch(err => {
+          console.warn("Startup partner sync error:", err.message);
+        });
+      }
+    }).catch(err => {
+      console.warn("Startup fetch partners error:", err.message);
     });
   });
 }
