@@ -259,6 +259,7 @@ function findUserByMobile(mobile_number, country_code) {
 // Seed Partner Requests with User-Uploaded Photos
 partnerRequests.set("req_001", {
   request_id: "req_001",
+  partner_id: "usr_203",
   name: "Priya Verma",
   age: 24,
   image: PHOTO_1,
@@ -279,6 +280,7 @@ partnerRequests.set("req_001", {
 
 partnerRequests.set("req_002", {
   request_id: "req_002",
+  partner_id: "usr_203",
   name: "Ananya Sen",
   age: 26,
   image: PHOTO_2,
@@ -299,6 +301,7 @@ partnerRequests.set("req_002", {
 
 partnerRequests.set("req_003", {
   request_id: "req_003",
+  partner_id: "usr_203",
   name: "Sneha Kapoor",
   age: 23,
   image: PHOTO_3,
@@ -323,6 +326,7 @@ const AMIT_PHOTO_3 = "/uploads/photos/amit_3.jpg";
 
 partnerRequests.set("req_004", {
   request_id: "req_004",
+  partner_id: "usr_203",
   name: "Amit",
   age: 24,
   image: AMIT_PHOTO_1,
@@ -348,6 +352,7 @@ const NIAA_PHOTO_4 = "/uploads/photos/niaa_4.jpg";
 
 partnerRequests.set("req_005", {
   request_id: "req_005",
+  partner_id: "usr_niaa",
   name: "niaa",
   age: 23,
   image: NIAA_PHOTO_1,
@@ -369,6 +374,7 @@ partnerRequests.set("req_005", {
 // Seed Partner Bookings with User-Uploaded Photos
 partnerBookings.set("bk_001", {
   booking_id: "bk_001",
+  partner_id: "usr_203",
   profile_image: PHOTO_1,
   name: "Ritika Singh",
   age: 25,
@@ -398,6 +404,7 @@ partnerBookings.set("bk_001", {
 
 partnerBookings.set("bk_002", {
   booking_id: "bk_002",
+  partner_id: "usr_203",
   profile_image: PHOTO_2,
   name: "Megha Sharma",
   age: 27,
@@ -427,6 +434,7 @@ partnerBookings.set("bk_002", {
 
 partnerBookings.set("bk_003", {
   booking_id: "bk_003",
+  partner_id: "usr_203",
   profile_image: PHOTO_4,
   name: "Kavya Roy",
   age: 24,
@@ -456,6 +464,7 @@ partnerBookings.set("bk_003", {
 
 partnerBookings.set("bk_004", {
   booking_id: "bk_004",
+  partner_id: "usr_203",
   profile_image: PHOTO_5,
   name: "Divya Jain",
   age: 26,
@@ -485,10 +494,10 @@ partnerBookings.set("bk_004", {
 
 // Seed Transactions
 partnerTransactions.push(
-  { order_id: "ORD_90123", location: "Raja Park, Jaipur", time: "04:00 PM", date: "2026-09-15", earn_money: 1200, status: "Complete" },
-  { order_id: "ORD_90124", location: "C-Scheme, Jaipur", time: "11:00 AM", date: "2026-09-14", earn_money: 1300, status: "Complete" },
-  { order_id: "ORD_90125", location: "WTP Mall, Jaipur", time: "06:00 PM", date: "2026-09-18", earn_money: 999, status: "Pending" },
-  { order_id: "ORD_90126", location: "JLN Marg, Jaipur", time: "08:00 PM", date: "2026-09-12", earn_money: 800, status: "Cancel" }
+  { order_id: "ORD_90123", partner_id: "usr_203", location: "Raja Park, Jaipur", time: "04:00 PM", date: "2026-09-15", earn_money: 1200, status: "Complete" },
+  { order_id: "ORD_90124", partner_id: "usr_203", location: "C-Scheme, Jaipur", time: "11:00 AM", date: "2026-09-14", earn_money: 1300, status: "Complete" },
+  { order_id: "ORD_90125", partner_id: "usr_203", location: "WTP Mall, Jaipur", time: "06:00 PM", date: "2026-09-18", earn_money: 999, status: "Pending" },
+  { order_id: "ORD_90126", partner_id: "usr_203", location: "JLN Marg, Jaipur", time: "08:00 PM", date: "2026-09-12", earn_money: 800, status: "Cancel" }
 );
 
 module.exports = {

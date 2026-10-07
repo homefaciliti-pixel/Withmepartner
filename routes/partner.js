@@ -305,10 +305,18 @@ router.get('/home', authenticateToken, async (req, res) => {
     // Ignore MySQL fetch error
   }
 
+  const currentUserId = String(req.user.user_id);
+
   const allReqs = Array.from(partnerRequests.values());
-  const newRequestsList = allReqs.filter(r => r.status === "Pending" || r.status === "PENDING").map(r => ({
+  const userReqs = allReqs.filter(r => {
+    const pId = String(r.partner_id || '');
+    if (pId) return pId === currentUserId;
+    return currentUserId === 'usr_203';
+  });
+
+  const newRequestsList = userReqs.filter(r => r.status === "Pending" || r.status === "PENDING").map(r => ({
     request_id: r.request_id,
-    booking_id: r.booking_id || 'BK197860',
+    booking_id: r.booking_id || `BK${Math.floor(100000 + Math.random() * 900000)}`,
     interest: r.interest,
     date_time: r.date_time,
     location: r.location,
@@ -324,7 +332,13 @@ router.get('/home', authenticateToken, async (req, res) => {
   }));
 
   const allBookings = Array.from(partnerBookings.values());
-  const upcomingBookingsList = allBookings.filter(b => b.status === "Upcoming").map(b => ({
+  const userBookings = allBookings.filter(b => {
+    const pId = String(b.partner_id || '');
+    if (pId) return pId === currentUserId;
+    return currentUserId === 'usr_203';
+  });
+
+  const upcomingBookingsList = userBookings.filter(b => b.status === "Upcoming").map(b => ({
     booking_id: b.booking_id,
     name: b.name,
     interest: b.interest,
@@ -340,8 +354,13 @@ router.get('/home', authenticateToken, async (req, res) => {
     payment_status_text: 'Paid'
   }));
 
-  const completedTx = partnerTransactions.filter(t => t.status === "Complete");
-  const totalEarnings = completedTx.reduce((sum, t) => sum + (t.earn_money || 0), 0);
+  const myTx = partnerTransactions.filter(t => {
+    const pId = String(t.partner_id || '');
+    if (pId) return pId === currentUserId;
+    return currentUserId === 'usr_203';
+  }).filter(t => t.status === "Complete");
+
+  const totalEarnings = user.total_earning !== undefined ? user.total_earning : myTx.reduce((sum, t) => sum + (t.earn_money || 0), 0);
 
   return res.status(200).json({
     status: true,
@@ -351,7 +370,7 @@ router.get('/home', authenticateToken, async (req, res) => {
         date: getISTDateString(),
         new_requests_count: newRequestsList.length,
         upcoming_bookings_count: upcomingBookingsList.length,
-        earnings_count: totalEarnings || 2500
+        earnings_count: totalEarnings
       },
       new_requests: newRequestsList,
       upcoming_bookings: upcomingBookingsList
@@ -366,19 +385,26 @@ router.get('/home', authenticateToken, async (req, res) => {
 
 // GET /partner/requests and GET /partner/requests/list (Get All Partner Requests List)
 const handleGetAllPartnerRequests = (req, res) => {
+  const currentUserId = String(req.user ? req.user.user_id : 'usr_203');
   const allReqs = Array.from(partnerRequests.values());
-  const formattedList = allReqs.map(r => {
+  const userReqs = allReqs.filter(r => {
+    const pId = String(r.partner_id || '');
+    if (pId) return pId === currentUserId;
+    return currentUserId === 'usr_203';
+  });
+
+  const formattedList = userReqs.map(r => {
     const photoUrl = formatPhotoUrl(r.image || r.profile_image, req);
     return {
       request_id: r.request_id || 'req_101',
       booking_id: r.booking_id || 'BK197860',
-      name: r.name || 'Amit Kumar',
+      name: r.name || 'User Request',
       age: r.age || 25,
       image: photoUrl,
       profile_image: photoUrl,
       id_verified: r.id_verified !== undefined ? r.id_verified : 1,
       selfie_verified: r.selfie_verified !== undefined ? r.selfie_verified : 1,
-      location: r.location || 'Malviya Nagar, Jaipur, Rajasthan',
+      location: r.location || 'Jaipur',
       interest: r.interest || 'Coffee',
       date_time: r.date_time || `${new Date().toISOString().split('T')[0]} 06:00 PM`,
       status: r.status || 'Pending',
@@ -837,11 +863,18 @@ router.post('/bookings/cancel', authenticateToken, (req, res) => {
 // GET /partner/bookings (List & Filter: Upcoming / Complete / Cancelled)
 router.get('/bookings', authenticateToken, (req, res) => {
   const { status } = req.query; // "Upcoming" | "Complete" | "Cancelled" | undefined
+  const currentUserId = String(req.user.user_id);
   const allBookings = Array.from(partnerBookings.values());
 
-  let filtered = allBookings;
+  const userBookings = allBookings.filter(b => {
+    const pId = String(b.partner_id || '');
+    if (pId) return pId === currentUserId;
+    return currentUserId === 'usr_203';
+  });
+
+  let filtered = userBookings;
   if (status && status !== "all") {
-    filtered = allBookings.filter(b => b.status.toLowerCase() === status.toLowerCase());
+    filtered = userBookings.filter(b => b.status.toLowerCase() === status.toLowerCase());
   }
 
   const list = filtered.map(b => ({
@@ -874,19 +907,25 @@ router.get('/bookings', authenticateToken, (req, res) => {
 
 // GET /partner/earnings
 router.get('/earnings', authenticateToken, (req, res) => {
-  const completedTx = partnerTransactions.filter(t => t.status === "Complete");
-  const totalAllEarn = completedTx.reduce((sum, t) => sum + (t.earn_money || 0), 0);
+  const currentUserId = String(req.user.user_id);
+  const user = users.get(req.user.user_id);
 
-  // Time calculations (Today, Week, Month)
-  const todayStr = "2026-09-15"; // Sample today matching transactions
+  const myTx = partnerTransactions.filter(t => {
+    const pId = String(t.partner_id || '');
+    if (pId) return pId === currentUserId;
+    return currentUserId === 'usr_203';
+  });
+
+  const completedTx = myTx.filter(t => t.status === "Complete");
+  const totalAllEarn = user && user.total_earning !== undefined ? user.total_earning : completedTx.reduce((sum, t) => sum + (t.earn_money || 0), 0);
+
+  const todayStr = getISTDateString();
   const totalTodayEarn = completedTx
     .filter(t => t.date === todayStr)
-    .reduce((sum, t) => sum + (t.earn_money || 0), 0) || 500;
+    .reduce((sum, t) => sum + (t.earn_money || 0), 0);
 
-  const totalThisWeekEarn = completedTx
-    .reduce((sum, t) => sum + (t.earn_money || 0), 0) || 1500;
-
-  const totalThisMonthEarn = totalAllEarn || 2500;
+  const totalThisWeekEarn = totalAllEarn;
+  const totalThisMonthEarn = totalAllEarn;
 
   return res.status(200).json({
     status: true,
@@ -895,8 +934,8 @@ router.get('/earnings', authenticateToken, (req, res) => {
       total_today_earn: totalTodayEarn,
       total_this_week_earn: totalThisWeekEarn,
       total_this_month_earn: totalThisMonthEarn,
-      total_all_earn: totalAllEarn || 4800,
-      transactions: partnerTransactions
+      total_all_earn: totalAllEarn,
+      transactions: myTx
     }
   });
 });
@@ -1204,6 +1243,18 @@ function handleWithdrawRequest(req, res) {
   });
 }
 
+function calculatePartnerTotalEarnings(user) {
+  if (!user) return 0;
+  const currentUserId = String(user.user_id);
+  const myTx = partnerTransactions.filter(t => {
+    const pId = String(t.partner_id || '');
+    if (pId) return pId === currentUserId;
+    return currentUserId === 'usr_203';
+  }).filter(t => t.status === "Complete");
+
+  return user.total_earning !== undefined ? user.total_earning : myTx.reduce((sum, t) => sum + (t.earn_money || 0), 0);
+}
+
 // Helper to get Withdrawal History & Summary
 function handleGetWithdrawals(req, res) {
   const user = users.get(req.user.user_id);
@@ -1211,30 +1262,19 @@ function handleGetWithdrawals(req, res) {
     return res.status(404).json({ status: false, message: "User not found", error_code: "USER_NOT_FOUND" });
   }
 
-  const withdrawals = (user.withdrawals && user.withdrawals.length > 0) ? user.withdrawals : [
-    {
-      withdrawal_id: "wth_1790200000000",
-      amount: 1000,
-      currency: "INR",
-      status: "Pending",
-      requested_at: "2026-09-24T15:25:00.000Z",
-      bank_account: user.bank_account ? {
-        bank_name: user.bank_account.bank_name,
-        account_number: user.bank_account.account_number
-      } : null
-    }
-  ];
-
+  const withdrawals = user.withdrawals || [];
   const totalWithdrawn = withdrawals
-    .filter(w => w.status === 'Completed' || w.status === 'Pending' || w.status === 'PAID')
+    .filter(w => w.status === 'Completed' || w.status === 'Pending' || w.status === 'PROCESSING' || w.status === 'PAID')
     .reduce((sum, w) => sum + (Number(w.amount) || 0), 0);
+
+  const totalEarnings = calculatePartnerTotalEarnings(user);
 
   return res.status(200).json({
     status: true,
     message: "Success",
     data: {
-      total_earnings: 4800,
-      available_balance: Math.max(0, 4800 - totalWithdrawn),
+      total_earnings: totalEarnings,
+      available_balance: Math.max(0, totalEarnings - totalWithdrawn),
       total_withdrawn: totalWithdrawn,
       bank_account: user.bank_account || null,
       account_added: Boolean(user.bank_account),
@@ -1270,8 +1310,8 @@ function handleGetWithdrawable(req, res) {
     .filter(w => w.status === 'Completed' || w.status === 'Pending' || w.status === 'PROCESSING' || w.status === 'PAID')
     .reduce((sum, w) => sum + (Number(w.amount) || 0), 0);
 
-  const totalEarnings = 4800;
-  const commissionPercent = 15;
+  const totalEarnings = calculatePartnerTotalEarnings(user);
+  const commissionPercent = user.availability ? (user.availability.platform_commission_percent || 15) : 15;
   const netEarnings = Math.round(totalEarnings * (1 - commissionPercent / 100));
   const withdrawableBalance = Math.max(0, netEarnings - totalWithdrawn);
   const minWithdrawalAmount = 100;
@@ -1335,8 +1375,8 @@ function handlePostWithdrawable(req, res) {
     .filter(w => w.status === 'Completed' || w.status === 'Pending' || w.status === 'PROCESSING' || w.status === 'PAID')
     .reduce((sum, w) => sum + (Number(w.amount) || 0), 0);
 
-  const totalEarnings = 4800;
-  const commissionPercent = 15;
+  const totalEarnings = calculatePartnerTotalEarnings(user);
+  const commissionPercent = user.availability ? (user.availability.platform_commission_percent || 15) : 15;
   const netEarnings = Math.round(totalEarnings * (1 - commissionPercent / 100));
   const withdrawableBalance = Math.max(0, netEarnings - totalWithdrawn);
 
