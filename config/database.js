@@ -295,6 +295,22 @@ function mapMysqlRowToPartner(r) {
     }
   } catch (e) {}
 
+  if (!Array.isArray(photos)) {
+    photos = [];
+  }
+
+  const profilePhoto = r.profile_photo_url || r.image || '';
+
+  if (photos.length === 0 && profilePhoto) {
+    photos = [
+      {
+        photo_id: "ph_001",
+        url: profilePhoto,
+        is_primary: true
+      }
+    ];
+  }
+
   let interests = [];
   try {
     if (r.interests) {
@@ -776,8 +792,13 @@ async function fetchPartnerRequestsFromMysql(partnerId) {
   const params = [];
 
   if (partnerId) {
-    sql += " WHERE partner_id = ?";
-    params.push(String(partnerId));
+    const pId = String(partnerId);
+    let cleanMobile = pId.replace(/\D/g, '');
+    if (cleanMobile.length > 10 && cleanMobile.startsWith('91')) cleanMobile = cleanMobile.slice(-10);
+    else if (cleanMobile.length === 11 && cleanMobile.startsWith('0')) cleanMobile = cleanMobile.slice(-10);
+
+    sql += " WHERE (partner_id = ? OR partner_id = ? OR partner_id IN (SELECT user_id FROM withme_partners WHERE mobile_number = ? OR phone_number = ? OR partner_id = ?))";
+    params.push(pId, cleanMobile, cleanMobile, cleanMobile, pId);
   }
 
   sql += " ORDER BY created_at DESC LIMIT 200";
@@ -819,8 +840,8 @@ async function savePartnerRequestToMysql(requestData) {
   const senderName = requestData.name || requestData.sender_name || 'User';
   const senderPhone = requestData.phone_number || requestData.sender_phone || '';
   const senderAvatar = requestData.image || requestData.sender_avatar || '';
-  const userId = requestData.user_id || 'usr_998877';
-  const partnerId = String(requestData.partner_id || '101');
+  const userId = requestData.user_id || '';
+  const partnerId = String(requestData.partner_id || requestData.receiver_id || '');
   const activity = requestData.interest || requestData.activity_name || (requestData.activity && requestData.activity.type) || 'Coffee';
   const date = requestData.date || (requestData.activity && requestData.activity.date) || '2026-09-25';
   const time = requestData.time || (requestData.activity && requestData.activity.time) || '06:00 PM';
@@ -858,8 +879,13 @@ async function fetchPartnerBookingsFromMysql(partnerId, statusFilter) {
 
   const conditions = [];
   if (partnerId) {
-    conditions.push("partner_id = ?");
-    params.push(String(partnerId));
+    const pId = String(partnerId);
+    let cleanMobile = pId.replace(/\D/g, '');
+    if (cleanMobile.length > 10 && cleanMobile.startsWith('91')) cleanMobile = cleanMobile.slice(-10);
+    else if (cleanMobile.length === 11 && cleanMobile.startsWith('0')) cleanMobile = cleanMobile.slice(-10);
+
+    conditions.push("(partner_id = ? OR partner_id = ? OR partner_id IN (SELECT user_id FROM withme_partners WHERE mobile_number = ? OR phone_number = ? OR partner_id = ?))");
+    params.push(pId, cleanMobile, cleanMobile, cleanMobile, pId);
   }
   if (statusFilter && statusFilter !== 'all') {
     conditions.push("LOWER(status) = LOWER(?)");
@@ -900,8 +926,8 @@ async function savePartnerBookingToMysql(bookingData) {
   const db = getDbPool();
   const bId = bookingData.booking_id || `BK${Date.now()}`;
   const custName = bookingData.name || bookingData.customer_name || 'User';
-  const partnerId = String(bookingData.partner_id || '101');
-  const userId = bookingData.user_id || 'usr_998877';
+  const partnerId = String(bookingData.partner_id || bookingData.receiver_id || '');
+  const userId = bookingData.user_id || '';
   const profileImage = bookingData.profile_image || '';
   const activity = bookingData.interest || bookingData.activity || 'Coffee';
   const date = bookingData.date || '2026-09-25';
@@ -928,8 +954,13 @@ async function fetchPartnerTransactionsFromMysql(partnerId) {
   const params = [];
 
   if (partnerId) {
-    sql += " WHERE partner_id = ?";
-    params.push(String(partnerId));
+    const pId = String(partnerId);
+    let cleanMobile = pId.replace(/\D/g, '');
+    if (cleanMobile.length > 10 && cleanMobile.startsWith('91')) cleanMobile = cleanMobile.slice(-10);
+    else if (cleanMobile.length === 11 && cleanMobile.startsWith('0')) cleanMobile = cleanMobile.slice(-10);
+
+    sql += " WHERE (partner_id = ? OR partner_id = ? OR partner_id IN (SELECT user_id FROM withme_partners WHERE mobile_number = ? OR phone_number = ? OR partner_id = ?))";
+    params.push(pId, cleanMobile, cleanMobile, cleanMobile, pId);
   }
 
   sql += " ORDER BY created_at DESC LIMIT 200";
@@ -996,5 +1027,6 @@ module.exports = {
   fetchPartnerBookingsFromMysql,
   savePartnerBookingToMysql,
   fetchPartnerTransactionsFromMysql,
-  savePartnerTransactionToMysql
+  savePartnerTransactionToMysql,
+  mapMysqlRowToPartner
 };

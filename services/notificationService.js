@@ -1,7 +1,6 @@
 const http = require('http');
 const https = require('https');
 const { getDbPool } = require('../config/database');
-const { users, saveUsers } = require('../store/db');
 
 // In-memory notifications store
 const memoryNotifications = new Map(); // notification_id -> object
@@ -16,21 +15,15 @@ async function saveUserFcmToken(userId, fcmToken, deviceType = 'android') {
 
   const uId = String(userId);
 
-  // Update in-memory user
-  const user = users.get(uId);
-  if (user) {
-    user.fcm_token = fcmToken;
-    user.device_type = deviceType;
-    saveUsers();
-  }
-
   // Update in MySQL
   try {
     const db = getDbPool();
-    await db.query(
-      `UPDATE withme_partners SET fcm_token = ? WHERE user_id = ? OR partner_id = ? OR mobile_number = ?`,
-      [fcmToken, uId, uId, uId]
-    );
+    if (db && typeof db.query === 'function') {
+      await db.query(
+        `UPDATE withme_partners SET fcm_token = ? WHERE user_id = ? OR partner_id = ? OR mobile_number = ?`,
+        [fcmToken, uId, uId, uId]
+      );
+    }
   } catch (err) {
     // Ignore MySQL error if operating on local store
   }
@@ -111,12 +104,9 @@ async function sendNotification({ userId, title, body, data = {} }) {
 
   // Find target user for FCM token
   let fcmToken = null;
-  const user = users.get(uId);
-  if (user && user.fcm_token) {
-    fcmToken = user.fcm_token;
-  } else {
-    try {
-      const db = getDbPool();
+  try {
+    const db = getDbPool();
+    if (db && typeof db.query === 'function') {
       const [rows] = await db.query(
         `SELECT fcm_token FROM withme_partners WHERE user_id = ? OR partner_id = ? OR mobile_number = ? LIMIT 1`,
         [uId, uId, uId]
@@ -124,9 +114,9 @@ async function sendNotification({ userId, title, body, data = {} }) {
       if (rows && rows.length > 0 && rows[0].fcm_token) {
         fcmToken = rows[0].fcm_token;
       }
-    } catch (err) {
-      // Ignore MySQL error
     }
+  } catch (err) {
+    // Ignore MySQL error
   }
 
   const dataPayloadStr = typeof data === 'string' ? data : JSON.stringify(data || {});
@@ -147,10 +137,12 @@ async function sendNotification({ userId, title, body, data = {} }) {
   // Save to MySQL
   try {
     const db = getDbPool();
-    await db.query(
-      `INSERT INTO withme_notifications (notification_id, user_id, title, body, data_payload) VALUES (?, ?, ?, ?, ?)`,
-      [notificationId, uId, title, body, dataPayloadStr]
-    );
+    if (db && typeof db.query === 'function') {
+      await db.query(
+        `INSERT INTO withme_notifications (notification_id, user_id, title, body, data_payload) VALUES (?, ?, ?, ?, ?)`,
+        [notificationId, uId, title, body, dataPayloadStr]
+      );
+    }
   } catch (err) {
     // Ignore MySQL error
   }
@@ -182,19 +174,21 @@ async function getUserNotifications(userId) {
   // Fetch from MySQL
   try {
     const db = getDbPool();
-    const [rows] = await db.query(
-      `SELECT * FROM withme_notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 50`,
-      [uId]
-    );
-    if (rows && rows.length > 0) {
-      list = rows.map(r => ({
-        notification_id: r.notification_id,
-        title: r.title,
-        body: r.body,
-        data: r.data_payload ? JSON.parse(r.data_payload) : {},
-        is_read: Boolean(r.is_read),
-        created_at: typeof r.created_at === 'string' ? r.created_at : new Date(r.created_at).toISOString()
-      }));
+    if (db && typeof db.query === 'function') {
+      const [rows] = await db.query(
+        `SELECT * FROM withme_notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 50`,
+        [uId]
+      );
+      if (rows && rows.length > 0) {
+        list = rows.map(r => ({
+          notification_id: r.notification_id,
+          title: r.title,
+          body: r.body,
+          data: r.data_payload ? JSON.parse(r.data_payload) : {},
+          is_read: Boolean(r.is_read),
+          created_at: typeof r.created_at === 'string' ? r.created_at : new Date(r.created_at).toISOString()
+        }));
+      }
     }
   } catch (err) {
     // Ignore MySQL error
@@ -231,10 +225,12 @@ async function markNotificationRead(notificationId, userId) {
 
   try {
     const db = getDbPool();
-    await db.query(
-      `UPDATE withme_notifications SET is_read = 1 WHERE notification_id = ? AND user_id = ?`,
-      [nId, uId]
-    );
+    if (db && typeof db.query === 'function') {
+      await db.query(
+        `UPDATE withme_notifications SET is_read = 1 WHERE notification_id = ? AND user_id = ?`,
+        [nId, uId]
+      );
+    }
   } catch (err) {
     // Ignore MySQL error
   }

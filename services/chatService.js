@@ -1,5 +1,5 @@
 const { getDbPool } = require('../config/database');
-const { users, formatPhotoUrl } = require('../store/db');
+const { formatPhotoUrl } = require('../store/db');
 
 // In-memory fallback stores for Chat
 const memoryConversations = new Map(); // conversationId -> { id, type, created_at, updated_at }
@@ -45,7 +45,7 @@ function toUserIdStr(id) {
 }
 
 /**
- * Find user details from memory store or MySQL
+ * Find user details from MySQL
  */
 async function findUser(userId) {
   const uId = toUserIdStr(userId);
@@ -53,17 +53,6 @@ async function findUser(userId) {
 
   const rawId = uId.replace(/^usr_/, '');
   const formattedId = uId.startsWith('usr_') ? uId : `usr_${uId}`;
-
-  // 1. Check in-memory store
-  if (users.has(uId)) return users.get(uId);
-  const matchMem = Array.from(users.values()).find(u =>
-    toUserIdStr(u.user_id) === uId ||
-    toUserIdStr(u.id) === uId ||
-    toUserIdStr(u.user_id) === formattedId ||
-    toUserIdStr(u.id) === rawId ||
-    toUserIdStr(u.mobile_number) === uId
-  );
-  if (matchMem) return matchMem;
 
   // 2. Check MySQL withme_partners
   try {

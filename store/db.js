@@ -52,15 +52,20 @@ function getBaseUrl(req) {
 // Format photo URL to full absolute URL
 function formatPhotoUrl(urlOrPath, req) {
   if (!urlOrPath) return '';
+  
+  // Handle case where object is passed instead of string URL (e.g. { photo_id, url })
+  let photoStr = typeof urlOrPath === 'string' ? urlOrPath : (urlOrPath.url || urlOrPath.path || '');
+  if (typeof photoStr !== 'string' || !photoStr) return '';
+
   const baseUrl = getBaseUrl(req);
 
-  if (urlOrPath.includes('cdn.yourdomain.com')) {
-    const match = urlOrPath.match(/ph_00(\d)/);
+  if (photoStr.includes('cdn.yourdomain.com')) {
+    const match = photoStr.match(/ph_00(\d)/);
     if (match) return `${baseUrl}/uploads/photos/photo_${match[1]}.jpg`;
     return `${baseUrl}/uploads/photos/photo_1.jpg`;
   }
 
-  let formatted = urlOrPath;
+  let formatted = photoStr;
   if (formatted.includes('localhost:5000')) {
     formatted = formatted.replace(/https?:\/\/localhost:5000/, baseUrl);
   } else if (formatted.includes('withmepartner.onrender.com')) {
@@ -69,14 +74,6 @@ function formatPhotoUrl(urlOrPath, req) {
     formatted = `${baseUrl}${formatted}`;
   } else if (formatted.startsWith('uploads/')) {
     formatted = `${baseUrl}/${formatted}`;
-  }
-
-  if (formatted.startsWith(`${baseUrl}/uploads/`)) {
-    const relPath = formatted.substring(baseUrl.length);
-    const diskPath = path.join(__dirname, '..', relPath);
-    if (!fs.existsSync(diskPath)) {
-      return `${baseUrl}/uploads/photos/photo_1.jpg`;
-    }
   }
 
   return formatted;

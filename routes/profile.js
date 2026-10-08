@@ -305,7 +305,31 @@ router.get('/', authenticateToken, async (req, res) => {
     const primaryPhoto = (user.photos && user.photos.find(p => p.is_primary)) || (user.photos && user.photos[0]);
     const rawPhoto = primaryPhoto ? primaryPhoto.url : (user.profile_photo_url || '');
     const photoUrl = rawPhoto ? formatPhotoUrl(rawPhoto, req) : '';
-    const formattedPhotos = (user.photos || []).map(p => ({ ...p, url: formatPhotoUrl(p.url, req) }));
+    const formattedPhotos = (user.photos || []).map((p, idx) => {
+      let rawUrl = '';
+      let pId = `ph_00${idx + 1}`;
+      let isPrimary = idx === 0;
+
+      if (typeof p === 'string') {
+        rawUrl = p;
+      } else if (p && typeof p === 'object') {
+        rawUrl = p.url || p.path || '';
+        if (p.photo_id) pId = p.photo_id;
+        if (p.is_primary !== undefined) isPrimary = Boolean(p.is_primary);
+
+        // Check if object has numeric index keys (e.g. { "0": "h", "1": "t", ... })
+        if (!rawUrl && p[0] !== undefined) {
+          const keys = Object.keys(p).filter(k => /^\d+$/.test(k)).sort((a, b) => Number(a) - Number(b));
+          rawUrl = keys.map(k => p[k]).join('');
+        }
+      }
+
+      return {
+        photo_id: pId,
+        url: formatPhotoUrl(rawUrl, req),
+        is_primary: isPrimary
+      };
+    });
     const aadharVerified = user.aadhar ? (user.aadhar.aadhar_verification_status === 'APPROVED') : false;
     const avail = user.availability || {};
     const cc = user.country_code || '+91';

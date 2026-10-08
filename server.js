@@ -51,6 +51,9 @@ app.get(['/support', '/contact', '/help'], (req, res) => {
 app.get(['/child-safety', '/child-safety-standards', '/child-safety-policy', '/childsafety'], (req, res) => {
   res.redirect('/meta/child-safety');
 });
+app.get(['/terms-conditions', '/termsandconditions', '/t-and-c'], (req, res) => {
+  res.redirect('/meta/terms-and-conditions');
+});
 
 // Root route
 app.get('/', (req, res) => {

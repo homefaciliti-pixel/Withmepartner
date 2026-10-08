@@ -64,19 +64,25 @@ function getISTDateString() {
 
 const handleIncomingUserRequest = async (req, res) => {
   const requestPayload = req.body || {};
-  const requestId = requestPayload.request_id || `req_${Date.now()}`;
+  const requestId = requestPayload.request_id || `req_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+  const partnerId = requestPayload.partner_id || requestPayload.receiver_id || '';
+  const userId = requestPayload.user_id || requestPayload.sender_id || '';
   const senderName = requestPayload.name || requestPayload.sender_name || 'User';
-  const interest = requestPayload.interest || requestPayload.activity_name || 'Coffee';
-  const location = requestPayload.location || 'Jaipur';
+  const interest = requestPayload.interest || requestPayload.activity_name || (requestPayload.activity && requestPayload.activity.type) || 'Coffee';
+  const location = requestPayload.location || (requestPayload.activity && requestPayload.activity.area) || 'Jaipur';
   const dateTime = requestPayload.date_time || `${requestPayload.date || getISTDateString()} ${requestPayload.time || '06:00 PM'}`;
-  const profileImage = requestPayload.profile_image || requestPayload.image || '';
+  const profileImage = requestPayload.profile_image || requestPayload.image || requestPayload.sender_avatar || '';
+
+  console.log(`[PARTNER REQUEST] Incoming sync: requestId=${requestId}, partnerId=${partnerId}, userId=${userId}`);
 
   const newRequest = {
     request_id: requestId,
     booking_id: requestPayload.booking_id || `BK${Math.floor(100000 + Math.random() * 900000)}`,
-    partner_id: requestPayload.partner_id || '',
-    user_id: requestPayload.user_id || '',
+    partner_id: partnerId,
+    user_id: userId,
     name: senderName,
+    sender_name: senderName,
+    sender_avatar: profileImage,
     age: requestPayload.age || 25,
     image: profileImage,
     profile_image: profileImage,
@@ -85,7 +91,7 @@ const handleIncomingUserRequest = async (req, res) => {
     interest,
     date_time: dateTime,
     location,
-    status: 'Pending',
+    status: requestPayload.status || 'Pending',
     message: requestPayload.message || 'Looking for an activity partner',
     activity: requestPayload.activity || {
       type: interest,
@@ -96,21 +102,33 @@ const handleIncomingUserRequest = async (req, res) => {
     }
   };
 
-  // Save to MySQL (primary storage)
+  // Save to MySQL (primary storage) - MUST succeed before returning success
   try {
+    console.log(`[BOOKING] Saving partner request ${requestId} to MySQL...`);
     await savePartnerRequestToMysql(newRequest);
+    console.log(`[BOOKING] MySQL INSERT SUCCESS for requestId=${requestId}`);
   } catch (err) {
-    console.warn('[MySQL save partner request]:', err.message);
+    console.error(`[BOOKING] MySQL save FAILED for requestId=${requestId}:`, err.message);
+    return res.status(500).json({
+      status: false,
+      success: false,
+      message: 'Booking request could not be saved to database.',
+      error: err.message
+    });
   }
 
-  // Trigger push notification to partner
-  sendEventNotification('booking_request', {
-    targetUserId: newRequest.partner_id,
-    sender_name: senderName,
-    activity: interest,
-    location,
-    request_id: requestId
-  }).catch(() => {});
+  // Trigger push notification to partner (secondary - failure does not affect booking response)
+  try {
+    sendEventNotification('booking_request', {
+      targetUserId: newRequest.partner_id,
+      sender_name: senderName,
+      activity: interest,
+      location,
+      request_id: requestId
+    }).catch(e => console.error('[FCM] Notification dispatch error:', e.message));
+  } catch (e) {
+    console.error('[FCM] Notification error:', e.message);
+  }
 
   console.log(`[Partner API] Registered incoming user request: ${requestId} for ${interest} in ${location}`);
 
@@ -158,20 +176,32 @@ const handleIncomingUserBooking = async (req, res) => {
     safe_meet_mode: { location_allow: 1, notify_trusted_contact: 1, safety_check_in: 1 }
   };
 
-  // Save to MySQL (primary storage)
+  // Save to MySQL (primary storage) - MUST succeed before returning success
   try {
+    console.log(`[BOOKING] Saving partner booking ${bookingId} to MySQL...`);
     await savePartnerBookingToMysql(newBooking);
+    console.log(`[BOOKING] MySQL INSERT SUCCESS for bookingId=${bookingId}`);
   } catch (err) {
-    console.warn('[MySQL save partner booking]:', err.message);
+    console.error(`[BOOKING] MySQL save FAILED for bookingId=${bookingId}:`, err.message);
+    return res.status(500).json({
+      status: false,
+      success: false,
+      message: 'Booking could not be saved to database.',
+      error: err.message
+    });
   }
 
-  sendEventNotification('booking_confirmed', {
-    targetUserId: newBooking.partner_id,
-    name: userName,
-    activity: interest,
-    location,
-    booking_id: bookingId
-  }).catch(() => {});
+  try {
+    sendEventNotification('booking_confirmed', {
+      targetUserId: newBooking.partner_id,
+      name: userName,
+      activity: interest,
+      location,
+      booking_id: bookingId
+    }).catch(e => console.error('[FCM] Notification dispatch error:', e.message));
+  } catch (e) {
+    console.error('[FCM] Notification error:', e.message);
+  }
 
   sendEventNotification('wallet_credit', {
     targetUserId: newBooking.partner_id,
@@ -206,7 +236,30 @@ router.get(['/all', '/list-all', '/registered', '/partners'], async (req, res) =
     const partnerList = allUsers.map(u => {
       const rawPhoto = u.profile_photo_url || (u.photos && u.photos[0] ? u.photos[0].url : '');
       const photoUrl = rawPhoto ? formatPhotoUrl(rawPhoto, req) : '';
-      const formattedPhotos = (u.photos || []).map(p => ({ ...p, url: formatPhotoUrl(p.url, req) }));
+      const formattedPhotos = (u.photos || []).map((p, idx) => {
+        let rawUrl = '';
+        let pId = `ph_00${idx + 1}`;
+        let isPrimary = idx === 0;
+
+        if (typeof p === 'string') {
+          rawUrl = p;
+        } else if (p && typeof p === 'object') {
+          rawUrl = p.url || p.path || '';
+          if (p.photo_id) pId = p.photo_id;
+          if (p.is_primary !== undefined) isPrimary = Boolean(p.is_primary);
+
+          if (!rawUrl && p[0] !== undefined) {
+            const keys = Object.keys(p).filter(k => /^\d+$/.test(k)).sort((a, b) => Number(a) - Number(b));
+            rawUrl = keys.map(k => p[k]).join('');
+          }
+        }
+
+        return {
+          photo_id: pId,
+          url: formatPhotoUrl(rawUrl, req),
+          is_primary: isPrimary
+        };
+      });
       const avail = u.availability || {};
       const aboutData = u.about || {};
 
@@ -277,6 +330,8 @@ router.get('/home', authenticateToken, async (req, res) => {
       fetchPartnerBookingsFromMysql(currentUserId),
       fetchPartnerTransactionsFromMysql(currentUserId)
     ]);
+
+    console.log(`[PARTNER HOME] partnerId=${currentUserId}, total_db_requests=${dbRequests.length}`);
 
     const newRequestsList = dbRequests
       .filter(r => r.status === 'Pending' || r.status === 'PENDING')
