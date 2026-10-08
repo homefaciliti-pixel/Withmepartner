@@ -797,8 +797,9 @@ async function fetchPartnerRequestsFromMysql(partnerId) {
     if (cleanMobile.length > 10 && cleanMobile.startsWith('91')) cleanMobile = cleanMobile.slice(-10);
     else if (cleanMobile.length === 11 && cleanMobile.startsWith('0')) cleanMobile = cleanMobile.slice(-10);
 
-    sql += " WHERE (partner_id = ? OR partner_id = ? OR partner_id IN (SELECT user_id FROM withme_partners WHERE mobile_number = ? OR phone_number = ? OR partner_id = ?))";
-    params.push(pId, cleanMobile, cleanMobile, cleanMobile, pId);
+    const fullMobile = `91${cleanMobile}`;
+    sql += " WHERE (partner_id = ? OR partner_id = ? OR partner_id = ? OR partner_id IN (SELECT user_id FROM withme_partners WHERE mobile_number = ? OR phone_number = ? OR mobile_number = ? OR phone_number = ? OR partner_id = ?) OR partner_id IN (SELECT partner_id FROM withme_partners WHERE mobile_number = ? OR phone_number = ? OR mobile_number = ? OR phone_number = ? OR user_id = ?))";
+    params.push(pId, cleanMobile, fullMobile, cleanMobile, cleanMobile, fullMobile, fullMobile, pId, cleanMobile, cleanMobile, fullMobile, fullMobile, pId);
   }
 
   sql += " ORDER BY created_at DESC LIMIT 200";
@@ -876,16 +877,17 @@ async function fetchPartnerBookingsFromMysql(partnerId, statusFilter) {
   const db = getDbPool();
   let sql = "SELECT * FROM withme_partner_bookings";
   const params = [];
-
   const conditions = [];
+
   if (partnerId) {
     const pId = String(partnerId);
     let cleanMobile = pId.replace(/\D/g, '');
     if (cleanMobile.length > 10 && cleanMobile.startsWith('91')) cleanMobile = cleanMobile.slice(-10);
     else if (cleanMobile.length === 11 && cleanMobile.startsWith('0')) cleanMobile = cleanMobile.slice(-10);
 
-    conditions.push("(partner_id = ? OR partner_id = ? OR partner_id IN (SELECT user_id FROM withme_partners WHERE mobile_number = ? OR phone_number = ? OR partner_id = ?))");
-    params.push(pId, cleanMobile, cleanMobile, cleanMobile, pId);
+    const fullMobile = `91${cleanMobile}`;
+    conditions.push("(partner_id = ? OR partner_id = ? OR partner_id = ? OR partner_id IN (SELECT user_id FROM withme_partners WHERE mobile_number = ? OR phone_number = ? OR mobile_number = ? OR phone_number = ? OR partner_id = ?) OR partner_id IN (SELECT partner_id FROM withme_partners WHERE mobile_number = ? OR phone_number = ? OR mobile_number = ? OR phone_number = ? OR user_id = ?))");
+    params.push(pId, cleanMobile, fullMobile, cleanMobile, cleanMobile, fullMobile, fullMobile, pId, cleanMobile, cleanMobile, fullMobile, fullMobile, pId);
   }
   if (statusFilter && statusFilter !== 'all') {
     conditions.push("LOWER(status) = LOWER(?)");
