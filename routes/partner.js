@@ -334,7 +334,7 @@ router.get('/home', authenticateToken, async (req, res) => {
     console.log(`[PARTNER HOME] partnerId=${currentUserId}, total_db_requests=${dbRequests.length}`);
 
     const newRequestsList = dbRequests
-      .filter(r => r.status === 'Pending' || r.status === 'PENDING')
+      .filter(r => !r.status || ['PENDING', 'PENDING_CONFIRMATION', 'NEW', 'CONFIRMED'].includes(String(r.status).toUpperCase()))
       .map(r => ({
         request_id: r.request_id,
         booking_id: r.booking_id || `BK${Math.floor(100000 + Math.random() * 900000)}`,
@@ -345,6 +345,7 @@ router.get('/home', authenticateToken, async (req, res) => {
         profile_image: formatPhotoUrl(r.image, req),
         name: r.name,
         pending_status: r.status,
+        status: r.status,
         is_paid: true,
         payment_status: 'COMPLETED',
         is_payment_completed: true,
@@ -353,7 +354,7 @@ router.get('/home', authenticateToken, async (req, res) => {
       }));
 
     const upcomingBookingsList = dbBookings
-      .filter(b => b.status === 'Upcoming' || b.status === 'CONFIRMED')
+      .filter(b => !b.status || ['UPCOMING', 'CONFIRMED', 'ACCEPTED', 'PENDING'].includes(String(b.status).toUpperCase()))
       .map(b => ({
         booking_id: b.booking_id,
         name: b.name,
@@ -371,7 +372,7 @@ router.get('/home', authenticateToken, async (req, res) => {
       }));
 
     const totalEarnings = dbTx
-      .filter(t => t.status === 'Complete')
+      .filter(t => !t.status || ['COMPLETE', 'COMPLETED', 'SUCCESS'].includes(String(t.status).toUpperCase()))
       .reduce((sum, t) => sum + (t.earn_money || 0), 0);
 
     return res.status(200).json({
