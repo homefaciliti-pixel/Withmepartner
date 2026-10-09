@@ -149,13 +149,32 @@ router.put('/photos/:photo_id', authenticateToken, (req, res) => {
       const photoIndex = photo_id.match(/\d+/) ? parseInt(photo_id.match(/\d+/)[0], 10) : 1;
       const photoKey = photoIndex >= 1 && photoIndex <= 5 ? photoIndex : 1;
 
-      let updatedUrl = `/uploads/photos/photo_${photoKey}.jpg`;
+      let updatedUrl = null;
       if (file) {
-        const saved = saveUploadedFile(file, `usr_${user.user_id}_ph${photoKey}`);
-        if (saved) updatedUrl = saved;
+        updatedUrl = saveUploadedFile(file, `usr_${user.user_id}_ph${photoKey}`);
+      } else if (req.body && (req.body.photo_url || req.body.url || req.body.image || req.body.profile_photo)) {
+        const inputUrl = req.body.photo_url || req.body.url || req.body.image || req.body.profile_photo;
+        if (inputUrl.startsWith('data:image')) {
+          // Handle base64 upload
+          const matches = inputUrl.match(/^data:image\/([a-zA-Z+]+);base64,(.+)$/);
+          if (matches) {
+            const ext = matches[1].includes('png') ? 'png' : 'jpg';
+            const buffer = Buffer.from(matches[2], 'base64');
+            const filename = `usr_${user.user_id}_ph${photoKey}_${Date.now()}.${ext}`;
+            const filepath = path.join(uploadsDir, filename);
+            fs.writeFileSync(filepath, buffer);
+            updatedUrl = `/uploads/photos/${filename}`;
+          }
+        } else {
+          updatedUrl = inputUrl;
+        }
       }
 
-      let photos = user.photos || [
+      if (!updatedUrl) {
+        updatedUrl = `/uploads/photos/photo_${photoKey}.jpg`;
+      }
+
+      let photos = Array.isArray(user.photos) ? user.photos : [
         { photo_id: 'ph_001', url: PHOTO_1, is_primary: true },
         { photo_id: 'ph_002', url: PHOTO_2, is_primary: false },
         { photo_id: 'ph_003', url: PHOTO_3, is_primary: false },
@@ -163,24 +182,41 @@ router.put('/photos/:photo_id', authenticateToken, (req, res) => {
         { photo_id: 'ph_005', url: PHOTO_5, is_primary: false }
       ];
 
-      const p = photos.find(item => item.photo_id === photo_id);
-      if (p) {
-        p.url = updatedUrl;
+      // Standardize photo array elements
+      photos = photos.map((item, idx) => {
+        if (typeof item === 'string') return { photo_id: `ph_00${idx + 1}`, url: item, is_primary: idx === 0 };
+        return { photo_id: item.photo_id || `ph_00${idx + 1}`, url: item.url || item.path || '', is_primary: Boolean(item.is_primary) };
+      });
+
+      const targetIdClean = photo_id.toLowerCase().trim();
+      const pIndex = photos.findIndex(item => item.photo_id.toLowerCase() === targetIdClean || item.photo_id.endsWith(String(photoKey)));
+      if (pIndex !== -1) {
+        photos[pIndex].url = updatedUrl;
       } else {
-        photos.push({ photo_id, url: updatedUrl, is_primary: false });
+        photos.push({ photo_id: `ph_00${photoKey}`, url: updatedUrl, is_primary: photoKey === 1 });
       }
 
       const updateFields = { photos };
-      if (photo_id === 'ph_001' || (photos[0] && photos[0].photo_id === photo_id)) {
+      if (photoKey === 1 || targetIdClean === 'ph_001' || pIndex === 0) {
         updateFields.profile_photo_url = updatedUrl;
       }
 
       await updatePartnerInMysql(user.user_id, updateFields);
 
+      const updatedUser = await findPartnerByIdFromMysql(user.user_id);
+      syncPartnerToUserApp(updatedUser).catch(() => {});
+
+      const formattedPhotos = (updatedUser.photos || []).map(p => ({ ...p, url: formatPhotoUrl(p.url, req) }));
+
       return res.status(200).json({
         status: true,
         message: 'Photo updated successfully',
-        data: { photo_id, url: formatPhotoUrl(updatedUrl, req) }
+        data: {
+          photo_id: `ph_00${photoKey}`,
+          url: formatPhotoUrl(updatedUrl, req),
+          profile_photo_url: formatPhotoUrl(updatedUser.profile_photo_url, req),
+          photos: formattedPhotos
+        }
       });
     } catch (e) {
       console.error('[Update Photo Error]:', e.message);
@@ -452,10 +488,24 @@ router.put('/', authenticateToken, async (req, res) => {
     const updatedName = name || user.name;
     const updatedEmail = email || mail || user.email;
     const updatedPhoto = profile_photo || image || user.profile_photo_url;
+    const incomingPhotos = req.body.photos;
 
     const updateFields = { name: updatedName, email: updatedEmail };
     if (dob) updateFields.dob = dob;
-    if (updatedPhoto) updateFields.profile_photo_url = updatedPhoto;
+    if (updatedPhoto) {
+      updateFields.profile_photo_url = updatedPhoto;
+      let photos = Array.isArray(user.photos) ? user.photos : [];
+      if (photos.length > 0) {
+        if (typeof photos[0] === 'object') photos[0].url = updatedPhoto;
+        else photos[0] = { photo_id: 'ph_001', url: updatedPhoto, is_primary: true };
+      } else {
+        photos = [{ photo_id: 'ph_001', url: updatedPhoto, is_primary: true }];
+      }
+      updateFields.photos = photos;
+    }
+    if (Array.isArray(incomingPhotos) && incomingPhotos.length > 0) {
+      updateFields.photos = incomingPhotos;
+    }
 
     await updatePartnerInMysql(user.user_id, updateFields);
 
