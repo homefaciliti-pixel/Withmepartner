@@ -421,30 +421,38 @@ router.get('/home', authenticateToken, async (req, res) => {
         const accepted = Number(r.is_accepted !== undefined ? r.is_accepted : (s === 'ACCEPTED' ? 1 : 0));
         return accepted === 0 && ['PENDING', 'PENDING_CONFIRMATION', 'NEW', 'PAID'].includes(s);
       })
-      .map(r => ({
-        request_id: r.request_id,
-        booking_id: r.booking_id || `BK${Math.floor(100000 + Math.random() * 900000)}`,
-        interest: r.interest,
-        activity: r.interest,
-        date_time: r.date_time,
-        date: r.date,
-        time: r.time,
-        location: r.location,
-        image: formatPhotoUrl(r.image, req),
-        profile_image: formatPhotoUrl(r.image, req),
-        name: r.name,
-        sender_name: r.name,
-        phone_number: r.phone_number || '',
-        pending_status: 'PENDING',
-        status: 'PENDING',
-        is_accepted: 0,
-        actions: ['ACCEPT', 'REJECT'],
-        is_paid: true,
-        payment_status: 'COMPLETED',
-        is_payment_completed: true,
-        payment_id: `pay_${r.request_id}`,
-        payment_status_text: 'Paid'
-      }));
+      .map(r => {
+        const isPaid = Boolean(r.is_paid);
+        const payStatus = r.payment_status || (isPaid ? 'PAID' : 'UNPAID');
+        return {
+          request_id: r.request_id,
+          booking_id: r.booking_id || `BK${Math.floor(100000 + Math.random() * 900000)}`,
+          interest: r.interest,
+          activity: r.interest,
+          date_time: r.date_time,
+          date: r.date,
+          time: r.time,
+          location: r.location,
+          image: formatPhotoUrl(r.image, req),
+          profile_image: formatPhotoUrl(r.image, req),
+          name: r.name,
+          sender_name: r.name,
+          phone_number: r.phone_number || '',
+          pending_status: 'PENDING',
+          status: 'PENDING',
+          is_accepted: 0,
+          actions: ['ACCEPT', 'REJECT'],
+          is_paid: isPaid,
+          payment_status: payStatus,
+          is_payment_completed: isPaid,
+          payment_id: r.payment_id || `pay_${r.request_id}`,
+          payment_status_text: isPaid ? 'Paid' : 'Pending',
+          can_pay: r.can_pay !== undefined ? r.can_pay : false,
+          can_chat: r.can_chat !== undefined ? r.can_chat : false,
+          chat_status: r.chat_status || 'LOCKED',
+          badge: r.badge || 'New Request'
+        };
+      });
 
     // Upcoming bookings tab: ONLY bookings that have been manually accepted!
     const upcomingBookingsList = dbBookings
@@ -453,27 +461,33 @@ router.get('/home', authenticateToken, async (req, res) => {
         const accepted = Number(b.is_accepted !== undefined ? b.is_accepted : (s === 'PENDING' ? 0 : 1));
         return accepted === 1 && ['UPCOMING', 'CONFIRMED', 'ACCEPTED'].includes(s) && s !== 'PENDING';
       })
-      .map(b => ({
-        booking_id: b.booking_id,
-        name: b.name,
-        customer_name: b.name,
-        phone_number: b.phone_number || '',
-        interest: b.interest,
-        activity: b.interest,
-        location: b.location,
-        date_time: `${b.date} ${b.time}`,
-        date: b.date,
-        time: b.time,
-        image: formatPhotoUrl(b.profile_image, req),
-        profile_image: formatPhotoUrl(b.profile_image, req),
-        status: b.status || 'Upcoming',
-        is_accepted: 1,
-        is_paid: true,
-        payment_status: 'COMPLETED',
-        is_payment_completed: true,
-        payment_id: `pay_${b.booking_id}`,
-        payment_status_text: 'Paid'
-      }));
+      .map(b => {
+        const isPaid = Boolean(b.is_paid);
+        const payStatus = b.payment_status || (isPaid ? 'PAID' : 'UNPAID');
+        return {
+          booking_id: b.booking_id,
+          name: b.name,
+          customer_name: b.name,
+          phone_number: b.phone_number || '',
+          interest: b.interest,
+          activity: b.interest,
+          location: b.location,
+          date_time: `${b.date} ${b.time}`,
+          date: b.date,
+          time: b.time,
+          image: formatPhotoUrl(b.profile_image, req),
+          profile_image: formatPhotoUrl(b.profile_image, req),
+          status: b.status || 'Upcoming',
+          is_accepted: 1,
+          is_paid: isPaid,
+          payment_status: payStatus,
+          is_payment_completed: isPaid,
+          payment_id: b.payment_id || `pay_${b.booking_id}`,
+          payment_status_text: isPaid ? 'Paid' : 'Pending',
+          can_chat: b.can_chat !== undefined ? b.can_chat : isPaid,
+          chat_status: b.chat_status || (isPaid ? 'UNLOCKED' : 'LOCKED')
+        };
+      });
 
     const totalEarnings = dbTx
       .filter(t => !t.status || ['COMPLETE', 'COMPLETED', 'SUCCESS'].includes(String(t.status).toUpperCase()))
@@ -524,6 +538,8 @@ const handleGetAllPartnerRequests = async (req, res) => {
     const formattedList = filtered.map(r => {
       const photoUrl = formatPhotoUrl(r.image || r.profile_image, req);
       const isAcc = Number(r.is_accepted !== undefined ? r.is_accepted : (String(r.status).toUpperCase() === 'ACCEPTED' ? 1 : 0));
+      const isPaid = Boolean(r.is_paid);
+      const payStatus = r.payment_status || (isPaid ? 'PAID' : 'UNPAID');
       return {
         request_id: r.request_id,
         booking_id: r.booking_id,
@@ -545,13 +561,18 @@ const handleGetAllPartnerRequests = async (req, res) => {
         pending_status: isAcc === 1 ? 'ACCEPTED' : (r.status || 'PENDING'),
         is_accepted: isAcc,
         actions: isAcc === 1 ? [] : ['ACCEPT', 'REJECT'],
-        is_paid: true,
-        payment_status: 'COMPLETED',
-        is_payment_completed: true,
-        payment_id: `pay_${r.request_id}`,
-        payment_status_text: 'Paid'
+        is_paid: isPaid,
+        payment_status: payStatus,
+        is_payment_completed: isPaid,
+        payment_id: r.payment_id || `pay_${r.request_id}`,
+        payment_status_text: isPaid ? 'Paid' : 'Pending',
+        can_pay: r.can_pay !== undefined ? r.can_pay : (isAcc === 1 && !isPaid),
+        can_chat: r.can_chat !== undefined ? r.can_chat : isPaid,
+        chat_status: r.chat_status || (isPaid ? 'UNLOCKED' : 'LOCKED'),
+        badge: r.badge || (isPaid ? 'Payment Received - Chat Open' : (isAcc === 1 ? 'Payment Pending' : 'New Request'))
       };
     });
+
 
     return res.status(200).json({
       status: true,
@@ -591,6 +612,8 @@ const handlePartnerAppRequestDetails = async (req, res) => {
     const dateVal = r.date || getISTDateString();
     const partnerUserIdVal = String(r.partner_id || req.user.user_id);
     const isAcc = Number(r.is_accepted !== undefined ? r.is_accepted : (String(r.status).toUpperCase() === 'ACCEPTED' ? 1 : 0));
+    const isPaid = Boolean(r.is_paid);
+    const payStatus = r.payment_status || (isPaid ? 'PAID' : 'UNPAID');
 
     const responseData = {
       request_id: r.request_id,
@@ -626,14 +649,18 @@ const handlePartnerAppRequestDetails = async (req, res) => {
       total_price: r.price || 1,
       amount: r.price || 1,
       currency: 'INR',
-      is_paid: true,
-      isPaid: true,
-      payment_status: 'COMPLETED',
-      paymentStatus: 'COMPLETED',
-      is_payment_completed: true,
-      payment_id: `pay_${r.request_id}`,
-      paymentId: `pay_${r.request_id}`,
-      payment_status_text: 'Paid',
+      is_paid: isPaid,
+      isPaid: isPaid,
+      payment_status: payStatus,
+      paymentStatus: payStatus,
+      is_payment_completed: isPaid,
+      payment_id: r.payment_id || `pay_${r.request_id}`,
+      paymentId: r.payment_id || `pay_${r.request_id}`,
+      payment_status_text: isPaid ? 'Paid' : 'Pending',
+      can_pay: isAcc === 1 && !isPaid,
+      can_chat: isPaid,
+      chat_status: isPaid ? 'UNLOCKED' : 'LOCKED',
+      badge: isPaid ? 'Payment Received - Chat Open' : (isAcc === 1 ? 'Payment Pending' : 'New Request'),
       status: isAcc === 1 ? 'ACCEPTED' : (r.status || 'PENDING'),
       pending_status: isAcc === 1 ? 'ACCEPTED' : (r.status || 'PENDING'),
       is_accepted: isAcc,
@@ -1011,23 +1038,33 @@ router.get(['/bookings', '/bookings/list'], authenticateToken, async (req, res) 
     const currentUserId = String(req.user.user_id);
     const dbBookings = await fetchPartnerBookingsFromMysql(currentUserId, status);
 
-    const list = dbBookings.map(b => ({
-      booking_id: b.booking_id,
-      image: formatPhotoUrl(b.profile_image, req),
-      profile_image: formatPhotoUrl(b.profile_image, req),
-      name: b.name,
-      customer_name: b.name,
-      phone_number: b.phone_number || '',
-      interest: b.interest,
-      activity: b.interest,
-      location: b.location,
-      date: b.date,
-      time: b.time,
-      status: b.status,
-      is_paid: true,
-      payment_status: 'COMPLETED',
-      payment_status_text: 'Paid'
-    }));
+    const list = dbBookings.map(b => {
+      const isPaid = Boolean(b.is_paid);
+      const payStatus = b.payment_status || (isPaid ? 'PAID' : 'UNPAID');
+      return {
+        booking_id: b.booking_id,
+        request_id: b.request_id,
+        image: formatPhotoUrl(b.profile_image, req),
+        profile_image: formatPhotoUrl(b.profile_image, req),
+        name: b.name,
+        customer_name: b.name,
+        phone_number: b.phone_number || '',
+        interest: b.interest,
+        activity: b.interest,
+        location: b.location,
+        date: b.date,
+        time: b.time,
+        status: b.status,
+        is_accepted: b.is_accepted !== undefined ? Number(b.is_accepted) : 1,
+        is_paid: isPaid,
+        payment_status: payStatus,
+        is_payment_completed: isPaid,
+        payment_id: b.payment_id || `pay_${b.booking_id}`,
+        payment_status_text: isPaid ? 'Paid' : 'Pending',
+        can_chat: b.can_chat !== undefined ? b.can_chat : isPaid,
+        chat_status: b.chat_status || (isPaid ? 'UNLOCKED' : 'LOCKED')
+      };
+    });
 
     return res.status(200).json({
       status: true,
