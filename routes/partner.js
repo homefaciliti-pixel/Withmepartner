@@ -79,14 +79,17 @@ const handleIncomingUserRequest = async (req, res) => {
   const amount = requestPayload.amount || requestPayload.price || 1;
   const currency = requestPayload.currency || 'INR';
 
-  // Payment status vs Request status separation:
-  // Payment might be 'PAID', but the partner request status MUST be 'PENDING' until manually accepted!
-  const paymentStatus = requestPayload.payment_status || (requestPayload.is_paid ? 'PAID' : 'PAID');
+  const isPaid = Boolean(
+    requestPayload.is_paid === true ||
+    requestPayload.is_paid === 1 ||
+    String(requestPayload.payment_status).toUpperCase() === 'PAID'
+  );
+  const paymentStatus = isPaid ? 'PAID' : (requestPayload.payment_status || 'PENDING');
   const status = 'PENDING';
   const isAccepted = 0;
-  const message = requestPayload.message || 'Payment completed. Looking for an activity partner.';
+  const message = requestPayload.message || 'Meetup request received.';
 
-  console.log(`[PARTNER REQUEST] Incoming sync: requestId=${requestId}, bookingId=${bookingId}, partnerId=${partnerId}, userId=${userId}, status=${status}`);
+  console.log(`[PARTNER REQUEST] Incoming sync: requestId=${requestId}, bookingId=${bookingId}, partnerId=${partnerId}, userId=${userId}, status=${status}, is_paid=${isPaid ? 1 : 0}`);
 
   const newRequest = {
     request_id: requestId,
@@ -108,7 +111,7 @@ const handleIncomingUserRequest = async (req, res) => {
     amount,
     currency,
     payment_status: paymentStatus,
-    is_paid: true,
+    is_paid: isPaid ? 1 : 0,
     date_time: dateTime,
     date: requestPayload.date || getISTDateString(),
     time: requestPayload.time || '06:00 PM',
@@ -196,11 +199,16 @@ const handleIncomingUserBooking = async (req, res) => {
   const price = bookingPayload.amount || bookingPayload.price || 1;
   const currency = bookingPayload.currency || 'INR';
 
-  // IMPORTANT: A new booking starts as PENDING until partner manually accepts!
+  const isPaid = Boolean(
+    bookingPayload.is_paid === true ||
+    bookingPayload.is_paid === 1 ||
+    String(bookingPayload.payment_status).toUpperCase() === 'PAID'
+  );
+  const paymentStatus = isPaid ? 'PAID' : (bookingPayload.payment_status || 'PENDING');
   const status = 'PENDING';
   const isAccepted = 0;
 
-  console.log(`[PARTNER BOOKING] Incoming sync: bookingId=${bookingId}, requestId=${requestId}, partnerId=${partnerId}, userId=${userId}, status=PENDING`);
+  console.log(`[PARTNER BOOKING] Incoming sync: bookingId=${bookingId}, requestId=${requestId}, partnerId=${partnerId}, userId=${userId}, status=PENDING, is_paid=${isPaid ? 1 : 0}`);
 
   const requestItem = {
     request_id: requestId,
@@ -226,8 +234,8 @@ const handleIncomingUserBooking = async (req, res) => {
     amount: price,
     price,
     currency,
-    is_paid: true,
-    payment_status: 'PAID',
+    is_paid: isPaid ? 1 : 0,
+    payment_status: paymentStatus,
     status: 'PENDING',
     pending_status: 'PENDING',
     is_accepted: 0,
@@ -519,9 +527,29 @@ router.get('/home', authenticateToken, async (req, res) => {
 
 const handleGetAllPartnerRequests = async (req, res) => {
   try {
-    const currentUserId = String(req.user ? req.user.user_id : '');
+    const currentUserId = String(req.user ? req.user.user_id : '').trim();
+    if (!currentUserId) {
+      return res.status(200).json({
+        success: true,
+        status: true,
+        count: 0,
+        requests: [],
+        data: { requests: [], count: 0 }
+      });
+    }
+
     const { status: filterStatus } = req.query;
     const dbRequests = await fetchPartnerRequestsFromMysql(currentUserId);
+    if (!dbRequests || dbRequests.length === 0) {
+      return res.status(200).json({
+        success: true,
+        status: true,
+        message: 'No requests found for this partner',
+        count: 0,
+        requests: [],
+        data: { requests: [], count: 0 }
+      });
+    }
 
     let filtered = dbRequests;
     if (filterStatus) {
@@ -573,16 +601,17 @@ const handleGetAllPartnerRequests = async (req, res) => {
       };
     });
 
-
     return res.status(200).json({
+      success: true,
       status: true,
       message: 'Partner requests list fetched successfully',
-      data: { requests: formattedList, count: formattedList.length },
-      requests: formattedList
+      count: formattedList.length,
+      requests: formattedList,
+      data: { requests: formattedList, count: formattedList.length }
     });
   } catch (err) {
     console.error('[Get Requests Error]:', err.message);
-    return res.status(500).json({ status: false, message: 'Failed to fetch requests.', error_code: 'SERVER_ERROR' });
+    return res.status(500).json({ success: false, status: false, message: 'Failed to fetch requests.', error_code: 'SERVER_ERROR' });
   }
 };
 

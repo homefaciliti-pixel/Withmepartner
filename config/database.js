@@ -268,6 +268,7 @@ async function initMysqlDatabase() {
       'ALTER TABLE withme_partner_requests ADD COLUMN payment_status VARCHAR(50) DEFAULT "PENDING"',
       'ALTER TABLE withme_partner_requests ADD COLUMN is_paid TINYINT(1) DEFAULT 0',
       'ALTER TABLE withme_partner_requests ADD COLUMN payment_id VARCHAR(100) DEFAULT NULL',
+      'ALTER TABLE withme_partner_bookings ADD COLUMN profile_image TEXT DEFAULT NULL',
       'ALTER TABLE withme_partner_bookings ADD COLUMN is_accepted TINYINT(1) DEFAULT 0',
       'ALTER TABLE withme_partner_bookings ADD COLUMN payment_status VARCHAR(50) DEFAULT "PENDING"',
       'ALTER TABLE withme_partner_bookings ADD COLUMN is_paid TINYINT(1) DEFAULT 0',
@@ -838,15 +839,18 @@ async function resolvePartnerCanonicalId(rawPartnerId) {
 async function fetchPartnerRequestsFromMysql(partnerId) {
   const db = getDbPool();
 
-  // Build all identifier variants for this partner
   const pId = String(partnerId || '').trim();
+  if (!pId) {
+    return [];
+  }
+
   let cleanMobile = pId.replace(/\D/g, '');
   if (cleanMobile.length > 10 && cleanMobile.startsWith('91')) cleanMobile = cleanMobile.slice(-10);
   else if (cleanMobile.length === 11 && cleanMobile.startsWith('0')) cleanMobile = cleanMobile.slice(-10);
   const fullMobile = cleanMobile ? `91${cleanMobile}` : '';
 
   // Step 1: Look up the partner row in withme_partners to get all known identifiers
-  let allPartnerIds = new Set([pId, cleanMobile, fullMobile].filter(Boolean));
+  let allPartnerIds = new Set([pId, cleanMobile, fullMobile].filter(id => id && String(id).trim() !== ''));
   try {
     const isNum = !isNaN(Number(pId)) && Number(pId) > 0;
     let sql = `SELECT id, partner_id, user_id, mobile_number, phone_number FROM withme_partners WHERE partner_id = ? OR user_id = ?`;
@@ -873,61 +877,65 @@ async function fetchPartnerRequestsFromMysql(partnerId) {
     console.error('[WithMe DB] fetchPartnerRequests lookup error:', lookupErr.message);
   }
 
-  // Step 2: Fetch requests WHERE partner_id matches any known identifier
-  const idList = [...allPartnerIds].filter(Boolean);
-  const placeholders = idList.map(() => '?').join(', ');
-  let sql = `SELECT * FROM withme_partner_requests`;
-  let params = [];
-
-  if (idList.length > 0) {
-    sql += ` WHERE partner_id IN (${placeholders})`;
-    params = idList;
+  // Step 2: Fetch requests strictly WHERE partner_id matches any known identifier
+  const idList = [...allPartnerIds].filter(id => id && String(id).trim() !== '');
+  if (idList.length === 0) {
+    return [];
   }
-  sql += ` ORDER BY created_at DESC LIMIT 200`;
+
+  const placeholders = idList.map(() => '?').join(', ');
+  const sql = `SELECT * FROM withme_partner_requests WHERE partner_id IN (${placeholders}) ORDER BY created_at DESC LIMIT 200`;
+  const params = idList;
 
   console.log(`[WithMe DB] fetchPartnerRequests partnerId=${pId}, checking IDs: [${idList.join(', ')}]`);
 
   const [rows] = await db.query(sql, params);
+  if (!rows || rows.length === 0) {
+    return [];
+  }
+
   return rows.map(r => {
     const isAcc = r.is_accepted !== undefined ? Number(r.is_accepted) : (r.status === 'ACCEPTED' || r.status === 'CONFIRMED' ? 1 : 0);
+    const isPaid = Boolean(r.is_paid == 1 || r.is_paid === true || String(r.payment_status).toUpperCase() === 'PAID');
+    const payStatus = isPaid ? 'PAID' : (r.payment_status || 'PENDING');
     return {
-    request_id: r.request_id || `req_${r.id}`,
-    booking_id: r.booking_id,
-    user_id: r.user_id,
-    partner_id: r.partner_id,
-    name: r.sender_name || 'User Request',
-    sender_name: r.sender_name || 'User Request',
-    phone_number: r.sender_phone || '',
-    age: 25,
-    image: r.sender_avatar || '',
-    profile_image: r.sender_avatar || '',
-    id_verified: 1,
-    selfie_verified: 1,
-    interest: r.activity || 'Coffee',
-    date_time: `${r.date || new Date().toISOString().split('T')[0]} ${r.time || '06:00 PM'}`,
-    date: r.date || new Date().toISOString().split('T')[0],
-    time: r.time || '06:00 PM',
-    location: r.location || 'Jaipur',
-    price: r.price || 1,
-    status: r.status || (isAcc ? 'ACCEPTED' : 'PENDING'),
-    pending_status: r.status || (isAcc ? 'ACCEPTED' : 'PENDING'),
-    is_accepted: r.is_accepted !== undefined ? Number(r.is_accepted) : (r.status === 'ACCEPTED' ? 1 : 0),
-    payment_status: (r.is_paid == 1 || String(r.payment_status).toUpperCase() === 'PAID') ? 'PAID' : (r.payment_status || 'PENDING'),
-    is_paid: Boolean(r.is_paid == 1 || String(r.payment_status).toUpperCase() === 'PAID'),
-    can_chat: Boolean(r.is_paid == 1 || String(r.payment_status).toUpperCase() === 'PAID'),
-    can_pay: Boolean(Number(r.is_accepted) === 1 && r.is_paid != 1 && String(r.payment_status).toUpperCase() !== 'PAID'),
-    chat_status: (r.is_paid == 1 || String(r.payment_status).toUpperCase() === 'PAID') ? 'UNLOCKED' : 'LOCKED',
-    badge: (r.is_paid == 1 || String(r.payment_status).toUpperCase() === 'PAID') ? 'Payment Received - Chat Open' : (Number(r.is_accepted) === 1 ? 'Payment Pending' : 'New Request'),
-    message: r.message,
-    actions: ['ACCEPT', 'REJECT'],
-    activity: {
-      type: r.activity || 'Coffee',
+      request_id: r.request_id || `req_${r.id}`,
+      booking_id: r.booking_id,
+      user_id: r.user_id,
+      partner_id: r.partner_id,
+      name: r.sender_name || 'User Request',
+      sender_name: r.sender_name || 'User Request',
+      phone_number: r.sender_phone || '',
+      age: 25,
+      image: r.sender_avatar || '',
+      profile_image: r.sender_avatar || '',
+      id_verified: 1,
+      selfie_verified: 1,
+      interest: r.activity || 'Coffee',
+      date_time: `${r.date || new Date().toISOString().split('T')[0]} ${r.time || '06:00 PM'}`,
       date: r.date || new Date().toISOString().split('T')[0],
       time: r.time || '06:00 PM',
-      area: r.location || 'Jaipur',
-      description: r.message || 'Meetup request'
-    }
-  };
+      location: r.location || 'Jaipur',
+      price: r.price || 1,
+      status: r.status || (isAcc ? 'ACCEPTED' : 'PENDING'),
+      pending_status: r.status || (isAcc ? 'ACCEPTED' : 'PENDING'),
+      is_accepted: isAcc,
+      payment_status: payStatus,
+      is_paid: isPaid,
+      can_chat: isPaid,
+      can_pay: Boolean(isAcc === 1 && !isPaid),
+      chat_status: isPaid ? 'UNLOCKED' : 'LOCKED',
+      badge: isPaid ? 'Payment Received - Chat Open' : (isAcc === 1 ? 'Payment Pending' : 'New Request'),
+      message: r.message,
+      actions: isAcc === 1 ? [] : ['ACCEPT', 'REJECT'],
+      activity: {
+        type: r.activity || 'Coffee',
+        date: r.date || new Date().toISOString().split('T')[0],
+        time: r.time || '06:00 PM',
+        area: r.location || 'Jaipur',
+        description: r.message || 'Meetup request'
+      }
+    };
   });
 }
 
@@ -956,10 +964,10 @@ async function savePartnerRequestToMysql(requestData) {
   const paymentId = requestData.payment_id || null;
 
   const rawStatus = String(requestData.status || '').toUpperCase();
-  const status = (rawStatus && ['ACCEPTED', 'REJECTED', 'DECLINED', 'CONFIRMED'].includes(rawStatus))
+  const status = (rawStatus && ['ACCEPTED', 'REJECTED', 'DECLINED'].includes(rawStatus))
     ? rawStatus
-    : (isPaid ? 'CONFIRMED' : 'PENDING');
-  const isAccepted = (status === 'ACCEPTED' || status === 'CONFIRMED' || isPaid) ? 1 : (requestData.is_accepted ? 1 : 0);
+    : (rawStatus === 'CONFIRMED' ? 'CONFIRMED' : 'PENDING');
+  const isAccepted = (status === 'ACCEPTED' || status === 'CONFIRMED') ? 1 : (requestData.is_accepted ? 1 : 0);
 
   // Resolve partner_id to canonical DB identifier
   const resolvedPartnerId = await resolvePartnerCanonicalId(rawPartnerId);
@@ -1015,13 +1023,17 @@ async function fetchPartnerBookingsFromMysql(partnerId, statusFilter) {
   const db = getDbPool();
 
   const pId = String(partnerId || '').trim();
+  if (!pId) {
+    return [];
+  }
+
   let cleanMobile = pId.replace(/\D/g, '');
   if (cleanMobile.length > 10 && cleanMobile.startsWith('91')) cleanMobile = cleanMobile.slice(-10);
   else if (cleanMobile.length === 11 && cleanMobile.startsWith('0')) cleanMobile = cleanMobile.slice(-10);
   const fullMobile = cleanMobile ? `91${cleanMobile}` : '';
 
   // Step 1: Look up the partner row in withme_partners to get all known identifiers
-  let allPartnerIds = new Set([pId, cleanMobile, fullMobile].filter(Boolean));
+  let allPartnerIds = new Set([pId, cleanMobile, fullMobile].filter(id => id && String(id).trim() !== ''));
   try {
     const isNum = !isNaN(Number(pId)) && Number(pId) > 0;
     let sql = `SELECT id, partner_id, user_id, mobile_number, phone_number FROM withme_partners WHERE partner_id = ? OR user_id = ?`;
@@ -1048,31 +1060,28 @@ async function fetchPartnerBookingsFromMysql(partnerId, statusFilter) {
     console.error('[WithMe DB] fetchPartnerBookings lookup error:', lookupErr.message);
   }
 
-  const idList = [...allPartnerIds].filter(Boolean);
-  const placeholders = idList.map(() => '?').join(', ');
-  let sql = `SELECT * FROM withme_partner_bookings`;
-  let params = [];
-  const conditions = [];
-
-  if (idList.length > 0) {
-    conditions.push(`partner_id IN (${placeholders})`);
-    params.push(...idList);
+  const idList = [...allPartnerIds].filter(id => id && String(id).trim() !== '');
+  if (idList.length === 0) {
+    return [];
   }
+
+  const placeholders = idList.map(() => '?').join(', ');
+  const conditions = [`partner_id IN (${placeholders})`];
+  const params = [...idList];
 
   if (statusFilter && statusFilter !== 'all') {
     conditions.push("LOWER(status) = LOWER(?)");
     params.push(statusFilter);
   }
 
-  if (conditions.length > 0) {
-    sql += " WHERE " + conditions.join(" AND ");
-  }
-
-  sql += " ORDER BY created_at DESC LIMIT 200";
+  const sql = `SELECT * FROM withme_partner_bookings WHERE ${conditions.join(" AND ")} ORDER BY created_at DESC LIMIT 200`;
 
   console.log(`[WithMe DB] fetchPartnerBookings partnerId=${pId}, checking IDs: [${idList.join(', ')}]`);
 
   const [rows] = await db.query(sql, params);
+  if (!rows || rows.length === 0) {
+    return [];
+  }
   return rows.map(r => {
     const isPaid = Boolean(r.is_paid == 1 || r.is_paid === true || String(r.payment_status).toUpperCase() === 'PAID' || String(r.payment_status).toUpperCase() === 'COMPLETED');
     const isAcc = r.is_accepted !== undefined ? Number(r.is_accepted) : (['UPCOMING', 'CONFIRMED', 'ACCEPTED'].includes(String(r.status).toUpperCase()) || isPaid ? 1 : 0);
