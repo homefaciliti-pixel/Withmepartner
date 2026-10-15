@@ -78,9 +78,13 @@ const handleIncomingUserRequest = async (req, res) => {
   const profileImage = requestPayload.profile_image || requestPayload.image || requestPayload.sender_avatar || '';
   const amount = requestPayload.amount || requestPayload.price || 1;
   const currency = requestPayload.currency || 'INR';
+
+  // Payment status vs Request status separation:
+  // Payment might be 'PAID', but the partner request status MUST be 'PENDING' until manually accepted!
   const paymentStatus = requestPayload.payment_status || (requestPayload.is_paid ? 'PAID' : 'PAID');
-  const status = requestPayload.status || 'PAID';
-  const message = requestPayload.message || 'Payment completed. Please connect!';
+  const status = 'PENDING';
+  const isAccepted = 0;
+  const message = requestPayload.message || 'Payment completed. Looking for an activity partner.';
 
   console.log(`[PARTNER REQUEST] Incoming sync: requestId=${requestId}, bookingId=${bookingId}, partnerId=${partnerId}, userId=${userId}, status=${status}`);
 
@@ -109,7 +113,10 @@ const handleIncomingUserRequest = async (req, res) => {
     date: requestPayload.date || getISTDateString(),
     time: requestPayload.time || '06:00 PM',
     location,
-    status,
+    status: 'PENDING',
+    pending_status: 'PENDING',
+    is_accepted: 0,
+    actions: ['ACCEPT', 'REJECT'],
     message,
     meeting_info: requestPayload.meeting_info || {
       date: requestPayload.date || getISTDateString(),
@@ -122,7 +129,7 @@ const handleIncomingUserRequest = async (req, res) => {
 
   // Save to MySQL (primary storage) - MUST succeed before returning success
   try {
-    console.log(`[BOOKING] Saving partner request ${requestId} to MySQL...`);
+    console.log(`[BOOKING] Saving partner request ${requestId} to MySQL (PENDING)...`);
     await savePartnerRequestToMysql(newRequest);
     console.log(`[BOOKING] MySQL INSERT SUCCESS for requestId=${requestId}`);
   } catch (err) {
@@ -159,7 +166,7 @@ const handleIncomingUserRequest = async (req, res) => {
     console.error('[FCM] Notification error:', e.message);
   }
 
-  console.log(`[Partner API] Registered incoming user request: ${requestId} for ${interest} in ${location}`);
+  console.log(`[Partner API] Registered incoming user request: ${requestId} for ${interest} in ${location} (Status: PENDING)`);
 
   return res.status(200).json({
     success: true,
@@ -176,6 +183,7 @@ router.post('/requests/create', handleIncomingUserRequest);
 const handleIncomingUserBooking = async (req, res) => {
   const bookingPayload = req.body || {};
   const bookingId = bookingPayload.booking_id || `BK${Math.floor(100000 + Math.random() * 900000)}`;
+  const requestId = bookingPayload.request_id || `req_b_${bookingId}`;
   const partnerId = bookingPayload.partner_id || bookingPayload.receiver_id || '';
   const userId = bookingPayload.user_id || bookingPayload.sender_id || '';
   const userName = bookingPayload.name || bookingPayload.customer_name || bookingPayload.user_name || 'User';
@@ -185,18 +193,25 @@ const handleIncomingUserBooking = async (req, res) => {
   const profileImage = bookingPayload.profile_image || bookingPayload.user_image || '';
   const date = bookingPayload.date || (bookingPayload.meeting_info && bookingPayload.meeting_info.date) || getISTDateString();
   const time = bookingPayload.time || (bookingPayload.meeting_info && bookingPayload.meeting_info.time) || '06:00 PM';
-  const status = bookingPayload.status || 'Upcoming';
   const price = bookingPayload.amount || bookingPayload.price || 1;
   const currency = bookingPayload.currency || 'INR';
 
-  console.log(`[PARTNER BOOKING] Incoming sync: bookingId=${bookingId}, partnerId=${partnerId}, userId=${userId}, status=${status}`);
+  // IMPORTANT: A new booking starts as PENDING until partner manually accepts!
+  const status = 'PENDING';
+  const isAccepted = 0;
 
-  const newBooking = {
+  console.log(`[PARTNER BOOKING] Incoming sync: bookingId=${bookingId}, requestId=${requestId}, partnerId=${partnerId}, userId=${userId}, status=PENDING`);
+
+  const requestItem = {
+    request_id: requestId,
     booking_id: bookingId,
     user_id: userId,
     partner_id: partnerId,
     profile_image: profileImage,
+    image: profileImage,
+    sender_avatar: profileImage,
     name: userName,
+    sender_name: userName,
     customer_name: userName,
     phone_number: userPhone,
     age: bookingPayload.age || 25,
@@ -207,12 +222,17 @@ const handleIncomingUserBooking = async (req, res) => {
     location,
     date,
     time,
+    date_time: `${date} ${time}`,
     amount: price,
     price,
     currency,
     is_paid: true,
     payment_status: 'PAID',
-    status,
+    status: 'PENDING',
+    pending_status: 'PENDING',
+    is_accepted: 0,
+    actions: ['ACCEPT', 'REJECT'],
+    message: bookingPayload.message || `Booking request for ${interest}`,
     meeting_info: bookingPayload.meeting_info || {
       date,
       time,
@@ -226,10 +246,12 @@ const handleIncomingUserBooking = async (req, res) => {
     safe_meet_mode: { location_allow: 1, notify_trusted_contact: 1, safety_check_in: 1 }
   };
 
-  // Save to MySQL (primary storage) - MUST succeed before returning success
+  // 1. Save to withme_partner_requests as PENDING (so it shows in partner's New Requests tab)
   try {
-    console.log(`[BOOKING] Saving partner booking ${bookingId} to MySQL...`);
-    await savePartnerBookingToMysql(newBooking);
+    console.log(`[BOOKING] Saving incoming booking as request ${requestId} to MySQL (PENDING)...`);
+    await savePartnerRequestToMysql(requestItem);
+    // Also store in withme_partner_bookings with status PENDING, is_accepted: 0
+    await savePartnerBookingToMysql({ ...requestItem, status: 'PENDING', is_accepted: 0 });
     console.log(`[BOOKING] MySQL INSERT SUCCESS for bookingId=${bookingId}`);
   } catch (err) {
     console.error(`[BOOKING] MySQL save FAILED for bookingId=${bookingId}:`, err.message);
@@ -243,22 +265,23 @@ const handleIncomingUserBooking = async (req, res) => {
 
   // Real-time socket delivery to partner
   try {
-    emitToUser(partnerId, 'new_booking', newBooking);
-    emitToUser(partnerId, 'incoming_booking', newBooking);
-    emitToUser(partnerId, 'booking_confirmed', newBooking);
+    emitToUser(partnerId, 'new_request', requestItem);
+    emitToUser(partnerId, 'new_booking', requestItem);
+    emitToUser(partnerId, 'incoming_booking', requestItem);
   } catch (sErr) {
     console.error('[Socket] emit error on incoming-booking:', sErr.message);
   }
 
   // Push notification via FCM
   try {
-    sendEventNotification('booking_confirmed', {
+    sendEventNotification('booking_request', {
       targetUserId: partnerId,
       name: userName,
       customer_name: userName,
       activity: interest,
       location,
       booking_id: bookingId,
+      request_id: requestId,
       date,
       time
     }).catch(e => console.error('[FCM] Notification dispatch error:', e.message));
@@ -266,19 +289,13 @@ const handleIncomingUserBooking = async (req, res) => {
     console.error('[FCM] Notification error:', e.message);
   }
 
-  sendEventNotification('wallet_credit', {
-    targetUserId: partnerId,
-    amount: price,
-    booking_id: bookingId
-  }).catch(() => {});
-
-  console.log(`[Partner API] Registered incoming user booking: ${bookingId}`);
+  console.log(`[Partner API] Registered incoming user booking as PENDING: ${bookingId}`);
 
   return res.status(200).json({
     success: true,
     status: true,
     message: 'Booking received',
-    data: newBooking
+    data: requestItem
   });
 };
 
@@ -397,21 +414,31 @@ router.get('/home', authenticateToken, async (req, res) => {
 
     console.log(`[PARTNER HOME] partnerId=${currentUserId}, total_db_requests=${dbRequests.length}`);
 
+    // Pending requests tab: ONLY requests that are NOT yet accepted!
     const newRequestsList = dbRequests
-      .filter(r => !r.status || ['PENDING', 'PENDING_CONFIRMATION', 'NEW', 'CONFIRMED', 'PAID', 'UPCOMING', 'ACCEPTED'].includes(String(r.status).toUpperCase()))
+      .filter(r => {
+        const s = String(r.status || 'PENDING').toUpperCase();
+        const accepted = Number(r.is_accepted !== undefined ? r.is_accepted : (s === 'ACCEPTED' ? 1 : 0));
+        return accepted === 0 && ['PENDING', 'PENDING_CONFIRMATION', 'NEW', 'PAID'].includes(s);
+      })
       .map(r => ({
         request_id: r.request_id,
         booking_id: r.booking_id || `BK${Math.floor(100000 + Math.random() * 900000)}`,
         interest: r.interest,
+        activity: r.interest,
         date_time: r.date_time,
+        date: r.date,
+        time: r.time,
         location: r.location,
         image: formatPhotoUrl(r.image, req),
         profile_image: formatPhotoUrl(r.image, req),
         name: r.name,
         sender_name: r.name,
         phone_number: r.phone_number || '',
-        pending_status: r.status,
-        status: r.status,
+        pending_status: 'PENDING',
+        status: 'PENDING',
+        is_accepted: 0,
+        actions: ['ACCEPT', 'REJECT'],
         is_paid: true,
         payment_status: 'COMPLETED',
         is_payment_completed: true,
@@ -419,8 +446,13 @@ router.get('/home', authenticateToken, async (req, res) => {
         payment_status_text: 'Paid'
       }));
 
+    // Upcoming bookings tab: ONLY bookings that have been manually accepted!
     const upcomingBookingsList = dbBookings
-      .filter(b => !b.status || ['UPCOMING', 'CONFIRMED', 'ACCEPTED', 'PENDING', 'PAID', 'NEW'].includes(String(b.status).toUpperCase()))
+      .filter(b => {
+        const s = String(b.status || '').toUpperCase();
+        const accepted = Number(b.is_accepted !== undefined ? b.is_accepted : (s === 'PENDING' ? 0 : 1));
+        return accepted === 1 && ['UPCOMING', 'CONFIRMED', 'ACCEPTED'].includes(s) && s !== 'PENDING';
+      })
       .map(b => ({
         booking_id: b.booking_id,
         name: b.name,
@@ -434,7 +466,8 @@ router.get('/home', authenticateToken, async (req, res) => {
         time: b.time,
         image: formatPhotoUrl(b.profile_image, req),
         profile_image: formatPhotoUrl(b.profile_image, req),
-        status: b.status,
+        status: b.status || 'Upcoming',
+        is_accepted: 1,
         is_paid: true,
         payment_status: 'COMPLETED',
         is_payment_completed: true,
@@ -473,14 +506,30 @@ router.get('/home', authenticateToken, async (req, res) => {
 const handleGetAllPartnerRequests = async (req, res) => {
   try {
     const currentUserId = String(req.user ? req.user.user_id : '');
+    const { status: filterStatus } = req.query;
     const dbRequests = await fetchPartnerRequestsFromMysql(currentUserId);
 
-    const formattedList = dbRequests.map(r => {
+    let filtered = dbRequests;
+    if (filterStatus) {
+      const fs = String(filterStatus).toUpperCase();
+      if (fs === 'PENDING') {
+        filtered = dbRequests.filter(r => Number(r.is_accepted || 0) === 0 && ['PENDING', 'PENDING_CONFIRMATION', 'NEW', 'PAID'].includes(String(r.status || 'PENDING').toUpperCase()));
+      } else if (fs === 'ACCEPTED') {
+        filtered = dbRequests.filter(r => Number(r.is_accepted || 0) === 1 || String(r.status).toUpperCase() === 'ACCEPTED');
+      } else if (fs === 'REJECTED' || fs === 'DECLINED') {
+        filtered = dbRequests.filter(r => ['REJECTED', 'DECLINED'].includes(String(r.status).toUpperCase()));
+      }
+    }
+
+    const formattedList = filtered.map(r => {
       const photoUrl = formatPhotoUrl(r.image || r.profile_image, req);
+      const isAcc = Number(r.is_accepted !== undefined ? r.is_accepted : (String(r.status).toUpperCase() === 'ACCEPTED' ? 1 : 0));
       return {
         request_id: r.request_id,
         booking_id: r.booking_id,
-        name: r.name || 'User Request',
+        name: r.name || r.sender_name || 'User Request',
+        sender_name: r.sender_name || r.name || 'User Request',
+        phone_number: r.phone_number || '',
         age: r.age || 25,
         image: photoUrl,
         profile_image: photoUrl,
@@ -488,9 +537,14 @@ const handleGetAllPartnerRequests = async (req, res) => {
         selfie_verified: r.selfie_verified !== undefined ? r.selfie_verified : 1,
         location: r.location || '',
         interest: r.interest || 'Coffee',
+        activity: r.interest || 'Coffee',
         date_time: r.date_time || `${getISTDateString()} 06:00 PM`,
-        status: r.status || 'Pending',
-        pending_status: r.status || 'Pending',
+        date: r.date || getISTDateString(),
+        time: r.time || '06:00 PM',
+        status: isAcc === 1 ? 'ACCEPTED' : (r.status || 'PENDING'),
+        pending_status: isAcc === 1 ? 'ACCEPTED' : (r.status || 'PENDING'),
+        is_accepted: isAcc,
+        actions: isAcc === 1 ? [] : ['ACCEPT', 'REJECT'],
         is_paid: true,
         payment_status: 'COMPLETED',
         is_payment_completed: true,
@@ -536,6 +590,7 @@ const handlePartnerAppRequestDetails = async (req, res) => {
     const timeVal = r.time || '06:00 PM';
     const dateVal = r.date || getISTDateString();
     const partnerUserIdVal = String(r.partner_id || req.user.user_id);
+    const isAcc = Number(r.is_accepted !== undefined ? r.is_accepted : (String(r.status).toUpperCase() === 'ACCEPTED' ? 1 : 0));
 
     const responseData = {
       request_id: r.request_id,
@@ -546,6 +601,8 @@ const handlePartnerAppRequestDetails = async (req, res) => {
       image: photoUrl,
       profile_image: photoUrl,
       name: r.sender_name || 'User',
+      sender_name: r.sender_name || 'User',
+      phone_number: r.sender_phone || '',
       age: 25,
       id_verified: 1,
       selfie_verified: 1,
@@ -577,7 +634,10 @@ const handlePartnerAppRequestDetails = async (req, res) => {
       payment_id: `pay_${r.request_id}`,
       paymentId: `pay_${r.request_id}`,
       payment_status_text: 'Paid',
-      status: r.status || 'PENDING'
+      status: isAcc === 1 ? 'ACCEPTED' : (r.status || 'PENDING'),
+      pending_status: isAcc === 1 ? 'ACCEPTED' : (r.status || 'PENDING'),
+      is_accepted: isAcc,
+      actions: isAcc === 1 ? [] : ['ACCEPT', 'REJECT']
     };
 
     return res.status(200).json({ status: true, message: 'Success', data: responseData, request_details: responseData });
@@ -595,64 +655,120 @@ router.get('/requests', authenticateToken, (req, res, next) => {
 router.get('/requests/:request_id', authenticateToken, handlePartnerAppRequestDetails);
 router.get('/requests/details/:request_id', authenticateToken, handlePartnerAppRequestDetails);
 
-// POST /partner/requests/:request_id/action (Accept / Decline)
-router.post('/requests/:request_id/action', authenticateToken, async (req, res) => {
-  const { request_id } = req.params;
-  const { action } = req.body;
+// ─────────────────────────────────────────────────────────────────────────────
+// MANUAL ACCEPT / REJECT APIS
+// ─────────────────────────────────────────────────────────────────────────────
 
-  if (!action || !['ACCEPT', 'DECLINE'].includes(action.toUpperCase())) {
+const handlePartnerRequestDecision = async (req, res, actionType) => {
+  const targetId = req.params.request_id || req.params.id || (req.body && (req.body.request_id || req.body.id || req.body.booking_id));
+  const rawAction = actionType || (req.body && req.body.action) || '';
+
+  if (!targetId) {
     return res.status(400).json({
+      success: false,
       status: false,
-      message: "Invalid action. Use 'ACCEPT' or 'DECLINE'",
+      message: 'request_id is required',
+      error_code: 'REQUEST_ID_REQUIRED'
+    });
+  }
+
+  const action = String(rawAction).toUpperCase().trim();
+  const isAccept = ['ACCEPT', 'ACCEPTED', 'APPROVE', 'APPROVED'].includes(action);
+  const isReject = ['REJECT', 'REJECTED', 'DECLINE', 'DECLINED'].includes(action);
+
+  if (!isAccept && !isReject) {
+    return res.status(400).json({
+      success: false,
+      status: false,
+      message: "Invalid action. Use 'ACCEPT' or 'REJECT'",
       error_code: 'INVALID_ACTION'
     });
   }
 
   try {
     const db = getDbPool();
-    const [rows] = await db.query('SELECT * FROM withme_partner_requests WHERE request_id = ? LIMIT 1', [request_id]);
+
+    // Find the request by request_id or booking_id
+    const [rows] = await db.query(
+      'SELECT * FROM withme_partner_requests WHERE request_id = ? OR booking_id = ? LIMIT 1',
+      [targetId, targetId]
+    );
 
     if (rows.length === 0) {
-      return res.status(404).json({ status: false, message: 'Request not found', error_code: 'REQUEST_NOT_FOUND' });
+      return res.status(404).json({
+        success: false,
+        status: false,
+        message: 'Request not found',
+        error_code: 'REQUEST_NOT_FOUND'
+      });
     }
 
     const requestData = rows[0];
-    const isAccept = action.toUpperCase() === 'ACCEPT';
-    const newStatus = isAccept ? 'ACCEPTED' : 'DECLINED';
+    const requestId = requestData.request_id;
+    const bookingId = requestData.booking_id || `BK${Math.floor(100000 + Math.random() * 900000)}`;
+    const newStatus = isAccept ? 'ACCEPTED' : 'REJECTED';
+    const isAcceptedNum = isAccept ? 1 : 0;
 
-    // Update status in MySQL
-    await updatePartnerRequestStatusInMysql(request_id, newStatus);
+    // UPDATE withme_partner_requests: status = 'ACCEPTED'/'REJECTED', is_accepted = 1/0
+    await updatePartnerRequestStatusInMysql(requestId, newStatus, isAcceptedNum);
 
-    // Notify User App
+    // Notify User App via webhook callback
     notifyUserAppStatusUpdate({
-      request_id,
-      booking_id: requestData.booking_id,
+      request_id: requestId,
+      booking_id: bookingId,
       status: newStatus,
-      action: isAccept ? 'ACCEPT' : 'DECLINE'
+      action: isAccept ? 'ACCEPT' : 'DECLINE',
+      partner_id: requestData.partner_id
     }).catch(err => console.error('User App callback notification failed:', err.message));
 
+    // Real-time socket notification
+    try {
+      const socketPayload = {
+        request_id: requestId,
+        booking_id: bookingId,
+        status: newStatus,
+        is_accepted: isAcceptedNum,
+        partner_id: requestData.partner_id,
+        user_id: requestData.user_id
+      };
+      emitToUser(requestData.user_id, isAccept ? 'request_accepted' : 'request_rejected', socketPayload);
+      emitToUser(requestData.partner_id, isAccept ? 'request_accepted' : 'request_rejected', socketPayload);
+    } catch (sErr) {
+      console.error('[Socket] Decision emit error:', sErr.message);
+    }
+
     if (isAccept) {
-      const booking_id = requestData.booking_id || `bk_${Math.floor(1000 + Math.random() * 9000)}`;
+      // Create confirmed/upcoming booking in withme_partner_bookings
       const newBooking = {
-        booking_id,
-        request_id,
+        booking_id: bookingId,
+        request_id: requestId,
         user_id: requestData.user_id,
         partner_id: requestData.partner_id,
         profile_image: requestData.sender_avatar || '',
         name: requestData.sender_name || 'User',
+        customer_name: requestData.sender_name || 'User',
+        phone_number: requestData.sender_phone || '',
         age: 25,
         id_verified: 1,
         selfie_verified: 1,
         interest: requestData.activity || 'Coffee',
+        activity: requestData.activity || 'Coffee',
         location: requestData.location || '',
         date: requestData.date || getISTDateString(),
-        time: requestData.time || '05:00 PM',
+        time: requestData.time || '06:00 PM',
         status: 'Upcoming',
+        is_accepted: 1,
+        payment_status: 'PAID',
+        price: requestData.price || 1,
+        currency: 'INR',
+        is_paid: true,
         meeting_info: {
           date: requestData.date || getISTDateString(),
-          time: requestData.time || '05:00 PM',
+          time: requestData.time || '06:00 PM',
           place: requestData.location || '',
+          location: requestData.location || '',
           type: requestData.activity || 'Coffee',
+          activity: requestData.activity || 'Coffee',
           description: requestData.message || 'Accepted meetup'
         },
         safety_checklist: { start_safe_meet: false },
@@ -661,22 +777,91 @@ router.post('/requests/:request_id/action', authenticateToken, async (req, res) 
 
       await savePartnerBookingToMysql(newBooking);
 
+      // FCM push notification to User
+      try {
+        sendEventNotification('booking_confirmed', {
+          targetUserId: requestData.user_id,
+          name: requestData.sender_name || 'User',
+          activity: requestData.activity || 'Coffee',
+          location: requestData.location || '',
+          booking_id: bookingId,
+          request_id: requestId
+        }).catch(e => console.error('[FCM] Notification error:', e.message));
+      } catch (e) {}
+
+      console.log(`[Partner Action] Request ${requestId} ACCEPTED by partner. Added to My Bookings.`);
+
       return res.status(200).json({
+        success: true,
         status: true,
         message: 'Request accepted successfully. Added to My Bookings.',
-        data: { request_id, booking_id, status: 'Upcoming', goes_to: 'My Booking List' }
+        data: {
+          request_id: requestId,
+          booking_id: bookingId,
+          status: 'ACCEPTED',
+          is_accepted: 1,
+          goes_to: 'My Booking List'
+        }
       });
     }
 
+    // REJECT / DECLINE
+    try {
+      await db.query(
+        `UPDATE withme_partner_bookings SET status = 'CANCELLED', is_accepted = 0, updated_at = NOW() WHERE booking_id = ?`,
+        [bookingId]
+      );
+    } catch (bErr) {}
+
+    // FCM push notification to User
+    try {
+      sendEventNotification('booking_cancelled', {
+        targetUserId: requestData.user_id,
+        name: requestData.sender_name || 'User',
+        booking_id: bookingId,
+        request_id: requestId
+      }).catch(e => console.error('[FCM] Notification error:', e.message));
+    } catch (e) {}
+
+    console.log(`[Partner Action] Request ${requestId} REJECTED by partner.`);
+
     return res.status(200).json({
+      success: true,
       status: true,
-      message: 'Request declined',
-      data: { request_id, status: 'Declined' }
+      message: 'Request rejected successfully',
+      data: {
+        request_id: requestId,
+        booking_id: bookingId,
+        status: 'REJECTED',
+        is_accepted: 0
+      }
     });
   } catch (err) {
-    console.error('[Request Action Error]:', err.message);
-    return res.status(500).json({ status: false, message: 'Failed to process request action.', error_code: 'SERVER_ERROR' });
+    console.error('[Request Decision Error]:', err.message);
+    return res.status(500).json({
+      success: false,
+      status: false,
+      message: 'Failed to process request action.',
+      error_code: 'SERVER_ERROR'
+    });
   }
+};
+
+// Mount Accept Routes
+router.post('/request/accept', authenticateToken, (req, res) => handlePartnerRequestDecision(req, res, 'ACCEPT'));
+router.post('/requests/accept', authenticateToken, (req, res) => handlePartnerRequestDecision(req, res, 'ACCEPT'));
+router.post('/requests/:request_id/accept', authenticateToken, (req, res) => handlePartnerRequestDecision(req, res, 'ACCEPT'));
+
+// Mount Reject Routes
+router.post('/request/reject', authenticateToken, (req, res) => handlePartnerRequestDecision(req, res, 'REJECT'));
+router.post('/requests/reject', authenticateToken, (req, res) => handlePartnerRequestDecision(req, res, 'REJECT'));
+router.post('/requests/:request_id/reject', authenticateToken, (req, res) => handlePartnerRequestDecision(req, res, 'REJECT'));
+router.post('/requests/:request_id/decline', authenticateToken, (req, res) => handlePartnerRequestDecision(req, res, 'REJECT'));
+
+// Existing /action endpoint for backwards compatibility
+router.post('/requests/:request_id/action', authenticateToken, (req, res) => {
+  const action = req.body && req.body.action;
+  return handlePartnerRequestDecision(req, res, action);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

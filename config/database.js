@@ -263,7 +263,10 @@ async function initMysqlDatabase() {
       'ALTER TABLE withme_partners ADD COLUMN locked TINYINT(1) DEFAULT 0',
       'ALTER TABLE withme_partners ADD COLUMN profile_step_pending VARCHAR(100) DEFAULT NULL',
       'ALTER TABLE withme_partners ADD COLUMN profile_completed TINYINT(1) DEFAULT 0',
-      'ALTER TABLE withme_partners ADD COLUMN pincode VARCHAR(20) DEFAULT NULL'
+      'ALTER TABLE withme_partners ADD COLUMN pincode VARCHAR(20) DEFAULT NULL',
+      'ALTER TABLE withme_partner_requests ADD COLUMN is_accepted TINYINT(1) DEFAULT 0',
+      'ALTER TABLE withme_partner_requests ADD COLUMN payment_status VARCHAR(50) DEFAULT "PAID"',
+      'ALTER TABLE withme_partner_bookings ADD COLUMN is_accepted TINYINT(1) DEFAULT 0'
     ];
 
     for (const sql of alterStatements) {
@@ -885,6 +888,7 @@ async function fetchPartnerRequestsFromMysql(partnerId) {
     user_id: r.user_id,
     partner_id: r.partner_id,
     name: r.sender_name || 'User Request',
+    sender_name: r.sender_name || 'User Request',
     phone_number: r.sender_phone || '',
     age: 25,
     image: r.sender_avatar || '',
@@ -897,10 +901,13 @@ async function fetchPartnerRequestsFromMysql(partnerId) {
     time: r.time || '06:00 PM',
     location: r.location || 'Jaipur',
     price: r.price || 1,
-    status: r.status || 'PAID',
-    payment_status: 'PAID',
+    status: r.status || 'PENDING',
+    pending_status: r.status || 'PENDING',
+    is_accepted: r.is_accepted !== undefined ? Number(r.is_accepted) : (r.status === 'ACCEPTED' ? 1 : 0),
+    payment_status: r.payment_status || 'PAID',
     is_paid: true,
     message: r.message,
+    actions: ['ACCEPT', 'REJECT'],
     activity: {
       type: r.activity || 'Coffee',
       date: r.date || new Date().toISOString().split('T')[0],
@@ -913,6 +920,7 @@ async function fetchPartnerRequestsFromMysql(partnerId) {
 
 /**
  * Save / insert partner request into `withme_partner_requests` table
+ * Default status MUST ALWAYS be 'PENDING' and is_accepted MUST BE 0!
  */
 async function savePartnerRequestToMysql(requestData) {
   const db = getDbPool();
@@ -927,9 +935,16 @@ async function savePartnerRequestToMysql(requestData) {
   const date = requestData.date || (requestData.activity && requestData.activity.date) || new Date().toISOString().split('T')[0];
   const time = requestData.time || (requestData.activity && requestData.activity.time) || '06:00 PM';
   const location = requestData.location || (requestData.activity && requestData.activity.area) || 'Jaipur';
-  const message = requestData.message || (requestData.activity && requestData.activity.description) || 'Payment completed. Please connect!';
+  const message = requestData.message || (requestData.activity && requestData.activity.description) || 'Meetup request';
   const price = requestData.amount || requestData.price || 1;
-  const status = requestData.status || 'PAID';
+
+  // IMPORTANT: Incoming requests are always PENDING until partner manually accepts!
+  // Even if user app sends status: 'PAID' or 'CONFIRMED' for payment, request_status remains 'PENDING'!
+  const status = (requestData.status && ['ACCEPTED', 'REJECTED', 'DECLINED'].includes(String(requestData.status).toUpperCase()))
+    ? String(requestData.status).toUpperCase()
+    : 'PENDING';
+  const isAccepted = status === 'ACCEPTED' ? 1 : 0;
+  const paymentStatus = requestData.payment_status || (requestData.is_paid ? 'PAID' : 'PAID');
 
   // Resolve partner_id to canonical DB identifier
   const resolvedPartnerId = await resolvePartnerCanonicalId(rawPartnerId);
@@ -937,8 +952,8 @@ async function savePartnerRequestToMysql(requestData) {
   await db.query(
     `INSERT INTO withme_partner_requests (
       request_id, booking_id, user_id, partner_id, sender_name, sender_phone, sender_avatar,
-      activity, date, time, location, message, price, status
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      activity, date, time, location, message, price, status, is_accepted, payment_status
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON DUPLICATE KEY UPDATE
       partner_id = VALUES(partner_id),
       sender_name = VALUES(sender_name),
@@ -950,20 +965,28 @@ async function savePartnerRequestToMysql(requestData) {
       location = VALUES(location),
       message = VALUES(message),
       price = VALUES(price),
-      status = VALUES(status),
+      payment_status = VALUES(payment_status),
       updated_at = NOW()`,
-    [reqId, bId, userId, resolvedPartnerId, senderName, senderPhone, senderAvatar, activity, date, time, location, message, price, status]
+    [reqId, bId, userId, resolvedPartnerId, senderName, senderPhone, senderAvatar, activity, date, time, location, message, price, status, isAccepted, paymentStatus]
   );
-  console.log(`[WithMe DB] Saved partner request ${reqId} (partner_id=${resolvedPartnerId}, status=${status}) to 'withme_partner_requests' table.`);
+  console.log(`[WithMe DB] Saved partner request ${reqId} (partner_id=${resolvedPartnerId}, status=${status}, is_accepted=${isAccepted}) to 'withme_partner_requests' table.`);
 }
 
 /**
  * Update partner request status in `withme_partner_requests` table
  */
-async function updatePartnerRequestStatusInMysql(requestId, status) {
+async function updatePartnerRequestStatusInMysql(requestId, status, isAccepted = null) {
   const db = getDbPool();
-  await db.query(`UPDATE withme_partner_requests SET status = ?, updated_at = NOW() WHERE request_id = ?`, [status, requestId]);
-  console.log(`[WithMe DB] Updated partner request ${requestId} status to ${status} in 'withme_partner_requests'.`);
+  const cleanStatus = String(status).toUpperCase();
+  const cleanAccepted = isAccepted !== null
+    ? (isAccepted ? 1 : 0)
+    : (cleanStatus === 'ACCEPTED' ? 1 : 0);
+
+  await db.query(
+    `UPDATE withme_partner_requests SET status = ?, is_accepted = ?, updated_at = NOW() WHERE request_id = ? OR booking_id = ?`,
+    [cleanStatus, cleanAccepted, requestId, requestId]
+  );
+  console.log(`[WithMe DB] Updated partner request ${requestId} status to ${cleanStatus} (is_accepted=${cleanAccepted}) in 'withme_partner_requests'.`);
 }
 
 /**
@@ -1044,7 +1067,8 @@ async function fetchPartnerBookingsFromMysql(partnerId, statusFilter) {
     location: r.location || 'Jaipur',
     date: r.date || new Date().toISOString().split('T')[0],
     time: r.time || '06:00 PM',
-    status: r.status || 'Upcoming',
+    status: r.status || 'PENDING',
+    is_accepted: r.is_accepted !== undefined ? Number(r.is_accepted) : (['UPCOMING', 'CONFIRMED', 'ACCEPTED'].includes(String(r.status).toUpperCase()) ? 1 : 0),
     price: r.price || 1,
     currency: r.currency || 'INR',
     payment_status: r.payment_status || 'PAID',
@@ -1076,14 +1100,15 @@ async function savePartnerBookingToMysql(bookingData) {
   const time = bookingData.time || (bookingData.meeting_info && bookingData.meeting_info.time) || '06:00 PM';
   const location = bookingData.location || (bookingData.meeting_info && (bookingData.meeting_info.location || bookingData.meeting_info.place)) || 'Jaipur';
   const status = bookingData.status || 'Upcoming';
+  const isAccepted = bookingData.is_accepted !== undefined ? (bookingData.is_accepted ? 1 : 0) : (['UPCOMING', 'CONFIRMED', 'ACCEPTED'].includes(String(status).toUpperCase()) ? 1 : 0);
   const price = bookingData.amount || bookingData.price || 1;
   const currency = bookingData.currency || 'INR';
   const paymentStatus = bookingData.payment_status || (bookingData.is_paid ? 'PAID' : 'PAID');
 
   await db.query(
     `INSERT INTO withme_partner_bookings (
-      booking_id, user_id, partner_id, customer_name, customer_phone, profile_image, activity, date, time, location, price, currency, payment_status, status
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      booking_id, user_id, partner_id, customer_name, customer_phone, profile_image, activity, date, time, location, price, currency, payment_status, status, is_accepted
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON DUPLICATE KEY UPDATE
       partner_id = VALUES(partner_id),
       customer_name = VALUES(customer_name),
@@ -1097,10 +1122,11 @@ async function savePartnerBookingToMysql(bookingData) {
       currency = VALUES(currency),
       payment_status = VALUES(payment_status),
       status = VALUES(status),
+      is_accepted = VALUES(is_accepted),
       updated_at = NOW()`,
-    [bId, userId, resolvedPartnerId, custName, custPhone, profileImage, activity, date, time, location, price, currency, paymentStatus, status]
+    [bId, userId, resolvedPartnerId, custName, custPhone, profileImage, activity, date, time, location, price, currency, paymentStatus, status, isAccepted]
   );
-  console.log(`[WithMe DB] Saved partner booking ${bId} (partner_id=${resolvedPartnerId}, status=${status}) to 'withme_partner_bookings' table.`);
+  console.log(`[WithMe DB] Saved partner booking ${bId} (partner_id=${resolvedPartnerId}, status=${status}, is_accepted=${isAccepted}) to 'withme_partner_bookings' table.`);
 }
 
 /**
