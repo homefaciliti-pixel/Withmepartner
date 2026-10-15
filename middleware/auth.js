@@ -25,10 +25,13 @@ function authenticateToken(req, res, next) {
 
   jwt.verify(token, JWT_SECRET, { ignoreExpiration: true }, (err, user) => {
     if (err) {
+      // Try to give more specific error messages
+      const isExpired = err.name === 'TokenExpiredError';
       return res.status(401).json({
         status: false,
-        message: 'Invalid access token',
-        error_code: 'INVALID_TOKEN'
+        success: false,
+        message: isExpired ? 'Session expired. Please login again.' : 'Invalid access token. Please login again.',
+        error_code: isExpired ? 'SESSION_EXPIRED' : 'INVALID_TOKEN'
       });
     }
     req.user = user;
@@ -37,9 +40,12 @@ function authenticateToken(req, res, next) {
 }
 
 function generateTokens(userId) {
-  const accessToken = jwt.sign({ user_id: userId }, JWT_SECRET);
+  // Long-lived token (30 days) — avoids "session expired" on app restarts
+  const accessToken = jwt.sign({ user_id: userId }, JWT_SECRET, { expiresIn: '30d' });
   return {
-    access_token: accessToken
+    access_token: accessToken,
+    token: accessToken,
+    accessToken
   };
 }
 

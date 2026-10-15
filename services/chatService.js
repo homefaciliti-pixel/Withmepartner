@@ -6,6 +6,93 @@ const memoryConversations = new Map(); // conversationId -> { id, type, created_
 const memoryMembers = []; // [{ id, conversation_id, user_id, joined_at }]
 const memoryMessages = new Map(); // messageId -> { id, conversation_id, sender_id, receiver_id, message_type, message, is_delivered, is_read, is_deleted, created_at }
 const memoryBlocks = new Set(); // "blockerId:blockedId"
+const unlockedChats = new Set(); // "user1Id:user2Id"
+
+function unlockChat(user1Id, user2Id) {
+  const u1 = toUserIdStr(user1Id);
+  const u2 = toUserIdStr(user2Id);
+  if (u1 && u2) {
+    unlockedChats.add(`${u1}:${u2}`);
+    unlockedChats.add(`${u2}:${u1}`);
+  }
+}
+
+/**
+ * Check if chat between two users is unlocked (requires an accepted & paid booking/request)
+ */
+async function canUsersChat(user1Id, user2Id) {
+  const u1 = toUserIdStr(user1Id);
+  const u2 = toUserIdStr(user2Id);
+
+  if (!u1 || !u2) return false;
+  if (u1 === u2) return false;
+
+  // 1. Fast check in-memory cache
+  if (unlockedChats.has(`${u1}:${u2}`) || unlockedChats.has(`${u2}:${u1}`)) {
+    return true;
+  }
+
+  // 2. Build candidate identifier arrays for both users
+  const getVariants = (raw) => {
+    const s = String(raw).trim();
+    const d = s.replace(/\D/g, '');
+    const set = new Set([s, d, `usr_${d}`, `user_${d}`, `partner_${d}`].filter(Boolean));
+    return [...set];
+  };
+
+  const v1 = getVariants(u1);
+  const v2 = getVariants(u2);
+
+  try {
+    const db = getDbPool();
+    const ph1 = v1.map(() => '?').join(',');
+    const ph2 = v2.map(() => '?').join(',');
+
+    // Check withme_partner_requests
+    const [rowsReq] = await db.query(
+      `SELECT id, status, is_accepted, payment_status, is_paid 
+       FROM withme_partner_requests 
+       WHERE (
+         (partner_id IN (${ph1}) AND user_id IN (${ph2}))
+         OR
+         (partner_id IN (${ph2}) AND user_id IN (${ph1}))
+       )
+       AND (is_paid = 1 OR UPPER(payment_status) = 'PAID' OR UPPER(payment_status) = 'COMPLETED')
+       AND UPPER(status) NOT IN ('REJECTED', 'DECLINED', 'CANCELLED')
+       LIMIT 1`,
+      [...v1, ...v2, ...v2, ...v1]
+    );
+
+    if (rowsReq && rowsReq.length > 0) {
+      unlockChat(u1, u2);
+      return true;
+    }
+
+    // Check withme_partner_bookings
+    const [rowsBk] = await db.query(
+      `SELECT id, status, is_accepted, payment_status, is_paid 
+       FROM withme_partner_bookings 
+       WHERE (
+         (partner_id IN (${ph1}) AND user_id IN (${ph2}))
+         OR
+         (partner_id IN (${ph2}) AND user_id IN (${ph1}))
+       )
+       AND (is_paid = 1 OR UPPER(payment_status) = 'PAID' OR UPPER(payment_status) = 'COMPLETED')
+       AND UPPER(status) NOT IN ('REJECTED', 'DECLINED', 'CANCELLED')
+       LIMIT 1`,
+      [...v1, ...v2, ...v2, ...v1]
+    );
+
+    if (rowsBk && rowsBk.length > 0) {
+      unlockChat(u1, u2);
+      return true;
+    }
+  } catch (err) {
+    console.error('[canUsersChat DB check error]:', err.message);
+  }
+
+  return false;
+}
 
 let autoMessageId = 1000;
 let autoConversationId = 100;
@@ -438,6 +525,7 @@ async function getUserConversations(userId, req, isUserOnlineFn) {
     unreadCount = Math.max(unreadCount, memUnread);
 
     const isOnline = isUserOnlineFn ? isUserOnlineFn(otherUserId) : false;
+    const canChat = await canUsersChat(uId, otherUserId);
 
     list.push({
       conversationId: convId,
@@ -447,7 +535,9 @@ async function getUserConversations(userId, req, isUserOnlineFn) {
       lastMessage: lastMsg ? lastMsg.message : "",
       lastMessageTime: lastMsg ? toIST(lastMsg.created_at) : toIST(new Date()),
       unreadCount,
-      isOnline
+      isOnline,
+      can_chat: canChat,
+      chat_status: canChat ? 'UNLOCKED' : 'LOCKED'
     });
   }
 
@@ -472,6 +562,34 @@ async function getConversationMessages(conversationId, userId) {
     const err = new Error("Access denied: You are not a member of this conversation");
     err.statusCode = 403;
     throw err;
+  }
+
+  // Look up other member of conversation to verify payment status
+  let otherMemberId = null;
+  const memOther = memoryMembers.find(m => m.conversation_id === convId && toUserIdStr(m.user_id) !== uId);
+  if (memOther) {
+    otherMemberId = memOther.user_id;
+  } else {
+    try {
+      const db = getDbPool();
+      const [mRows] = await db.query(
+        `SELECT user_id FROM conversation_members WHERE conversation_id = ? AND user_id != ? LIMIT 1`,
+        [convId, uId]
+      );
+      if (mRows && mRows.length > 0) {
+        otherMemberId = mRows[0].user_id;
+      }
+    } catch (e) {}
+  }
+
+  if (otherMemberId) {
+    const canChat = await canUsersChat(uId, otherMemberId);
+    if (!canChat) {
+      const err = new Error("Chat will be unlocked once payment is completed!");
+      err.statusCode = 403;
+      err.errorCode = "CHAT_LOCKED_PAYMENT_REQUIRED";
+      throw err;
+    }
   }
 
   let dbMessages = [];
@@ -725,5 +843,7 @@ module.exports = {
   markMessageDelivered,
   markMessageRead,
   deleteMessage,
-  toIST
+  toIST,
+  canUsersChat,
+  unlockChat
 };

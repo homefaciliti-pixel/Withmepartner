@@ -18,9 +18,20 @@ async function handleCreateOrGetConversation(req, res, next) {
       });
     }
 
+    const canChat = await chatService.canUsersChat(currentUserId, targetUserId);
+    if (!canChat) {
+      return res.status(403).json({
+        success: false,
+        can_chat: false,
+        message: "Chat will be unlocked once payment is completed!",
+        error_code: "CHAT_LOCKED_PAYMENT_REQUIRED"
+      });
+    }
+
     const result = await chatService.createOrGetConversation(currentUserId, targetUserId);
     return res.status(200).json({
       success: true,
+      can_chat: true,
       conversationId: result.conversationId
     });
   } catch (err) {
@@ -79,8 +90,9 @@ async function handleGetMessages(req, res, next) {
     if (err.statusCode === 403) {
       return res.status(403).json({
         success: false,
-        message: err.message,
-        error_code: "FORBIDDEN"
+        can_chat: false,
+        message: err.message || "Chat will be unlocked once payment is completed!",
+        error_code: err.errorCode || "FORBIDDEN"
       });
     }
     return next(err);
@@ -194,6 +206,16 @@ async function handleSendMessage(req, res, next) {
         success: false,
         message: "Cannot send message. User is blocked",
         error_code: "BAD_REQUEST"
+      });
+    }
+
+    const canChat = await chatService.canUsersChat(currentUserId, receiverId);
+    if (!canChat) {
+      return res.status(403).json({
+        success: false,
+        can_chat: false,
+        message: "Chat will be unlocked once payment is completed!",
+        error_code: "CHAT_LOCKED_PAYMENT_REQUIRED"
       });
     }
 

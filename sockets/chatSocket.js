@@ -188,6 +188,20 @@ function initChatSocket(server) {
           return;
         }
 
+        // Verify payment is completed before sending message
+        const canChat = await chatService.canUsersChat(senderId, receiverId);
+        if (!canChat) {
+          const errRes = {
+            success: false,
+            can_chat: false,
+            message: "Chat will be unlocked once payment is completed!",
+            error_code: "CHAT_LOCKED_PAYMENT_REQUIRED"
+          };
+          if (typeof callback === 'function') callback(errRes);
+          socket.emit('error', errRes);
+          return;
+        }
+
         // Save message
         const savedMsg = await chatService.saveMessage({
           conversationId,

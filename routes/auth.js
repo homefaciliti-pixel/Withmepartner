@@ -27,10 +27,10 @@ const {
 router.post('/login', async (req, res) => {
   const { country_code, mobile_number, password } = req.body;
 
-  if (!mobile_number || !password) {
+  if (!mobile_number) {
     return res.status(400).json({
       status: false,
-      message: 'Mobile number and password are required',
+      message: 'Mobile number is required',
       error_code: 'INVALID_INPUT'
     });
   }
@@ -56,7 +56,16 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    if (user.password !== password) {
+    // Password check:
+    // - If DB has no password stored yet, accept any password and save it
+    // - Otherwise, validate provided password
+    if (user.password === null || user.password === undefined || user.password === '') {
+      // First-time login or password not set — set the provided password (or allow empty)
+      if (password) {
+        await updatePartnerInMysql(user.user_id, { password });
+      }
+      // Allow login regardless
+    } else if (user.password !== password) {
       const newAttempts = (user.failed_attempts || 0) + 1;
       const locked = newAttempts >= 5;
       await updatePartnerInMysql(user.user_id, { failed_attempts: newAttempts, locked });
@@ -80,19 +89,47 @@ router.post('/login', async (req, res) => {
     const tokens = generateTokens(user.user_id);
     const userPhoto = formatPhotoUrl(user.profile_photo_url || (user.photos && user.photos[0] ? user.photos[0].url : PHOTO_1), req);
 
+    const partnerObj = {
+      id: user.user_id,
+      user_id: user.user_id,
+      partner_id: user.user_id,
+      name: user.name,
+      full_name: user.name,
+      email: user.email || '',
+      country_code: user.country_code || normCC,
+      mobile_number: user.mobile_number,
+      phone: user.mobile_number,
+      gender: user.gender || '',
+      dob: user.dob || '',
+      city: user.city || '',
+      state: user.state || '',
+      area: user.area || user.locality || '',
+      profile_photo_url: userPhoto,
+      image: userPhoto,
+      photos: user.photos || [],
+      interests: user.interests || [],
+      about: user.about || null,
+      availability: user.availability || null,
+      rating: user.rating || 4.8,
+      profile_completed: Boolean(user.profile_completed),
+      profile_step_pending: user.profile_step_pending || null,
+      is_approved: true,
+      is_verified: true,
+      status: 'ACTIVE'
+    };
+
     return res.status(200).json({
       status: true,
+      success: true,
       message: 'Login successful',
+      token: tokens.access_token,
+      accessToken: tokens.access_token,
+      access_token: tokens.access_token,
+      partner: partnerObj,
       data: {
-        user_id: user.user_id,
-        name: user.name,
-        country_code: user.country_code || normCC,
-        mobile_number: user.mobile_number,
-        profile_completed: user.profile_completed || false,
-        profile_step_pending: user.profile_step_pending || null,
-        profile_photo_url: userPhoto,
-        image: userPhoto,
-        access_token: tokens.access_token
+        ...partnerObj,
+        access_token: tokens.access_token,
+        token: tokens.access_token
       }
     });
   } catch (err) {
