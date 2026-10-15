@@ -788,21 +788,48 @@ async function verifyOtpFromMysql(mobileNumber, otp, type) {
  */
 async function fetchPartnerRequestsFromMysql(partnerId) {
   const db = getDbPool();
-  let sql = "SELECT * FROM withme_partner_requests";
-  const params = [];
 
-  if (partnerId) {
-    const pId = String(partnerId);
-    let cleanMobile = pId.replace(/\D/g, '');
-    if (cleanMobile.length > 10 && cleanMobile.startsWith('91')) cleanMobile = cleanMobile.slice(-10);
-    else if (cleanMobile.length === 11 && cleanMobile.startsWith('0')) cleanMobile = cleanMobile.slice(-10);
+  // Build all identifier variants for this partner
+  const pId = String(partnerId || '');
+  let cleanMobile = pId.replace(/\D/g, '');
+  if (cleanMobile.length > 10 && cleanMobile.startsWith('91')) cleanMobile = cleanMobile.slice(-10);
+  else if (cleanMobile.length === 11 && cleanMobile.startsWith('0')) cleanMobile = cleanMobile.slice(-10);
+  const fullMobile = `91${cleanMobile}`;
 
-    const fullMobile = `91${cleanMobile}`;
-    sql += " WHERE (partner_id = ? OR partner_id = ? OR partner_id = ? OR partner_id IN (SELECT user_id FROM withme_partners WHERE mobile_number = ? OR phone_number = ? OR mobile_number = ? OR phone_number = ? OR partner_id = ?) OR partner_id IN (SELECT partner_id FROM withme_partners WHERE mobile_number = ? OR phone_number = ? OR mobile_number = ? OR phone_number = ? OR user_id = ?))";
-    params.push(pId, cleanMobile, fullMobile, cleanMobile, cleanMobile, fullMobile, fullMobile, pId, cleanMobile, cleanMobile, fullMobile, fullMobile, pId);
+  // Step 1: Look up the partner row in withme_partners to get all known identifiers
+  let allPartnerIds = new Set([pId, cleanMobile, fullMobile].filter(Boolean));
+  try {
+    const [pRows] = await db.query(
+      `SELECT partner_id, user_id, mobile_number, phone_number FROM withme_partners
+       WHERE partner_id = ? OR user_id = ?
+          OR mobile_number = ? OR phone_number = ?
+          OR mobile_number = ? OR phone_number = ?
+       LIMIT 5`,
+      [pId, pId, cleanMobile, cleanMobile, fullMobile, fullMobile]
+    );
+    pRows.forEach(row => {
+      if (row.partner_id) allPartnerIds.add(String(row.partner_id));
+      if (row.user_id) allPartnerIds.add(String(row.user_id));
+      if (row.mobile_number) allPartnerIds.add(String(row.mobile_number));
+      if (row.phone_number) allPartnerIds.add(String(row.phone_number));
+    });
+  } catch (lookupErr) {
+    console.error('[WithMe DB] fetchPartnerRequests lookup error:', lookupErr.message);
   }
 
-  sql += " ORDER BY created_at DESC LIMIT 200";
+  // Step 2: Fetch requests WHERE partner_id matches any known identifier
+  const idList = [...allPartnerIds].filter(Boolean);
+  const placeholders = idList.map(() => '?').join(', ');
+  let sql = `SELECT * FROM withme_partner_requests`;
+  let params = [];
+
+  if (idList.length > 0) {
+    sql += ` WHERE partner_id IN (${placeholders})`;
+    params = idList;
+  }
+  sql += ` ORDER BY created_at DESC LIMIT 200`;
+
+  console.log(`[WithMe DB] fetchPartnerRequests partnerId=${pId}, checking IDs: [${idList.join(', ')}]`);
 
   const [rows] = await db.query(sql, params);
   return rows.map(r => ({
@@ -817,19 +844,20 @@ async function fetchPartnerRequestsFromMysql(partnerId) {
     id_verified: 1,
     selfie_verified: 1,
     interest: r.activity || 'Coffee',
-    date_time: `${r.date || '2026-09-25'} ${r.time || '06:00 PM'}`,
+    date_time: `${r.date || new Date().toISOString().split('T')[0]} ${r.time || '06:00 PM'}`,
     location: r.location || 'Jaipur',
     status: r.status || 'PENDING',
     message: r.message,
     activity: {
       type: r.activity || 'Coffee',
-      date: r.date || '2026-09-25',
+      date: r.date || new Date().toISOString().split('T')[0],
       time: r.time || '06:00 PM',
       area: r.location || 'Jaipur',
       description: r.message || 'Meetup request'
     }
   }));
 }
+
 
 /**
  * Save / insert partner request into `withme_partner_requests` table
@@ -842,23 +870,55 @@ async function savePartnerRequestToMysql(requestData) {
   const senderPhone = requestData.phone_number || requestData.sender_phone || '';
   const senderAvatar = requestData.image || requestData.sender_avatar || '';
   const userId = requestData.user_id || '';
-  const partnerId = String(requestData.partner_id || requestData.receiver_id || '');
+  const rawPartnerId = String(requestData.partner_id || requestData.receiver_id || '');
   const activity = requestData.interest || requestData.activity_name || (requestData.activity && requestData.activity.type) || 'Coffee';
-  const date = requestData.date || (requestData.activity && requestData.activity.date) || '2026-09-25';
+  const date = requestData.date || (requestData.activity && requestData.activity.date) || new Date().toISOString().split('T')[0];
   const time = requestData.time || (requestData.activity && requestData.activity.time) || '06:00 PM';
   const location = requestData.location || (requestData.activity && requestData.activity.area) || 'Jaipur';
   const message = requestData.message || (requestData.activity && requestData.activity.description) || 'Meetup request';
   const status = requestData.status || 'PENDING';
+
+  // ── Resolve partner_id to canonical DB user_id ───────────────────────────
+  // User App may send mobile number, +91 mobile, or user_id string.
+  // We always try to find the matching row in withme_partners so the
+  // partner's own fetch query (which uses their JWT user_id) will match.
+  let resolvedPartnerId = rawPartnerId;
+  try {
+    let cleanM = rawPartnerId.replace(/\D/g, '');
+    if (cleanM.length > 10 && cleanM.startsWith('91')) cleanM = cleanM.slice(-10);
+    else if (cleanM.length === 11 && cleanM.startsWith('0')) cleanM = cleanM.slice(-10);
+
+    const [pRows] = await db.query(
+      `SELECT partner_id, user_id FROM withme_partners
+       WHERE partner_id = ? OR user_id = ?
+          OR mobile_number = ? OR phone_number = ?
+          OR mobile_number = ? OR phone_number = ?
+       LIMIT 1`,
+      [rawPartnerId, rawPartnerId, cleanM, cleanM, `91${cleanM}`, `91${cleanM}`]
+    );
+    if (pRows.length > 0) {
+      resolvedPartnerId = pRows[0].partner_id || pRows[0].user_id || rawPartnerId;
+      console.log(`[WithMe DB] Resolved partner_id: ${rawPartnerId} → ${resolvedPartnerId}`);
+    } else {
+      console.warn(`[WithMe DB] Could not resolve partner_id=${rawPartnerId} in withme_partners — saving as-is`);
+    }
+  } catch (lookupErr) {
+    console.error('[WithMe DB] partner_id lookup error:', lookupErr.message);
+  }
+  // ─────────────────────────────────────────────────────────────────────────
 
   await db.query(
     `INSERT INTO withme_partner_requests (
       request_id, booking_id, user_id, partner_id, sender_name, sender_phone, sender_avatar,
       activity, date, time, location, message, price, status
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
-    ON DUPLICATE KEY UPDATE status = VALUES(status), updated_at = NOW()`,
-    [reqId, bId, userId, partnerId, senderName, senderPhone, senderAvatar, activity, date, time, location, message, status]
+    ON DUPLICATE KEY UPDATE
+      partner_id = VALUES(partner_id),
+      status = VALUES(status),
+      updated_at = NOW()`,
+    [reqId, bId, userId, resolvedPartnerId, senderName, senderPhone, senderAvatar, activity, date, time, location, message, status]
   );
-  console.log(`[WithMe DB] Saved partner request ${reqId} to 'withme_partner_requests' table.`);
+  console.log(`[WithMe DB] Saved partner request ${reqId} (partner_id=${resolvedPartnerId}) to 'withme_partner_requests' table.`);
 }
 
 /**
