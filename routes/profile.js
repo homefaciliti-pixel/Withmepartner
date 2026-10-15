@@ -42,10 +42,16 @@ if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
 function saveUploadedFile(file, prefix = 'photo') {
   if (!file || !file.buffer) return null;
-  const ext = (file.mimetype && file.mimetype.includes('png')) ? 'png' : 'jpg';
-  const filename = `${prefix}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${ext}`;
+  // Always generate unique filename: prefix already contains userId, add timestamp + random for uniqueness
+  const origExt = file.originalname ? path.extname(file.originalname).toLowerCase() : '';
+  const ext = origExt && ['.jpg', '.jpeg', '.png', '.webp', '.gif'].includes(origExt)
+    ? origExt.replace('.', '')
+    : (file.mimetype && file.mimetype.includes('png') ? 'png' : 'jpg');
+  const unique = `${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+  const filename = `${prefix}_${unique}.${ext}`;
   const filePath = path.join(uploadsDir, filename);
   fs.writeFileSync(filePath, file.buffer);
+  console.log(`[Upload] Saved file: ${filename}`);
   return `/uploads/photos/${filename}`;
 }
 
@@ -65,36 +71,58 @@ router.post('/photos', authenticateToken, (req, res) => {
 
       if (files.length > 0) {
         files.forEach((f, idx) => {
+          // ✅ Unique filename per user: usr_{userId}_p{idx}_{timestamp}_{random}
           const savedUrl = saveUploadedFile(f, `usr_${user.user_id}_p${idx + 1}`);
           if (savedUrl) savedPhotoUrls.push(savedUrl);
         });
       }
 
+      // ✅ SAFE: preserve existing photos from DB — don't overwrite with shared defaults
+      const existingPhotos = Array.isArray(user.photos) ? user.photos : [];
+
       let photoList = [];
       if (savedPhotoUrls.length > 0) {
+        // Map newly uploaded files
         photoList = savedPhotoUrls.map((url, idx) => ({
           photo_id: `ph_00${idx + 1}`,
           url,
           is_primary: idx === 0
         }));
+        // Fill remaining slots with EXISTING DB photos (not shared defaults)
         for (let i = savedPhotoUrls.length; i < 5; i++) {
-          const defaultUrl = [PHOTO_1, PHOTO_2, PHOTO_3, PHOTO_4, PHOTO_5][i] || PHOTO_1;
-          photoList.push({ photo_id: `ph_00${i + 1}`, url: defaultUrl, is_primary: false });
+          const existingEntry = existingPhotos[i];
+          const existingUrl = existingEntry ? (existingEntry.url || existingEntry.path || '') : '';
+          photoList.push({
+            photo_id: `ph_00${i + 1}`,
+            url: existingUrl, // empty string if never uploaded — safe
+            is_primary: false
+          });
         }
       } else {
-        photoList = [
-          { photo_id: 'ph_001', url: PHOTO_1, is_primary: true },
-          { photo_id: 'ph_002', url: PHOTO_2, is_primary: false },
-          { photo_id: 'ph_003', url: PHOTO_3, is_primary: false },
-          { photo_id: 'ph_004', url: PHOTO_4, is_primary: false },
-          { photo_id: 'ph_005', url: PHOTO_5, is_primary: false }
-        ];
+        // ❌ No files uploaded — DO NOT overwrite with shared PHOTO_1..5
+        // Return existing photos as-is (or empty slots)
+        if (existingPhotos.length > 0) {
+          return res.status(400).json({
+            status: false,
+            message: 'No photo files provided. Existing photos are preserved.',
+            error_code: 'NO_PHOTO_PROVIDED',
+            data: { photos: existingPhotos.map(p => ({ ...p, url: formatPhotoUrl(p.url, req) })) }
+          });
+        }
+        // First time — partner has no photos yet, no files sent
+        return res.status(400).json({
+          status: false,
+          message: 'Please upload at least one photo.',
+          error_code: 'NO_PHOTO_PROVIDED'
+        });
       }
 
       const newProfileStep = user.profile_step_pending === 'PROFILE_PHOTO' ? 'AADHAR' : user.profile_step_pending;
+      // Only update photo_url if we have a real uploaded photo
+      const primaryPhotoUrl = photoList[0] && photoList[0].url ? photoList[0].url : (user.profile_photo_url || '');
       await updatePartnerInMysql(user.user_id, {
         photos: photoList,
-        profile_photo_url: photoList[0].url,
+        profile_photo_url: primaryPhotoUrl,
         profile_step_pending: newProfileStep
       });
 
@@ -151,27 +179,50 @@ router.put('/photos/:photo_id', authenticateToken, (req, res) => {
 
       let updatedUrl = null;
       if (file) {
+        // ✅ Real file upload — generate unique filename with userId + timestamp
         updatedUrl = saveUploadedFile(file, `usr_${user.user_id}_ph${photoKey}`);
       } else if (req.body && (req.body.photo_url || req.body.url || req.body.image || req.body.profile_photo)) {
         const inputUrl = req.body.photo_url || req.body.url || req.body.image || req.body.profile_photo;
         if (inputUrl.startsWith('data:image')) {
-          // Handle base64 upload
+          // Handle base64 upload — unique filename with userId
           const matches = inputUrl.match(/^data:image\/([a-zA-Z+]+);base64,(.+)$/);
           if (matches) {
             const ext = matches[1].includes('png') ? 'png' : 'jpg';
             const buffer = Buffer.from(matches[2], 'base64');
-            const filename = `usr_${user.user_id}_ph${photoKey}_${Date.now()}.${ext}`;
+            const filename = `usr_${user.user_id}_ph${photoKey}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${ext}`;
             const filepath = path.join(uploadsDir, filename);
             fs.writeFileSync(filepath, buffer);
             updatedUrl = `/uploads/photos/${filename}`;
+            console.log(`[Upload] Saved base64 file: ${filename}`);
           }
         } else {
+          // Direct URL provided — use as-is
           updatedUrl = inputUrl;
         }
       }
 
+      // ✅ SAFE: Agar koi naya photo nahi aaya, purana photo preserve karo
+      // ❌ NEVER fallback to shared photo_1.jpg / photo_2.jpg etc.
       if (!updatedUrl) {
-        updatedUrl = `/uploads/photos/photo_${photoKey}.jpg`;
+        // Find existing photo URL for this slot from DB
+        const existingPhotos = Array.isArray(user.photos) ? user.photos : [];
+        const existingEntry = existingPhotos.find(
+          p => (p.photo_id && p.photo_id.endsWith(String(photoKey))) ||
+               existingPhotos.indexOf(p) === photoKey - 1
+        );
+        const existingUrl = existingEntry ? (existingEntry.url || existingEntry.path || '') : '';
+        if (existingUrl) {
+          // Keep existing photo unchanged
+          updatedUrl = existingUrl;
+          console.log(`[Upload] No new file provided for ph_${photoKey} — keeping existing: ${existingUrl}`);
+        } else {
+          // No existing photo and no new file — return early, don't write anything
+          return res.status(400).json({
+            status: false,
+            message: 'No photo file or URL provided.',
+            error_code: 'NO_PHOTO_PROVIDED'
+          });
+        }
       }
 
       let photos = Array.isArray(user.photos) ? user.photos : [
