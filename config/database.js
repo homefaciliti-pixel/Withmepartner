@@ -784,30 +784,77 @@ async function verifyOtpFromMysql(mobileNumber, otp, type) {
 }
 
 /**
+ * Resolve any raw partner identifier (id, partner_id, user_id, or mobile number)
+ * to the canonical partner record in withme_partners
+ */
+async function resolvePartnerCanonicalId(rawPartnerId) {
+  if (!rawPartnerId) return '';
+  const db = getDbPool();
+  const rawStr = String(rawPartnerId).trim();
+  let cleanM = rawStr.replace(/\D/g, '');
+  if (cleanM.length > 10 && cleanM.startsWith('91')) cleanM = cleanM.slice(-10);
+  else if (cleanM.length === 11 && cleanM.startsWith('0')) cleanM = cleanM.slice(-10);
+  const fullM = cleanM ? `91${cleanM}` : '';
+
+  try {
+    const isNum = !isNaN(Number(rawStr)) && Number(rawStr) > 0;
+    let sql = `SELECT id, partner_id, user_id, mobile_number FROM withme_partners WHERE partner_id = ? OR user_id = ?`;
+    let params = [rawStr, rawStr];
+
+    if (isNum) {
+      sql += ` OR id = ?`;
+      params.push(Number(rawStr));
+    }
+    if (cleanM) {
+      sql += ` OR mobile_number = ? OR phone_number = ? OR mobile_number = ? OR phone_number = ?`;
+      params.push(cleanM, cleanM, fullM, fullM);
+    }
+    sql += ` LIMIT 1`;
+
+    const [rows] = await db.query(sql, params);
+    if (rows.length > 0) {
+      const resolved = rows[0].partner_id || rows[0].user_id || String(rows[0].id) || rawStr;
+      console.log(`[WithMe DB] Resolved canonical partner_id: ${rawStr} → ${resolved}`);
+      return resolved;
+    }
+  } catch (err) {
+    console.error('[WithMe DB] resolvePartnerCanonicalId error:', err.message);
+  }
+  return rawStr;
+}
+
+/**
  * Fetch partner requests for specific partnerId from `withme_partner_requests` table
  */
 async function fetchPartnerRequestsFromMysql(partnerId) {
   const db = getDbPool();
 
   // Build all identifier variants for this partner
-  const pId = String(partnerId || '');
+  const pId = String(partnerId || '').trim();
   let cleanMobile = pId.replace(/\D/g, '');
   if (cleanMobile.length > 10 && cleanMobile.startsWith('91')) cleanMobile = cleanMobile.slice(-10);
   else if (cleanMobile.length === 11 && cleanMobile.startsWith('0')) cleanMobile = cleanMobile.slice(-10);
-  const fullMobile = `91${cleanMobile}`;
+  const fullMobile = cleanMobile ? `91${cleanMobile}` : '';
 
   // Step 1: Look up the partner row in withme_partners to get all known identifiers
   let allPartnerIds = new Set([pId, cleanMobile, fullMobile].filter(Boolean));
   try {
-    const [pRows] = await db.query(
-      `SELECT partner_id, user_id, mobile_number, phone_number FROM withme_partners
-       WHERE partner_id = ? OR user_id = ?
-          OR mobile_number = ? OR phone_number = ?
-          OR mobile_number = ? OR phone_number = ?
-       LIMIT 5`,
-      [pId, pId, cleanMobile, cleanMobile, fullMobile, fullMobile]
-    );
+    const isNum = !isNaN(Number(pId)) && Number(pId) > 0;
+    let sql = `SELECT id, partner_id, user_id, mobile_number, phone_number FROM withme_partners WHERE partner_id = ? OR user_id = ?`;
+    let params = [pId, pId];
+    if (isNum) {
+      sql += ` OR id = ?`;
+      params.push(Number(pId));
+    }
+    if (cleanMobile) {
+      sql += ` OR mobile_number = ? OR phone_number = ? OR mobile_number = ? OR phone_number = ?`;
+      params.push(cleanMobile, cleanMobile, fullMobile, fullMobile);
+    }
+    sql += ` LIMIT 5`;
+
+    const [pRows] = await db.query(sql, params);
     pRows.forEach(row => {
+      if (row.id) allPartnerIds.add(String(row.id));
       if (row.partner_id) allPartnerIds.add(String(row.partner_id));
       if (row.user_id) allPartnerIds.add(String(row.user_id));
       if (row.mobile_number) allPartnerIds.add(String(row.mobile_number));
@@ -838,6 +885,7 @@ async function fetchPartnerRequestsFromMysql(partnerId) {
     user_id: r.user_id,
     partner_id: r.partner_id,
     name: r.sender_name || 'User Request',
+    phone_number: r.sender_phone || '',
     age: 25,
     image: r.sender_avatar || '',
     profile_image: r.sender_avatar || '',
@@ -845,8 +893,13 @@ async function fetchPartnerRequestsFromMysql(partnerId) {
     selfie_verified: 1,
     interest: r.activity || 'Coffee',
     date_time: `${r.date || new Date().toISOString().split('T')[0]} ${r.time || '06:00 PM'}`,
+    date: r.date || new Date().toISOString().split('T')[0],
+    time: r.time || '06:00 PM',
     location: r.location || 'Jaipur',
-    status: r.status || 'PENDING',
+    price: r.price || 1,
+    status: r.status || 'PAID',
+    payment_status: 'PAID',
+    is_paid: true,
     message: r.message,
     activity: {
       type: r.activity || 'Coffee',
@@ -858,7 +911,6 @@ async function fetchPartnerRequestsFromMysql(partnerId) {
   }));
 }
 
-
 /**
  * Save / insert partner request into `withme_partner_requests` table
  */
@@ -868,57 +920,41 @@ async function savePartnerRequestToMysql(requestData) {
   const bId = requestData.booking_id || `BK${Date.now()}`;
   const senderName = requestData.name || requestData.sender_name || 'User';
   const senderPhone = requestData.phone_number || requestData.sender_phone || '';
-  const senderAvatar = requestData.image || requestData.sender_avatar || '';
-  const userId = requestData.user_id || '';
+  const senderAvatar = requestData.image || requestData.profile_image || requestData.sender_avatar || '';
+  const userId = requestData.user_id || requestData.sender_id || '';
   const rawPartnerId = String(requestData.partner_id || requestData.receiver_id || '');
-  const activity = requestData.interest || requestData.activity_name || (requestData.activity && requestData.activity.type) || 'Coffee';
+  const activity = requestData.interest || requestData.activity_name || requestData.activity || (requestData.activity && requestData.activity.type) || 'Coffee';
   const date = requestData.date || (requestData.activity && requestData.activity.date) || new Date().toISOString().split('T')[0];
   const time = requestData.time || (requestData.activity && requestData.activity.time) || '06:00 PM';
   const location = requestData.location || (requestData.activity && requestData.activity.area) || 'Jaipur';
-  const message = requestData.message || (requestData.activity && requestData.activity.description) || 'Meetup request';
-  const status = requestData.status || 'PENDING';
+  const message = requestData.message || (requestData.activity && requestData.activity.description) || 'Payment completed. Please connect!';
+  const price = requestData.amount || requestData.price || 1;
+  const status = requestData.status || 'PAID';
 
-  // ── Resolve partner_id to canonical DB user_id ───────────────────────────
-  // User App may send mobile number, +91 mobile, or user_id string.
-  // We always try to find the matching row in withme_partners so the
-  // partner's own fetch query (which uses their JWT user_id) will match.
-  let resolvedPartnerId = rawPartnerId;
-  try {
-    let cleanM = rawPartnerId.replace(/\D/g, '');
-    if (cleanM.length > 10 && cleanM.startsWith('91')) cleanM = cleanM.slice(-10);
-    else if (cleanM.length === 11 && cleanM.startsWith('0')) cleanM = cleanM.slice(-10);
-
-    const [pRows] = await db.query(
-      `SELECT partner_id, user_id FROM withme_partners
-       WHERE partner_id = ? OR user_id = ?
-          OR mobile_number = ? OR phone_number = ?
-          OR mobile_number = ? OR phone_number = ?
-       LIMIT 1`,
-      [rawPartnerId, rawPartnerId, cleanM, cleanM, `91${cleanM}`, `91${cleanM}`]
-    );
-    if (pRows.length > 0) {
-      resolvedPartnerId = pRows[0].partner_id || pRows[0].user_id || rawPartnerId;
-      console.log(`[WithMe DB] Resolved partner_id: ${rawPartnerId} → ${resolvedPartnerId}`);
-    } else {
-      console.warn(`[WithMe DB] Could not resolve partner_id=${rawPartnerId} in withme_partners — saving as-is`);
-    }
-  } catch (lookupErr) {
-    console.error('[WithMe DB] partner_id lookup error:', lookupErr.message);
-  }
-  // ─────────────────────────────────────────────────────────────────────────
+  // Resolve partner_id to canonical DB identifier
+  const resolvedPartnerId = await resolvePartnerCanonicalId(rawPartnerId);
 
   await db.query(
     `INSERT INTO withme_partner_requests (
       request_id, booking_id, user_id, partner_id, sender_name, sender_phone, sender_avatar,
       activity, date, time, location, message, price, status
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON DUPLICATE KEY UPDATE
       partner_id = VALUES(partner_id),
+      sender_name = VALUES(sender_name),
+      sender_phone = VALUES(sender_phone),
+      sender_avatar = VALUES(sender_avatar),
+      activity = VALUES(activity),
+      date = VALUES(date),
+      time = VALUES(time),
+      location = VALUES(location),
+      message = VALUES(message),
+      price = VALUES(price),
       status = VALUES(status),
       updated_at = NOW()`,
-    [reqId, bId, userId, resolvedPartnerId, senderName, senderPhone, senderAvatar, activity, date, time, location, message, status]
+    [reqId, bId, userId, resolvedPartnerId, senderName, senderPhone, senderAvatar, activity, date, time, location, message, price, status]
   );
-  console.log(`[WithMe DB] Saved partner request ${reqId} (partner_id=${resolvedPartnerId}) to 'withme_partner_requests' table.`);
+  console.log(`[WithMe DB] Saved partner request ${reqId} (partner_id=${resolvedPartnerId}, status=${status}) to 'withme_partner_requests' table.`);
 }
 
 /**
@@ -935,20 +971,52 @@ async function updatePartnerRequestStatusInMysql(requestId, status) {
  */
 async function fetchPartnerBookingsFromMysql(partnerId, statusFilter) {
   const db = getDbPool();
-  let sql = "SELECT * FROM withme_partner_bookings";
-  const params = [];
+
+  const pId = String(partnerId || '').trim();
+  let cleanMobile = pId.replace(/\D/g, '');
+  if (cleanMobile.length > 10 && cleanMobile.startsWith('91')) cleanMobile = cleanMobile.slice(-10);
+  else if (cleanMobile.length === 11 && cleanMobile.startsWith('0')) cleanMobile = cleanMobile.slice(-10);
+  const fullMobile = cleanMobile ? `91${cleanMobile}` : '';
+
+  // Step 1: Look up the partner row in withme_partners to get all known identifiers
+  let allPartnerIds = new Set([pId, cleanMobile, fullMobile].filter(Boolean));
+  try {
+    const isNum = !isNaN(Number(pId)) && Number(pId) > 0;
+    let sql = `SELECT id, partner_id, user_id, mobile_number, phone_number FROM withme_partners WHERE partner_id = ? OR user_id = ?`;
+    let params = [pId, pId];
+    if (isNum) {
+      sql += ` OR id = ?`;
+      params.push(Number(pId));
+    }
+    if (cleanMobile) {
+      sql += ` OR mobile_number = ? OR phone_number = ? OR mobile_number = ? OR phone_number = ?`;
+      params.push(cleanMobile, cleanMobile, fullMobile, fullMobile);
+    }
+    sql += ` LIMIT 5`;
+
+    const [pRows] = await db.query(sql, params);
+    pRows.forEach(row => {
+      if (row.id) allPartnerIds.add(String(row.id));
+      if (row.partner_id) allPartnerIds.add(String(row.partner_id));
+      if (row.user_id) allPartnerIds.add(String(row.user_id));
+      if (row.mobile_number) allPartnerIds.add(String(row.mobile_number));
+      if (row.phone_number) allPartnerIds.add(String(row.phone_number));
+    });
+  } catch (lookupErr) {
+    console.error('[WithMe DB] fetchPartnerBookings lookup error:', lookupErr.message);
+  }
+
+  const idList = [...allPartnerIds].filter(Boolean);
+  const placeholders = idList.map(() => '?').join(', ');
+  let sql = `SELECT * FROM withme_partner_bookings`;
+  let params = [];
   const conditions = [];
 
-  if (partnerId) {
-    const pId = String(partnerId);
-    let cleanMobile = pId.replace(/\D/g, '');
-    if (cleanMobile.length > 10 && cleanMobile.startsWith('91')) cleanMobile = cleanMobile.slice(-10);
-    else if (cleanMobile.length === 11 && cleanMobile.startsWith('0')) cleanMobile = cleanMobile.slice(-10);
-
-    const fullMobile = `91${cleanMobile}`;
-    conditions.push("(partner_id = ? OR partner_id = ? OR partner_id = ? OR partner_id IN (SELECT user_id FROM withme_partners WHERE mobile_number = ? OR phone_number = ? OR mobile_number = ? OR phone_number = ? OR partner_id = ?) OR partner_id IN (SELECT partner_id FROM withme_partners WHERE mobile_number = ? OR phone_number = ? OR mobile_number = ? OR phone_number = ? OR user_id = ?))");
-    params.push(pId, cleanMobile, fullMobile, cleanMobile, cleanMobile, fullMobile, fullMobile, pId, cleanMobile, cleanMobile, fullMobile, fullMobile, pId);
+  if (idList.length > 0) {
+    conditions.push(`partner_id IN (${placeholders})`);
+    params.push(...idList);
   }
+
   if (statusFilter && statusFilter !== 'all') {
     conditions.push("LOWER(status) = LOWER(?)");
     params.push(statusFilter);
@@ -960,22 +1028,32 @@ async function fetchPartnerBookingsFromMysql(partnerId, statusFilter) {
 
   sql += " ORDER BY created_at DESC LIMIT 200";
 
+  console.log(`[WithMe DB] fetchPartnerBookings partnerId=${pId}, checking IDs: [${idList.join(', ')}]`);
+
   const [rows] = await db.query(sql, params);
   return rows.map(r => ({
     booking_id: r.booking_id,
     partner_id: r.partner_id,
     user_id: r.user_id,
     name: r.customer_name || 'User',
+    customer_name: r.customer_name || 'User',
+    phone_number: r.customer_phone || '',
     profile_image: r.profile_image || '',
     interest: r.activity || 'Coffee',
+    activity: r.activity || 'Coffee',
     location: r.location || 'Jaipur',
-    date: r.date || '2026-09-25',
+    date: r.date || new Date().toISOString().split('T')[0],
     time: r.time || '06:00 PM',
-    status: r.status || 'CONFIRMED',
+    status: r.status || 'Upcoming',
+    price: r.price || 1,
+    currency: r.currency || 'INR',
+    payment_status: r.payment_status || 'PAID',
+    is_paid: true,
     meeting_info: {
-      date: r.date || '2026-09-25',
+      date: r.date || new Date().toISOString().split('T')[0],
       time: r.time || '06:00 PM',
       location: r.location || 'Jaipur',
+      place: r.location || 'Jaipur',
       activity: r.activity || 'Coffee'
     }
   }));
@@ -988,23 +1066,41 @@ async function savePartnerBookingToMysql(bookingData) {
   const db = getDbPool();
   const bId = bookingData.booking_id || `BK${Date.now()}`;
   const custName = bookingData.name || bookingData.customer_name || 'User';
-  const partnerId = String(bookingData.partner_id || bookingData.receiver_id || '');
+  const custPhone = bookingData.phone_number || bookingData.customer_phone || '';
+  const rawPartnerId = String(bookingData.partner_id || bookingData.receiver_id || '');
+  const resolvedPartnerId = await resolvePartnerCanonicalId(rawPartnerId);
   const userId = bookingData.user_id || '';
-  const profileImage = bookingData.profile_image || '';
-  const activity = bookingData.interest || bookingData.activity || 'Coffee';
-  const date = bookingData.date || '2026-09-25';
-  const time = bookingData.time || '06:00 PM';
-  const location = bookingData.location || 'Jaipur';
-  const status = bookingData.status || 'CONFIRMED';
+  const profileImage = bookingData.profile_image || bookingData.user_image || '';
+  const activity = bookingData.interest || bookingData.activity || (bookingData.meeting_info && (bookingData.meeting_info.activity || bookingData.meeting_info.type)) || 'Coffee';
+  const date = bookingData.date || (bookingData.meeting_info && bookingData.meeting_info.date) || new Date().toISOString().split('T')[0];
+  const time = bookingData.time || (bookingData.meeting_info && bookingData.meeting_info.time) || '06:00 PM';
+  const location = bookingData.location || (bookingData.meeting_info && (bookingData.meeting_info.location || bookingData.meeting_info.place)) || 'Jaipur';
+  const status = bookingData.status || 'Upcoming';
+  const price = bookingData.amount || bookingData.price || 1;
+  const currency = bookingData.currency || 'INR';
+  const paymentStatus = bookingData.payment_status || (bookingData.is_paid ? 'PAID' : 'PAID');
 
   await db.query(
     `INSERT INTO withme_partner_bookings (
-      booking_id, user_id, partner_id, customer_name, profile_image, activity, date, time, location, price, currency, status
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'INR', ?)
-    ON DUPLICATE KEY UPDATE status = VALUES(status), updated_at = NOW()`,
-    [bId, userId, partnerId, custName, profileImage, activity, date, time, location, status]
+      booking_id, user_id, partner_id, customer_name, customer_phone, profile_image, activity, date, time, location, price, currency, payment_status, status
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON DUPLICATE KEY UPDATE
+      partner_id = VALUES(partner_id),
+      customer_name = VALUES(customer_name),
+      customer_phone = VALUES(customer_phone),
+      profile_image = VALUES(profile_image),
+      activity = VALUES(activity),
+      date = VALUES(date),
+      time = VALUES(time),
+      location = VALUES(location),
+      price = VALUES(price),
+      currency = VALUES(currency),
+      payment_status = VALUES(payment_status),
+      status = VALUES(status),
+      updated_at = NOW()`,
+    [bId, userId, resolvedPartnerId, custName, custPhone, profileImage, activity, date, time, location, price, currency, paymentStatus, status]
   );
-  console.log(`[WithMe DB] Saved partner booking ${bId} to 'withme_partner_bookings' table.`);
+  console.log(`[WithMe DB] Saved partner booking ${bId} (partner_id=${resolvedPartnerId}, status=${status}) to 'withme_partner_bookings' table.`);
 }
 
 /**

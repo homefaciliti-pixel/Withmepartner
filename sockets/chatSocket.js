@@ -7,12 +7,35 @@ const { toIST } = chatService;
 
 // Active socket connection map: userId -> Set of socketId(s)
 const onlineUsersMap = new Map();
+let ioInstance = null;
 
 function isUserOnline(userId) {
   if (!userId) return false;
   const uId = String(userId);
   const userSockets = onlineUsersMap.get(uId);
   return userSockets && userSockets.size > 0;
+}
+
+function emitToUser(userId, eventName, data) {
+  if (!ioInstance || !userId) return false;
+  const uIdStr = String(userId).trim();
+  const digitsOnly = uIdStr.replace(/\D/g, '');
+  const roomsToNotify = new Set([
+    uIdStr,
+    `user_${uIdStr}`,
+    `partner_${uIdStr}`
+  ]);
+  if (digitsOnly) {
+    roomsToNotify.add(digitsOnly);
+    roomsToNotify.add(`usr_${digitsOnly}`);
+    roomsToNotify.add(`user_${digitsOnly}`);
+    roomsToNotify.add(`partner_${digitsOnly}`);
+  }
+
+  roomsToNotify.forEach(room => {
+    ioInstance.to(room).emit(eventName, data);
+  });
+  return true;
 }
 
 function initChatSocket(server) {
@@ -22,6 +45,7 @@ function initChatSocket(server) {
       methods: ["GET", "POST"]
     }
   });
+  ioInstance = io;
 
   // Socket Authentication Middleware
   io.use((socket, next) => {
@@ -349,4 +373,8 @@ function initChatSocket(server) {
   return io;
 }
 
-module.exports = { initChatSocket, isUserOnline, onlineUsersMap };
+function getIO() {
+  return ioInstance;
+}
+
+module.exports = { initChatSocket, isUserOnline, onlineUsersMap, emitToUser, getIO };

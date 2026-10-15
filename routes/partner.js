@@ -18,6 +18,7 @@ const {
 } = require('../config/database');
 const { authenticateToken } = require('../middleware/auth');
 const { sendEventNotification } = require('../services/notificationService');
+const { emitToUser } = require('../sockets/chatSocket');
 
 const getUserAppApiUrl = () => process.env.USER_APP_API_URL || 'https://withmeapi-userapp.onrender.com';
 
@@ -65,23 +66,33 @@ function getISTDateString() {
 const handleIncomingUserRequest = async (req, res) => {
   const requestPayload = req.body || {};
   const requestId = requestPayload.request_id || `req_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+  const bookingId = requestPayload.booking_id || `BK${Math.floor(100000 + Math.random() * 900000)}`;
+  const paymentId = requestPayload.payment_id || `pay_${requestId}`;
   const partnerId = requestPayload.partner_id || requestPayload.receiver_id || '';
   const userId = requestPayload.user_id || requestPayload.sender_id || '';
   const senderName = requestPayload.name || requestPayload.sender_name || 'User';
-  const interest = requestPayload.interest || requestPayload.activity_name || (requestPayload.activity && requestPayload.activity.type) || 'Coffee';
+  const senderPhone = requestPayload.phone_number || requestPayload.sender_phone || '';
+  const interest = requestPayload.interest || requestPayload.activity_name || requestPayload.activity || (requestPayload.activity && requestPayload.activity.type) || 'Coffee';
   const location = requestPayload.location || (requestPayload.activity && requestPayload.activity.area) || 'Jaipur';
   const dateTime = requestPayload.date_time || `${requestPayload.date || getISTDateString()} ${requestPayload.time || '06:00 PM'}`;
   const profileImage = requestPayload.profile_image || requestPayload.image || requestPayload.sender_avatar || '';
+  const amount = requestPayload.amount || requestPayload.price || 1;
+  const currency = requestPayload.currency || 'INR';
+  const paymentStatus = requestPayload.payment_status || (requestPayload.is_paid ? 'PAID' : 'PAID');
+  const status = requestPayload.status || 'PAID';
+  const message = requestPayload.message || 'Payment completed. Please connect!';
 
-  console.log(`[PARTNER REQUEST] Incoming sync: requestId=${requestId}, partnerId=${partnerId}, userId=${userId}`);
+  console.log(`[PARTNER REQUEST] Incoming sync: requestId=${requestId}, bookingId=${bookingId}, partnerId=${partnerId}, userId=${userId}, status=${status}`);
 
   const newRequest = {
     request_id: requestId,
-    booking_id: requestPayload.booking_id || `BK${Math.floor(100000 + Math.random() * 900000)}`,
+    booking_id: bookingId,
+    payment_id: paymentId,
     partner_id: partnerId,
     user_id: userId,
     name: senderName,
     sender_name: senderName,
+    phone_number: senderPhone,
     sender_avatar: profileImage,
     age: requestPayload.age || 25,
     image: profileImage,
@@ -89,16 +100,23 @@ const handleIncomingUserRequest = async (req, res) => {
     id_verified: 1,
     selfie_verified: 1,
     interest,
+    activity: interest,
+    amount,
+    currency,
+    payment_status: paymentStatus,
+    is_paid: true,
     date_time: dateTime,
+    date: requestPayload.date || getISTDateString(),
+    time: requestPayload.time || '06:00 PM',
     location,
-    status: requestPayload.status || 'Pending',
-    message: requestPayload.message || 'Looking for an activity partner',
-    activity: requestPayload.activity || {
-      type: interest,
+    status,
+    message,
+    meeting_info: requestPayload.meeting_info || {
       date: requestPayload.date || getISTDateString(),
       time: requestPayload.time || '06:00 PM',
-      area: location,
-      description: requestPayload.message || 'Meetup request from user'
+      location,
+      place: location,
+      activity: interest
     }
   };
 
@@ -110,21 +128,32 @@ const handleIncomingUserRequest = async (req, res) => {
   } catch (err) {
     console.error(`[BOOKING] MySQL save FAILED for requestId=${requestId}:`, err.message);
     return res.status(500).json({
-      status: false,
       success: false,
+      status: false,
       message: 'Booking request could not be saved to database.',
       error: err.message
     });
   }
 
+  // Real-time socket delivery to partner
+  try {
+    emitToUser(partnerId, 'new_request', newRequest);
+    emitToUser(partnerId, 'incoming_request', newRequest);
+    emitToUser(partnerId, 'booking_request', newRequest);
+  } catch (sErr) {
+    console.error('[Socket] emit error on incoming-request:', sErr.message);
+  }
+
   // Trigger push notification to partner (secondary - failure does not affect booking response)
   try {
     sendEventNotification('booking_request', {
-      targetUserId: newRequest.partner_id,
+      targetUserId: partnerId,
       sender_name: senderName,
+      name: senderName,
       activity: interest,
       location,
-      request_id: requestId
+      request_id: requestId,
+      booking_id: bookingId
     }).catch(e => console.error('[FCM] Notification dispatch error:', e.message));
   } catch (e) {
     console.error('[FCM] Notification error:', e.message);
@@ -133,8 +162,9 @@ const handleIncomingUserRequest = async (req, res) => {
   console.log(`[Partner API] Registered incoming user request: ${requestId} for ${interest} in ${location}`);
 
   return res.status(200).json({
+    success: true,
     status: true,
-    message: 'Incoming user request registered and visible to partner',
+    message: 'Request received',
     data: newRequest
   });
 };
@@ -146,30 +176,50 @@ router.post('/requests/create', handleIncomingUserRequest);
 const handleIncomingUserBooking = async (req, res) => {
   const bookingPayload = req.body || {};
   const bookingId = bookingPayload.booking_id || `BK${Math.floor(100000 + Math.random() * 900000)}`;
-  const userName = bookingPayload.name || bookingPayload.user_name || 'User';
+  const partnerId = bookingPayload.partner_id || bookingPayload.receiver_id || '';
+  const userId = bookingPayload.user_id || bookingPayload.sender_id || '';
+  const userName = bookingPayload.name || bookingPayload.customer_name || bookingPayload.user_name || 'User';
+  const userPhone = bookingPayload.phone_number || bookingPayload.customer_phone || '';
   const interest = bookingPayload.interest || bookingPayload.activity || 'Coffee';
-  const location = bookingPayload.location || 'Jaipur';
+  const location = bookingPayload.location || (bookingPayload.meeting_info && (bookingPayload.meeting_info.location || bookingPayload.meeting_info.place)) || 'Jaipur';
   const profileImage = bookingPayload.profile_image || bookingPayload.user_image || '';
+  const date = bookingPayload.date || (bookingPayload.meeting_info && bookingPayload.meeting_info.date) || getISTDateString();
+  const time = bookingPayload.time || (bookingPayload.meeting_info && bookingPayload.meeting_info.time) || '06:00 PM';
+  const status = bookingPayload.status || 'Upcoming';
+  const price = bookingPayload.amount || bookingPayload.price || 1;
+  const currency = bookingPayload.currency || 'INR';
+
+  console.log(`[PARTNER BOOKING] Incoming sync: bookingId=${bookingId}, partnerId=${partnerId}, userId=${userId}, status=${status}`);
 
   const newBooking = {
     booking_id: bookingId,
-    user_id: bookingPayload.user_id || '',
-    partner_id: bookingPayload.partner_id || '',
+    user_id: userId,
+    partner_id: partnerId,
     profile_image: profileImage,
     name: userName,
+    customer_name: userName,
+    phone_number: userPhone,
     age: bookingPayload.age || 25,
     id_verified: 1,
     selfie_verified: 1,
     interest,
+    activity: interest,
     location,
-    date: bookingPayload.date || getISTDateString(),
-    time: bookingPayload.time || '06:00 PM',
-    status: 'Upcoming',
+    date,
+    time,
+    amount: price,
+    price,
+    currency,
+    is_paid: true,
+    payment_status: 'PAID',
+    status,
     meeting_info: bookingPayload.meeting_info || {
-      date: bookingPayload.date || getISTDateString(),
-      time: bookingPayload.time || '06:00 PM',
+      date,
+      time,
       place: location,
+      location,
       type: interest,
+      activity: interest,
       description: `Confirmed ${interest} booking`
     },
     safety_checklist: { start_safe_meet: false },
@@ -184,36 +234,50 @@ const handleIncomingUserBooking = async (req, res) => {
   } catch (err) {
     console.error(`[BOOKING] MySQL save FAILED for bookingId=${bookingId}:`, err.message);
     return res.status(500).json({
-      status: false,
       success: false,
+      status: false,
       message: 'Booking could not be saved to database.',
       error: err.message
     });
   }
 
+  // Real-time socket delivery to partner
+  try {
+    emitToUser(partnerId, 'new_booking', newBooking);
+    emitToUser(partnerId, 'incoming_booking', newBooking);
+    emitToUser(partnerId, 'booking_confirmed', newBooking);
+  } catch (sErr) {
+    console.error('[Socket] emit error on incoming-booking:', sErr.message);
+  }
+
+  // Push notification via FCM
   try {
     sendEventNotification('booking_confirmed', {
-      targetUserId: newBooking.partner_id,
+      targetUserId: partnerId,
       name: userName,
+      customer_name: userName,
       activity: interest,
       location,
-      booking_id: bookingId
+      booking_id: bookingId,
+      date,
+      time
     }).catch(e => console.error('[FCM] Notification dispatch error:', e.message));
   } catch (e) {
     console.error('[FCM] Notification error:', e.message);
   }
 
   sendEventNotification('wallet_credit', {
-    targetUserId: newBooking.partner_id,
-    amount: bookingPayload.price || 500,
+    targetUserId: partnerId,
+    amount: price,
     booking_id: bookingId
   }).catch(() => {});
 
   console.log(`[Partner API] Registered incoming user booking: ${bookingId}`);
 
   return res.status(200).json({
+    success: true,
     status: true,
-    message: 'Incoming user booking registered successfully',
+    message: 'Booking received',
     data: newBooking
   });
 };
@@ -334,7 +398,7 @@ router.get('/home', authenticateToken, async (req, res) => {
     console.log(`[PARTNER HOME] partnerId=${currentUserId}, total_db_requests=${dbRequests.length}`);
 
     const newRequestsList = dbRequests
-      .filter(r => !r.status || ['PENDING', 'PENDING_CONFIRMATION', 'NEW', 'CONFIRMED'].includes(String(r.status).toUpperCase()))
+      .filter(r => !r.status || ['PENDING', 'PENDING_CONFIRMATION', 'NEW', 'CONFIRMED', 'PAID', 'UPCOMING', 'ACCEPTED'].includes(String(r.status).toUpperCase()))
       .map(r => ({
         request_id: r.request_id,
         booking_id: r.booking_id || `BK${Math.floor(100000 + Math.random() * 900000)}`,
@@ -344,6 +408,8 @@ router.get('/home', authenticateToken, async (req, res) => {
         image: formatPhotoUrl(r.image, req),
         profile_image: formatPhotoUrl(r.image, req),
         name: r.name,
+        sender_name: r.name,
+        phone_number: r.phone_number || '',
         pending_status: r.status,
         status: r.status,
         is_paid: true,
@@ -354,13 +420,18 @@ router.get('/home', authenticateToken, async (req, res) => {
       }));
 
     const upcomingBookingsList = dbBookings
-      .filter(b => !b.status || ['UPCOMING', 'CONFIRMED', 'ACCEPTED', 'PENDING'].includes(String(b.status).toUpperCase()))
+      .filter(b => !b.status || ['UPCOMING', 'CONFIRMED', 'ACCEPTED', 'PENDING', 'PAID', 'NEW'].includes(String(b.status).toUpperCase()))
       .map(b => ({
         booking_id: b.booking_id,
         name: b.name,
+        customer_name: b.name,
+        phone_number: b.phone_number || '',
         interest: b.interest,
+        activity: b.interest,
         location: b.location,
         date_time: `${b.date} ${b.time}`,
+        date: b.date,
+        time: b.time,
         image: formatPhotoUrl(b.profile_image, req),
         profile_image: formatPhotoUrl(b.profile_image, req),
         status: b.status,
@@ -749,7 +820,7 @@ router.post('/bookings/cancel', authenticateToken, (req, res) => {
 // 13. MY BOOKINGS LIST & FILTER
 // ─────────────────────────────────────────────────────────────────────────────
 
-router.get('/bookings', authenticateToken, async (req, res) => {
+router.get(['/bookings', '/bookings/list'], authenticateToken, async (req, res) => {
   try {
     const { status } = req.query;
     const currentUserId = String(req.user.user_id);
@@ -760,17 +831,24 @@ router.get('/bookings', authenticateToken, async (req, res) => {
       image: formatPhotoUrl(b.profile_image, req),
       profile_image: formatPhotoUrl(b.profile_image, req),
       name: b.name,
+      customer_name: b.name,
+      phone_number: b.phone_number || '',
       interest: b.interest,
+      activity: b.interest,
       location: b.location,
       date: b.date,
       time: b.time,
-      status: b.status
+      status: b.status,
+      is_paid: true,
+      payment_status: 'COMPLETED',
+      payment_status_text: 'Paid'
     }));
 
     return res.status(200).json({
       status: true,
       message: 'Success',
-      data: { filter_status: status || 'all', total_count: list.length, bookings: list }
+      data: { filter_status: status || 'all', total_count: list.length, bookings: list },
+      bookings: list
     });
   } catch (err) {
     console.error('[Get Bookings Error]:', err.message);
