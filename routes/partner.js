@@ -681,6 +681,7 @@ const handlePartnerAppRequestDetails = async (req, res) => {
     const partnerUserIdVal = String(r.partner_id || req.user.user_id);
     const isAcc = Number(r.is_accepted !== undefined ? r.is_accepted : (String(r.status).toUpperCase() === 'ACCEPTED' ? 1 : 0));
     const isPaid = Boolean(r.is_paid);
+    const payStatus = r.payment_status || (isPaid ? 'PAID' : 'UNPAID');
     const custName = r.customer_name || r.user_name || r.sender_name || r.name || 'User';
     const partName = r.partner_name || (req.user && req.user.name) || '';
 
