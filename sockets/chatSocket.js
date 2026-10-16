@@ -118,8 +118,14 @@ function initChatSocket(server) {
       }
     });
 
-    // Broadcast user online event
-    io.emit('user_online', { userId: isNaN(userId) ? userId : Number(userId) });
+    // Broadcast user online event — emit both numeric and string forms for frontend compatibility
+    const onlinePayload = {
+      userId: isNaN(userId) ? userId : Number(userId),
+      user_id: userId,
+      status: 'online'
+    };
+    io.emit('user_online', onlinePayload);
+    io.emit('online_status', onlinePayload);
 
     // Handle join_conversation room
     socket.on('join_conversation', (data) => {
@@ -379,7 +385,13 @@ function initChatSocket(server) {
       // Emit offline only if user has no remaining active sockets anywhere
       const stillOnline = Array.from(trackKeys).some(k => k && onlineUsersMap.has(k) && onlineUsersMap.get(k).size > 0);
       if (!stillOnline) {
-        io.emit('user_offline', { userId: isNaN(userId) ? userId : Number(userId) });
+        const offlinePayload = {
+          userId: isNaN(userId) ? userId : Number(userId),
+          user_id: userId,
+          status: 'offline'
+        };
+        io.emit('user_offline', offlinePayload);
+        io.emit('online_status', offlinePayload);
       }
     });
   });

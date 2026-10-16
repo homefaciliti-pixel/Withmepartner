@@ -109,17 +109,28 @@ function formatNumericUserId(id) {
 }
 
 // Format a Date (or ISO string) into IST (UTC+5:30) ISO-8601 string
+// MySQL stores timestamps in UTC — we shift to IST for display.
 function toIST(dateInput) {
   try {
-    const d = dateInput instanceof Date ? dateInput : new Date(dateInput);
-    if (isNaN(d.getTime())) return new Date().toISOString();
-    // Offset IST = UTC + 330 minutes
-    const offsetMs = 5.5 * 60 * 60 * 1000;
-    const istDate = new Date(d.getTime() + offsetMs);
-    // Return as ISO string with +05:30 suffix
+    let d;
+    if (dateInput instanceof Date) {
+      d = dateInput;
+    } else if (typeof dateInput === 'string') {
+      // MySQL returns "YYYY-MM-DD HH:MM:SS" without timezone → treat as UTC
+      const normalized = dateInput.includes('T') ? dateInput : dateInput.replace(' ', 'T') + 'Z';
+      d = new Date(normalized);
+    } else {
+      d = new Date();
+    }
+    if (isNaN(d.getTime())) return new Date().toISOString().replace('Z', '+05:30');
+
+    // Shift from UTC to IST (UTC+5:30 = +330 minutes)
+    const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+    const istDate = new Date(d.getTime() + IST_OFFSET_MS);
+    // Return as ISO-8601 with +05:30 suffix (drop the 'Z' appended by toISOString)
     return istDate.toISOString().replace('Z', '+05:30');
   } catch {
-    return new Date().toISOString();
+    return new Date().toISOString().replace('Z', '+05:30');
   }
 }
 
@@ -524,7 +535,16 @@ async function getUserConversations(userId, req, isUserOnlineFn) {
       .filter(m => m.conversation_id === convId && toUserIdStr(m.receiver_id) === uId && !m.is_read && !m.is_deleted).length;
     unreadCount = Math.max(unreadCount, memUnread);
 
-    const isOnline = isUserOnlineFn ? isUserOnlineFn(otherUserId) : false;
+    // Check online status across all userId format variants
+    let isOnline = false;
+    if (isUserOnlineFn) {
+      const oDigits = String(otherUserId).replace(/\D/g, '');
+      isOnline = isUserOnlineFn(otherUserId) ||
+                 isUserOnlineFn(oDigits) ||
+                 isUserOnlineFn(`usr_${oDigits}`) ||
+                 isUserOnlineFn(`user_${oDigits}`) ||
+                 isUserOnlineFn(`partner_${oDigits}`);
+    }
     const canChat = await canUsersChat(uId, otherUserId);
 
     list.push({
