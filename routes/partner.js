@@ -582,6 +582,8 @@ router.get(['/all', '/list-all', '/registered', '/partners'], async (req, res) =
           is_primary: isPrimary
         };
       });
+      const photoUrlsList = formattedPhotos.map(p => p.url).filter(Boolean);
+      const secondaryPhotos = photoUrlsList.slice(1);
       const avail = u.availability || {};
       const aboutData = u.about || {};
 
@@ -604,6 +606,11 @@ router.get(['/all', '/list-all', '/registered', '/partners'], async (req, res) =
         profile_image: photoUrl,
         profile_photo_url: photoUrl,
         photos: formattedPhotos,
+        profile_images: photoUrlsList,
+        images: photoUrlsList,
+        profileImages: photoUrlsList,
+        secondary_photos: secondaryPhotos,
+        photo_gallery: photoUrlsList,
         category: (aboutData.interests && aboutData.interests[0]) || u.category || 'Coffee',
         activity: (aboutData.interests && aboutData.interests[0]) || u.activity || 'Coffee',
         interests: aboutData.interests || u.interests || ['Coffee', 'Travel'],
@@ -813,7 +820,33 @@ router.get(['/me', '/profile', '/user', '/session'], authenticateToken, async (r
   const uid = (req.user && (req.user.user_id || req.user.partner_id || req.user.id)) || (req.query && req.query.user_id) || (req.body && req.body.user_id);
   const user = await findPartnerByIdFromMysql(uid);
   if (!user) return res.status(404).json({ status: false, message: 'Partner not found', error_code: 'USER_NOT_FOUND' });
-  return res.status(200).json({ status: true, success: true, message: 'Success', data: user, partner: user });
+
+  const formattedPhotos = (user.photos || []).map((p, idx) => {
+    const rawUrl = typeof p === 'string' ? p : (p ? (p.url || p.path || '') : '');
+    return {
+      photo_id: (p && p.photo_id) || `ph_00${idx + 1}`,
+      url: formatPhotoUrl(rawUrl, req),
+      is_primary: p && p.is_primary !== undefined ? Boolean(p.is_primary) : (idx === 0)
+    };
+  });
+  const photoUrlsList = formattedPhotos.map(p => p.url).filter(Boolean);
+  const secondaryPhotos = photoUrlsList.slice(1);
+  const primaryUrl = (photoUrlsList[0] || formatPhotoUrl(user.profile_photo_url || user.image, req) || '');
+
+  const enrichedUser = {
+    ...user,
+    profile_photo_url: primaryUrl,
+    image: primaryUrl,
+    profile_image: primaryUrl,
+    photos: formattedPhotos,
+    profile_images: photoUrlsList,
+    images: photoUrlsList,
+    profileImages: photoUrlsList,
+    secondary_photos: secondaryPhotos,
+    photo_gallery: photoUrlsList
+  };
+
+  return res.status(200).json({ status: true, success: true, message: 'Success', data: enrichedUser, partner: enrichedUser });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

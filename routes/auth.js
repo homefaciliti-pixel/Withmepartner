@@ -87,7 +87,17 @@ router.post('/login', async (req, res) => {
     await updatePartnerInMysql(user.user_id, { failed_attempts: 0, locked: false });
 
     const tokens = generateTokens(user.user_id);
-    const userPhoto = formatPhotoUrl(user.profile_photo_url || (user.photos && user.photos[0] ? user.photos[0].url : PHOTO_1), req);
+    const formattedPhotos = (user.photos || []).map((p, idx) => {
+      const rawUrl = typeof p === 'string' ? p : (p ? (p.url || p.path || '') : '');
+      return {
+        photo_id: (p && p.photo_id) || `ph_00${idx + 1}`,
+        url: formatPhotoUrl(rawUrl, req),
+        is_primary: p && p.is_primary !== undefined ? Boolean(p.is_primary) : (idx === 0)
+      };
+    });
+    const photoUrlsList = formattedPhotos.map(p => p.url).filter(Boolean);
+    const secondaryPhotos = photoUrlsList.slice(1);
+    const userPhoto = (photoUrlsList[0] || formatPhotoUrl(user.profile_photo_url || (user.photos && user.photos[0] ? user.photos[0].url : PHOTO_1), req));
 
     const partnerObj = {
       id: user.user_id,
@@ -106,7 +116,13 @@ router.post('/login', async (req, res) => {
       area: user.area || user.locality || '',
       profile_photo_url: userPhoto,
       image: userPhoto,
-      photos: user.photos || [],
+      profile_image: userPhoto,
+      photos: formattedPhotos,
+      profile_images: photoUrlsList,
+      images: photoUrlsList,
+      profileImages: photoUrlsList,
+      secondary_photos: secondaryPhotos,
+      photo_gallery: photoUrlsList,
       interests: user.interests || [],
       about: user.about || null,
       availability: user.availability || null,
@@ -553,7 +569,18 @@ const handleGetSessionUser = async (req, res) => {
     if (!user) {
       return res.status(404).json({ status: false, success: false, message: 'User not found', error_code: 'USER_NOT_FOUND' });
     }
-    const userPhoto = formatPhotoUrl(user.profile_photo_url || (user.photos && user.photos[0] ? user.photos[0].url : PHOTO_1), req);
+    const formattedPhotos = (user.photos || []).map((p, idx) => {
+      const rawUrl = typeof p === 'string' ? p : (p ? (p.url || p.path || '') : '');
+      return {
+        photo_id: (p && p.photo_id) || `ph_00${idx + 1}`,
+        url: formatPhotoUrl(rawUrl, req),
+        is_primary: p && p.is_primary !== undefined ? Boolean(p.is_primary) : (idx === 0)
+      };
+    });
+    const photoUrlsList = formattedPhotos.map(p => p.url).filter(Boolean);
+    const secondaryPhotos = photoUrlsList.slice(1);
+    const userPhoto = (photoUrlsList[0] || formatPhotoUrl(user.profile_photo_url || (user.photos && user.photos[0] ? user.photos[0].url : PHOTO_1), req));
+
     const partnerObj = {
       id: user.user_id,
       user_id: user.user_id,
@@ -571,7 +598,13 @@ const handleGetSessionUser = async (req, res) => {
       area: user.area || user.locality || '',
       profile_photo_url: userPhoto,
       image: userPhoto,
-      photos: user.photos || [],
+      profile_image: userPhoto,
+      photos: formattedPhotos,
+      profile_images: photoUrlsList,
+      images: photoUrlsList,
+      profileImages: photoUrlsList,
+      secondary_photos: secondaryPhotos,
+      photo_gallery: photoUrlsList,
       interests: user.interests || [],
       about: user.about || null,
       availability: user.availability || null,

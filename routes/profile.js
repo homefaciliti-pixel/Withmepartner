@@ -91,25 +91,38 @@ router.post('/photos', authenticateToken, (req, res) => {
         // Fill remaining slots with EXISTING DB photos (not shared defaults)
         for (let i = savedPhotoUrls.length; i < 5; i++) {
           const existingEntry = existingPhotos[i];
-          const existingUrl = existingEntry ? (existingEntry.url || existingEntry.path || '') : '';
+          const existingUrl = existingEntry ? (typeof existingEntry === 'string' ? existingEntry : (existingEntry.url || existingEntry.path || '')) : '';
           photoList.push({
             photo_id: `ph_00${i + 1}`,
-            url: existingUrl, // empty string if never uploaded — safe
+            url: existingUrl,
             is_primary: false
           });
         }
       } else {
-        // ❌ No files uploaded — DO NOT overwrite with shared PHOTO_1..5
-        // Return existing photos as-is (or empty slots)
+        // No files uploaded
         if (existingPhotos.length > 0) {
-          return res.status(400).json({
-            status: false,
-            message: 'No photo files provided. Existing photos are preserved.',
-            error_code: 'NO_PHOTO_PROVIDED',
-            data: { photos: existingPhotos.map(p => ({ ...p, url: formatPhotoUrl(p.url, req) })) }
+          const formattedExisting = existingPhotos.filter(Boolean).map((p, idx) => {
+            const rawUrl = typeof p === 'string' ? p : (p ? (p.url || p.path || '') : '');
+            return {
+              photo_id: (p && p.photo_id) || `ph_00${idx + 1}`,
+              url: formatPhotoUrl(rawUrl, req),
+              is_primary: p && p.is_primary !== undefined ? Boolean(p.is_primary) : (idx === 0)
+            };
+          });
+          const existingUrls = formattedExisting.map(p => p.url).filter(Boolean);
+          return res.status(200).json({
+            status: true,
+            message: 'Existing photos preserved.',
+            data: {
+              photos: formattedExisting,
+              profile_images: existingUrls,
+              images: existingUrls,
+              profileImages: existingUrls,
+              secondary_photos: existingUrls.slice(1),
+              photo_gallery: existingUrls
+            }
           });
         }
-        // First time — partner has no photos yet, no files sent
         return res.status(400).json({
           status: false,
           message: 'Please upload at least one photo.',
@@ -118,7 +131,6 @@ router.post('/photos', authenticateToken, (req, res) => {
       }
 
       const newProfileStep = user.profile_step_pending === 'PROFILE_PHOTO' ? 'AADHAR' : user.profile_step_pending;
-      // Only update photo_url if we have a real uploaded photo
       const primaryPhotoUrl = photoList[0] && photoList[0].url ? photoList[0].url : (user.profile_photo_url || '');
       await updatePartnerInMysql(user.user_id, {
         photos: photoList,
@@ -129,12 +141,35 @@ router.post('/photos', authenticateToken, (req, res) => {
       const updatedUser = await findPartnerByIdFromMysql(user.user_id);
       syncPartnerToUserApp(updatedUser).catch(() => {});
 
-      const formattedPhotos = photoList.map(p => ({ ...p, url: formatPhotoUrl(p.url, req) }));
+      const formattedPhotos = photoList.filter(Boolean).map((p, idx) => {
+        const rawUrl = typeof p === 'string' ? p : (p ? (p.url || p.path || '') : '');
+        return {
+          photo_id: (p && p.photo_id) || `ph_00${idx + 1}`,
+          url: formatPhotoUrl(rawUrl, req),
+          is_primary: p && p.is_primary !== undefined ? Boolean(p.is_primary) : (idx === 0)
+        };
+      });
+
+      const photoUrlsList = formattedPhotos.map(p => p.url).filter(Boolean);
+      const secondaryUrls = photoUrlsList.slice(1);
 
       return res.status(201).json({
         status: true,
         message: 'Profile photos uploaded successfully',
-        data: { photos: formattedPhotos }
+        data: {
+          photos: formattedPhotos,
+          profile_images: photoUrlsList,
+          images: photoUrlsList,
+          profileImages: photoUrlsList,
+          secondary_photos: secondaryUrls,
+          photo_gallery: photoUrlsList
+        },
+        photos: formattedPhotos,
+        profile_images: photoUrlsList,
+        images: photoUrlsList,
+        profileImages: photoUrlsList,
+        secondary_photos: secondaryUrls,
+        photo_gallery: photoUrlsList
       });
     } catch (e) {
       console.error('[Photo Upload Error]:', e.message);
@@ -151,9 +186,36 @@ router.get('/photos', authenticateToken, async (req, res) => {
     const user = await findPartnerByIdFromMysql(req.user.user_id);
     if (!user) return res.status(404).json({ status: false, message: 'User not found', error_code: 'USER_NOT_FOUND' });
 
-    const formattedPhotos = (user.photos || []).map(p => ({ ...p, url: formatPhotoUrl(p.url, req) }));
+    const formattedPhotos = (user.photos || []).filter(Boolean).map((p, idx) => {
+      const rawUrl = typeof p === 'string' ? p : (p ? (p.url || p.path || '') : '');
+      return {
+        photo_id: (p && p.photo_id) || `ph_00${idx + 1}`,
+        url: formatPhotoUrl(rawUrl, req),
+        is_primary: p && p.is_primary !== undefined ? Boolean(p.is_primary) : (idx === 0)
+      };
+    });
 
-    return res.status(200).json({ status: true, message: 'Success', data: { photos: formattedPhotos } });
+    const photoUrls = formattedPhotos.map(p => p.url).filter(Boolean);
+    const secondaryUrls = photoUrls.slice(1);
+
+    return res.status(200).json({
+      status: true,
+      message: 'Success',
+      data: {
+        photos: formattedPhotos,
+        profile_images: photoUrls,
+        images: photoUrls,
+        profileImages: photoUrls,
+        secondary_photos: secondaryUrls,
+        photo_gallery: photoUrls
+      },
+      photos: formattedPhotos,
+      profile_images: photoUrls,
+      images: photoUrls,
+      profileImages: photoUrls,
+      secondary_photos: secondaryUrls,
+      photo_gallery: photoUrls
+    });
   } catch (err) {
     console.error('[Get Photos Error]:', err.message);
     return res.status(500).json({ status: false, message: 'Failed to fetch photos.', error_code: 'SERVER_ERROR' });
@@ -207,10 +269,10 @@ router.put('/photos/:photo_id', authenticateToken, (req, res) => {
         // Find existing photo URL for this slot from DB
         const existingPhotos = Array.isArray(user.photos) ? user.photos : [];
         const existingEntry = existingPhotos.find(
-          p => (p.photo_id && p.photo_id.endsWith(String(photoKey))) ||
+          p => (p && p.photo_id && p.photo_id.endsWith(String(photoKey))) ||
                existingPhotos.indexOf(p) === photoKey - 1
         );
-        const existingUrl = existingEntry ? (existingEntry.url || existingEntry.path || '') : '';
+        const existingUrl = existingEntry ? (typeof existingEntry === 'string' ? existingEntry : (existingEntry.url || existingEntry.path || '')) : '';
         if (existingUrl) {
           // Keep existing photo unchanged
           updatedUrl = existingUrl;
@@ -228,7 +290,7 @@ router.put('/photos/:photo_id', authenticateToken, (req, res) => {
       let photos = Array.isArray(user.photos) ? user.photos : [];
 
       // Standardize photo array elements
-      photos = photos.map((item, idx) => {
+      photos = photos.filter(Boolean).map((item, idx) => {
         if (typeof item === 'string') return { photo_id: `ph_00${idx + 1}`, url: item, is_primary: idx === 0 };
         return { photo_id: item.photo_id || `ph_00${idx + 1}`, url: item.url || item.path || '', is_primary: Boolean(item.is_primary) };
       });
@@ -241,6 +303,12 @@ router.put('/photos/:photo_id', authenticateToken, (req, res) => {
         photos.push({ photo_id: `ph_00${photoKey}`, url: updatedUrl, is_primary: photoKey === 1 });
       }
 
+      photos.sort((a, b) => {
+        const numA = parseInt(String(a.photo_id || '').replace(/\D/g, '') || '0', 10);
+        const numB = parseInt(String(b.photo_id || '').replace(/\D/g, '') || '0', 10);
+        return numA - numB;
+      });
+
       const updateFields = { photos };
       if (photoKey === 1 || targetIdClean === 'ph_001' || pIndex === 0) {
         updateFields.profile_photo_url = updatedUrl;
@@ -251,7 +319,17 @@ router.put('/photos/:photo_id', authenticateToken, (req, res) => {
       const updatedUser = await findPartnerByIdFromMysql(user.user_id);
       syncPartnerToUserApp(updatedUser).catch(() => {});
 
-      const formattedPhotos = (updatedUser.photos || []).map(p => ({ ...p, url: formatPhotoUrl(p.url, req) }));
+      const formattedPhotos = (updatedUser.photos || []).filter(Boolean).map((p, idx) => {
+        const raw = typeof p === 'string' ? p : (p ? (p.url || p.path || '') : '');
+        return {
+          photo_id: (p && p.photo_id) || `ph_00${idx + 1}`,
+          url: formatPhotoUrl(raw, req),
+          is_primary: p && p.is_primary !== undefined ? Boolean(p.is_primary) : (idx === 0)
+        };
+      });
+
+      const photoUrlsList = formattedPhotos.map(p => p.url).filter(Boolean);
+      const secondaryUrls = photoUrlsList.slice(1);
 
       return res.status(200).json({
         status: true,
@@ -260,8 +338,19 @@ router.put('/photos/:photo_id', authenticateToken, (req, res) => {
           photo_id: `ph_00${photoKey}`,
           url: formatPhotoUrl(updatedUrl, req),
           profile_photo_url: formatPhotoUrl(updatedUser.profile_photo_url, req),
-          photos: formattedPhotos
-        }
+          photos: formattedPhotos,
+          profile_images: photoUrlsList,
+          images: photoUrlsList,
+          profileImages: photoUrlsList,
+          secondary_photos: secondaryUrls,
+          photo_gallery: photoUrlsList
+        },
+        photos: formattedPhotos,
+        profile_images: photoUrlsList,
+        images: photoUrlsList,
+        profileImages: photoUrlsList,
+        secondary_photos: secondaryUrls,
+        photo_gallery: photoUrlsList
       });
     } catch (e) {
       console.error('[Update Photo Error]:', e.message);
@@ -411,6 +500,8 @@ router.get('/', authenticateToken, async (req, res) => {
         is_primary: isPrimary
       };
     });
+    const photoUrlsList = formattedPhotos.map(p => p.url).filter(Boolean);
+    const secondaryPhotos = photoUrlsList.slice(1);
     const aadharVerified = user.aadhar ? (user.aadhar.aadhar_verification_status === 'APPROVED') : false;
     const avail = user.availability || {};
     const cc = user.country_code || '+91';
@@ -432,6 +523,11 @@ router.get('/', authenticateToken, async (req, res) => {
         profile_image: photoUrl,
         photo_url: photoUrl,
         photos: formattedPhotos,
+        profile_images: photoUrlsList,
+        images: photoUrlsList,
+        profileImages: photoUrlsList,
+        secondary_photos: secondaryPhotos,
+        photo_gallery: photoUrlsList,
         name: user.name,
         rating: user.rating !== undefined ? user.rating : 0.0,
         total_ratings: user.total_ratings || 0,
@@ -596,6 +692,8 @@ router.put('/', authenticateToken, async (req, res) => {
     const photoUrl = formatPhotoUrl(rawPhoto, req);
     const cc = updatedUser.country_code || '+91';
     const formattedPhotos = (updatedUser.photos || []).map(p => ({ ...p, url: formatPhotoUrl(p.url, req) }));
+    const photoUrlsList = formattedPhotos.map(p => p.url).filter(Boolean);
+    const secondaryPhotos = photoUrlsList.slice(1);
 
     return res.status(200).json({
       status: true,
@@ -606,6 +704,11 @@ router.put('/', authenticateToken, async (req, res) => {
         profile_image: photoUrl,
         photo_url: photoUrl,
         photos: formattedPhotos,
+        profile_images: photoUrlsList,
+        images: photoUrlsList,
+        profileImages: photoUrlsList,
+        secondary_photos: secondaryPhotos,
+        photo_gallery: photoUrlsList,
         name: updatedUser.name,
         mail: updatedUser.email,
         email: updatedUser.email,

@@ -303,28 +303,65 @@ async function initMysqlDatabase() {
 function mapMysqlRowToPartner(r) {
   if (!r) return null;
 
-  let photos = [];
+  let rawPhotos = [];
   try {
     if (r.photos) {
-      photos = typeof r.photos === 'string' ? JSON.parse(r.photos) : r.photos;
+      rawPhotos = typeof r.photos === 'string' ? JSON.parse(r.photos) : r.photos;
     }
   } catch (e) {}
 
-  if (!Array.isArray(photos)) {
-    photos = [];
+  if (!Array.isArray(rawPhotos)) {
+    rawPhotos = [];
   }
 
-  const profilePhoto = r.profile_photo_url || r.image || '';
+  let photos = [];
+  let profileImagesList = [];
 
-  if (photos.length === 0 && profilePhoto) {
-    photos = [
-      {
-        photo_id: "ph_001",
+  rawPhotos.filter(Boolean).forEach((item, idx) => {
+    let rawUrl = '';
+    let pId = `ph_00${idx + 1}`;
+    let isPrimary = idx === 0;
+
+    if (typeof item === 'string') {
+      rawUrl = item.trim();
+    } else if (item && typeof item === 'object') {
+      rawUrl = item.url || item.path || '';
+      if (item.photo_id) pId = item.photo_id;
+      if (item.is_primary !== undefined) isPrimary = Boolean(item.is_primary);
+      if (!rawUrl && item[0] !== undefined) {
+        const keys = Object.keys(item).filter(k => /^\d+$/.test(k)).sort((a, b) => Number(a) - Number(b));
+        rawUrl = keys.map(k => item[k]).join('');
+      }
+    }
+
+    if (rawUrl && rawUrl !== 'null' && rawUrl !== 'undefined') {
+      photos.push({
+        photo_id: pId,
+        url: rawUrl,
+        is_primary: isPrimary
+      });
+      if (!profileImagesList.includes(rawUrl)) {
+        profileImagesList.push(rawUrl);
+      }
+    }
+  });
+
+  const profilePhoto = (r.profile_photo_url || r.image || (profileImagesList[0] || '')).trim();
+
+  if (profilePhoto && profilePhoto !== 'null' && profilePhoto !== 'undefined') {
+    if (!profileImagesList.includes(profilePhoto)) {
+      profileImagesList.unshift(profilePhoto);
+    }
+    if (photos.length === 0) {
+      photos.push({
+        photo_id: 'ph_001',
         url: profilePhoto,
         is_primary: true
-      }
-    ];
+      });
+    }
   }
+
+  const secondaryPhotosList = profileImagesList.slice(1);
 
   let interests = [];
   try {
@@ -434,9 +471,14 @@ function mapMysqlRowToPartner(r) {
     total_ratings: r.total_reviews || 0,
     total_reviews: r.total_reviews || 0,
     phone_verified: true,
-    profile_photo_url: r.profile_photo_url || r.image || '',
-    image: r.profile_photo_url || r.image || '',
+    profile_photo_url: profilePhoto,
+    image: profilePhoto,
     photos: photos,
+    profile_images: profileImagesList,
+    images: profileImagesList,
+    profileImages: profileImagesList,
+    secondary_photos: secondaryPhotosList,
+    photo_gallery: profileImagesList,
     category: r.category || 'Coffee',
     activity: r.activity || 'Coffee',
     interests: interests,

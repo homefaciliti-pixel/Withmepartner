@@ -17,13 +17,26 @@ async function syncPartnerToUserApp(partnerUser) {
   ];
 
   const name = partnerUser.name || 'Partner User';
-  const rawPhoto = partnerUser.profile_photo_url || (partnerUser.photos && partnerUser.photos[0] ? partnerUser.photos[0].url : '/uploads/photos/photo_1.jpg');
+  const rawPhotos = Array.isArray(partnerUser.photos) ? partnerUser.photos : [];
+  const firstPhotoEntry = rawPhotos.find(p => p && (typeof p === 'string' || p.url || p.path));
+  const rawFirstPhoto = firstPhotoEntry ? (typeof firstPhotoEntry === 'string' ? firstPhotoEntry : (firstPhotoEntry.url || firstPhotoEntry.path || '')) : '';
+  const rawPhoto = partnerUser.profile_photo_url || rawFirstPhoto || '/uploads/photos/photo_1.jpg';
   const photoUrl = formatPhotoUrl(rawPhoto);
 
-  const formattedPhotos = (partnerUser.photos || []).map(p => ({
-    ...p,
-    url: formatPhotoUrl(p.url)
-  }));
+  const formattedPhotos = rawPhotos.filter(Boolean).map((p, idx) => {
+    const rawUrl = typeof p === 'string' ? p : (p.url || p.path || '');
+    return {
+      photo_id: (p && p.photo_id) || `ph_00${idx + 1}`,
+      url: formatPhotoUrl(rawUrl),
+      is_primary: p && p.is_primary !== undefined ? Boolean(p.is_primary) : (idx === 0)
+    };
+  });
+
+  const photoUrlsList = formattedPhotos.map(p => p.url).filter(Boolean);
+  if (photoUrl && !photoUrlsList.includes(photoUrl)) {
+    photoUrlsList.unshift(photoUrl);
+  }
+  const secondaryPhotosList = photoUrlsList.slice(1);
 
   const payload = {
     user_id: partnerUser.user_id,
@@ -44,6 +57,11 @@ async function syncPartnerToUserApp(partnerUser) {
     image: photoUrl,
     profile_photo_url: photoUrl,
     photos: formattedPhotos,
+    profile_images: photoUrlsList,
+    images: photoUrlsList,
+    profileImages: photoUrlsList,
+    secondary_photos: secondaryPhotosList,
+    photo_gallery: photoUrlsList,
     category: (partnerUser.about && partnerUser.about.interests && partnerUser.about.interests[0]) || 'Coffee',
     activity: (partnerUser.about && partnerUser.about.interests && partnerUser.about.interests[0]) || 'Coffee',
     rating: partnerUser.rating !== undefined ? partnerUser.rating : 4.8,
