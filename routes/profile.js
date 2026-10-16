@@ -225,13 +225,7 @@ router.put('/photos/:photo_id', authenticateToken, (req, res) => {
         }
       }
 
-      let photos = Array.isArray(user.photos) ? user.photos : [
-        { photo_id: 'ph_001', url: PHOTO_1, is_primary: true },
-        { photo_id: 'ph_002', url: PHOTO_2, is_primary: false },
-        { photo_id: 'ph_003', url: PHOTO_3, is_primary: false },
-        { photo_id: 'ph_004', url: PHOTO_4, is_primary: false },
-        { photo_id: 'ph_005', url: PHOTO_5, is_primary: false }
-      ];
+      let photos = Array.isArray(user.photos) ? user.photos : [];
 
       // Standardize photo array elements
       photos = photos.map((item, idx) => {
@@ -538,24 +532,58 @@ router.put('/', authenticateToken, async (req, res) => {
 
     const updatedName = name || user.name;
     const updatedEmail = email || mail || user.email;
-    const updatedPhoto = profile_photo || image || user.profile_photo_url;
+    const updatedPhoto = profile_photo || image || null;
     const incomingPhotos = req.body.photos;
 
     const updateFields = { name: updatedName, email: updatedEmail };
     if (dob) updateFields.dob = dob;
+
+    // Start with existing photos from DB — preserve all 5 slots
+    let photos = Array.isArray(user.photos) ? user.photos.map((item, idx) => {
+      if (typeof item === 'string') return { photo_id: `ph_00${idx + 1}`, url: item, is_primary: idx === 0 };
+      return { photo_id: item.photo_id || `ph_00${idx + 1}`, url: item.url || item.path || '', is_primary: Boolean(item.is_primary) };
+    }) : [];
+
+    // If a new primary photo came in, update ONLY photos[0], keep rest unchanged
     if (updatedPhoto) {
       updateFields.profile_photo_url = updatedPhoto;
-      let photos = Array.isArray(user.photos) ? user.photos : [];
       if (photos.length > 0) {
-        if (typeof photos[0] === 'object') photos[0].url = updatedPhoto;
-        else photos[0] = { photo_id: 'ph_001', url: updatedPhoto, is_primary: true };
+        photos[0] = { ...photos[0], url: updatedPhoto, is_primary: true };
       } else {
         photos = [{ photo_id: 'ph_001', url: updatedPhoto, is_primary: true }];
       }
       updateFields.photos = photos;
     }
+
+    // If full photos array came from frontend, MERGE each entry by photo_id into existing
     if (Array.isArray(incomingPhotos) && incomingPhotos.length > 0) {
-      updateFields.photos = incomingPhotos;
+      // Build a map of existing photos keyed by photo_id
+      const photoMap = {};
+      photos.forEach(p => { if (p.photo_id) photoMap[p.photo_id] = { ...p }; });
+
+      incomingPhotos.forEach((incoming, idx) => {
+        const normalized = typeof incoming === 'string'
+          ? { photo_id: `ph_00${idx + 1}`, url: incoming, is_primary: idx === 0 }
+          : { photo_id: incoming.photo_id || `ph_00${idx + 1}`, url: incoming.url || incoming.path || '', is_primary: Boolean(incoming.is_primary) };
+
+        // Only update if there is an actual URL — don't blank out existing slots
+        if (normalized.url) {
+          photoMap[normalized.photo_id] = normalized;
+        }
+      });
+
+      // Rebuild as sorted array ph_001..ph_005
+      const mergedPhotos = ['ph_001', 'ph_002', 'ph_003', 'ph_004', 'ph_005'].map((pid, idx) => {
+        if (photoMap[pid]) return photoMap[pid];
+        // Preserve any extra entries not in standard list
+        const extra = photos.find(p => p.photo_id === pid);
+        return extra || { photo_id: pid, url: '', is_primary: idx === 0 };
+      });
+
+      updateFields.photos = mergedPhotos;
+      // Also update profile_photo_url if primary photo changed
+      const primary = mergedPhotos.find(p => p.is_primary) || mergedPhotos[0];
+      if (primary && primary.url) updateFields.profile_photo_url = primary.url;
     }
 
     await updatePartnerInMysql(user.user_id, updateFields);
