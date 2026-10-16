@@ -83,12 +83,16 @@ const handleIncomingUserRequest = async (req, res) => {
   const isPaid = Boolean(
     requestPayload.is_paid === true ||
     requestPayload.is_paid === 1 ||
-    String(requestPayload.payment_status).toUpperCase() === 'PAID'
+    requestPayload.is_paid === '1' ||
+    String(requestPayload.payment_status).toUpperCase() === 'PAID' ||
+    String(requestPayload.payment_status).toUpperCase() === 'COMPLETED' ||
+    String(requestPayload.status).toUpperCase() === 'CONFIRMED' ||
+    String(requestPayload.status).toUpperCase() === 'PAID'
   );
   const paymentStatus = isPaid ? 'PAID' : (requestPayload.payment_status || 'PENDING');
-  const status = 'PENDING';
-  const isAccepted = 0;
-  const message = requestPayload.message || 'Meetup request received.';
+  const status = isPaid ? 'CONFIRMED' : 'PENDING';
+  const isAccepted = isPaid ? 1 : 0;
+  const message = requestPayload.message || (isPaid ? 'Payment completed. Meetup confirmed.' : 'Meetup request received.');
 
   console.log(`[PARTNER REQUEST] Incoming sync: requestId=${requestId}, bookingId=${bookingId}, partnerId=${partnerId}, partnerName=${partnerName}, customerName=${customerName}, userId=${userId}, status=${status}, is_paid=${isPaid ? 1 : 0}`);
 
@@ -117,15 +121,20 @@ const handleIncomingUserRequest = async (req, res) => {
     amount,
     currency,
     payment_status: paymentStatus,
-    is_paid: isPaid ? 1 : 0,
+    is_paid: isPaid,
+    isPaid: isPaid,
     date_time: dateTime,
     date: requestPayload.date || getISTDateString(),
     time: requestPayload.time || '06:00 PM',
     location,
-    status: 'PENDING',
-    pending_status: 'PENDING',
-    is_accepted: 0,
-    actions: ['ACCEPT', 'REJECT'],
+    status,
+    pending_status: status,
+    is_accepted: isAccepted,
+    can_chat: isPaid,
+    chat_status: isPaid ? 'UNLOCKED' : 'LOCKED',
+    can_pay: !isPaid,
+    badge: isPaid ? 'Payment Received - Chat Open' : 'New Request',
+    actions: isPaid ? [] : ['ACCEPT', 'REJECT'],
     message,
     meeting_info: requestPayload.meeting_info || {
       date: requestPayload.date || getISTDateString(),
@@ -136,11 +145,58 @@ const handleIncomingUserRequest = async (req, res) => {
     }
   };
 
-  // Save to MySQL (primary storage) - MUST succeed before returning success
   try {
-    console.log(`[BOOKING] Saving partner request ${requestId} to MySQL (PENDING)...`);
+    const db = getDbPool();
+
+    // 1. If payment is confirmed, update any existing request and booking rows for this booking_id / request_id
+    if (isPaid) {
+      console.log(`[BOOKING] Payment confirmed for bookingId=${bookingId}, requestId=${requestId}. Updating DB...`);
+      await db.query(`
+        UPDATE withme_partner_requests 
+        SET 
+          payment_status = 'PAID',
+          is_paid = 1,
+          status = 'CONFIRMED',
+          is_accepted = 1,
+          payment_id = COALESCE(?, payment_id),
+          partner_id = CASE WHEN (partner_id IS NULL OR partner_id = '') AND ? != '' THEN ? ELSE partner_id END,
+          partner_name = CASE WHEN (partner_name IS NULL OR partner_name = '') AND ? != '' THEN ? ELSE partner_name END,
+          updated_at = NOW()
+        WHERE (booking_id IS NOT NULL AND booking_id != '' AND booking_id = ?)
+           OR (request_id IS NOT NULL AND request_id != '' AND request_id = ?)
+      `, [paymentId, partnerId, partnerId, partnerName, partnerName, bookingId, requestId]);
+
+      await db.query(`
+        UPDATE withme_partner_bookings 
+        SET 
+          payment_status = 'PAID',
+          is_paid = 1,
+          status = 'Confirmed',
+          is_accepted = 1,
+          payment_id = COALESCE(?, payment_id),
+          partner_id = CASE WHEN (partner_id IS NULL OR partner_id = '') AND ? != '' THEN ? ELSE partner_id END,
+          partner_name = CASE WHEN (partner_name IS NULL OR partner_name = '') AND ? != '' THEN ? ELSE partner_name END,
+          updated_at = NOW()
+        WHERE (booking_id IS NOT NULL AND booking_id != '' AND booking_id = ?)
+           OR (request_id IS NOT NULL AND request_id != '' AND request_id = ?)
+      `, [paymentId, partnerId, partnerId, partnerName, partnerName, bookingId, requestId]);
+    }
+
+    // 2. Save / upsert into withme_partner_requests
     await savePartnerRequestToMysql(newRequest);
-    console.log(`[BOOKING] MySQL INSERT SUCCESS for requestId=${requestId}`);
+
+    // If paid, ensure booking row also exists in withme_partner_bookings
+    if (isPaid) {
+      await savePartnerBookingToMysql({
+        ...newRequest,
+        status: 'CONFIRMED',
+        payment_status: 'PAID',
+        is_paid: 1,
+        is_accepted: 1
+      });
+    }
+
+    console.log(`[BOOKING] MySQL INSERT/UPDATE SUCCESS for requestId=${requestId}, isPaid=${isPaid}`);
   } catch (err) {
     console.error(`[BOOKING] MySQL save FAILED for requestId=${requestId}:`, err.message);
     return res.status(500).json({
@@ -153,19 +209,22 @@ const handleIncomingUserRequest = async (req, res) => {
 
   // Real-time socket delivery to partner
   try {
-    emitToUser(partnerId, 'new_request', newRequest);
-    emitToUser(partnerId, 'incoming_request', newRequest);
-    emitToUser(partnerId, 'booking_request', newRequest);
+    emitToUser(partnerId, isPaid ? 'payment_success' : 'new_request', newRequest);
+    emitToUser(partnerId, 'request_updated', newRequest);
+    if (isPaid) {
+      emitToUser(partnerId, 'chat_unlocked', newRequest);
+      emitToUser(userId, 'chat_unlocked', newRequest);
+    }
   } catch (sErr) {
     console.error('[Socket] emit error on incoming-request:', sErr.message);
   }
 
-  // Trigger push notification to partner (secondary - failure does not affect booking response)
+  // Trigger push notification to partner
   try {
-    sendEventNotification('booking_request', {
+    sendEventNotification(isPaid ? 'booking_confirmed' : 'booking_request', {
       targetUserId: partnerId,
-      sender_name: senderName,
-      name: senderName,
+      sender_name: customerName,
+      name: customerName,
       activity: interest,
       location,
       request_id: requestId,
@@ -175,12 +234,12 @@ const handleIncomingUserRequest = async (req, res) => {
     console.error('[FCM] Notification error:', e.message);
   }
 
-  console.log(`[Partner API] Registered incoming user request: ${requestId} for ${interest} in ${location} (Status: PENDING)`);
+  console.log(`[Partner API] Registered incoming user request: ${requestId} for ${interest} in ${location} (Status: ${status})`);
 
   return res.status(200).json({
     success: true,
     status: true,
-    message: 'Request received',
+    message: isPaid ? 'Payment received and request confirmed' : 'Request received',
     data: newRequest
   });
 };
@@ -209,13 +268,17 @@ const handleIncomingUserBooking = async (req, res) => {
   const isPaid = Boolean(
     bookingPayload.is_paid === true ||
     bookingPayload.is_paid === 1 ||
-    String(bookingPayload.payment_status).toUpperCase() === 'PAID'
+    bookingPayload.is_paid === '1' ||
+    String(bookingPayload.payment_status).toUpperCase() === 'PAID' ||
+    String(bookingPayload.payment_status).toUpperCase() === 'COMPLETED' ||
+    String(bookingPayload.status).toUpperCase() === 'CONFIRMED' ||
+    String(bookingPayload.status).toUpperCase() === 'PAID'
   );
   const paymentStatus = isPaid ? 'PAID' : (bookingPayload.payment_status || 'PENDING');
-  const status = 'PENDING';
-  const isAccepted = 0;
+  const status = isPaid ? 'CONFIRMED' : 'PENDING';
+  const isAccepted = isPaid ? 1 : 0;
 
-  console.log(`[PARTNER BOOKING] Incoming sync: bookingId=${bookingId}, requestId=${requestId}, partnerId=${partnerId}, partnerName=${partnerName}, customerName=${customerName}, userId=${userId}, status=PENDING, is_paid=${isPaid ? 1 : 0}`);
+  console.log(`[PARTNER BOOKING] Incoming sync: bookingId=${bookingId}, requestId=${requestId}, partnerId=${partnerId}, partnerName=${partnerName}, customerName=${customerName}, userId=${userId}, status=${status}, is_paid=${isPaid ? 1 : 0}`);
 
   const requestItem = {
     request_id: requestId,
@@ -245,13 +308,18 @@ const handleIncomingUserBooking = async (req, res) => {
     amount: price,
     price,
     currency,
-    is_paid: isPaid ? 1 : 0,
+    is_paid: isPaid,
+    isPaid: isPaid,
     payment_status: paymentStatus,
-    status: 'PENDING',
-    pending_status: 'PENDING',
-    is_accepted: 0,
-    actions: ['ACCEPT', 'REJECT'],
-    message: bookingPayload.message || `Booking request for ${interest}`,
+    status,
+    pending_status: status,
+    is_accepted: isAccepted,
+    can_chat: isPaid,
+    chat_status: isPaid ? 'UNLOCKED' : 'LOCKED',
+    can_pay: !isPaid,
+    badge: isPaid ? 'Payment Received - Chat Open' : 'New Request',
+    actions: isPaid ? [] : ['ACCEPT', 'REJECT'],
+    message: bookingPayload.message || (isPaid ? 'Payment completed. Meetup confirmed.' : `Booking request for ${interest}`),
     meeting_info: bookingPayload.meeting_info || {
       date,
       time,
@@ -265,13 +333,52 @@ const handleIncomingUserBooking = async (req, res) => {
     safe_meet_mode: { location_allow: 1, notify_trusted_contact: 1, safety_check_in: 1 }
   };
 
-  // 1. Save to withme_partner_requests as PENDING (so it shows in partner's New Requests tab)
   try {
-    console.log(`[BOOKING] Saving incoming booking as request ${requestId} to MySQL (PENDING)...`);
+    const db = getDbPool();
+
+    // 1. If payment is confirmed, update existing rows in both tables
+    if (isPaid) {
+      console.log(`[BOOKING] Payment confirmed for bookingId=${bookingId}, requestId=${requestId}. Updating DB...`);
+      await db.query(`
+        UPDATE withme_partner_requests 
+        SET 
+          payment_status = 'PAID',
+          is_paid = 1,
+          status = 'CONFIRMED',
+          is_accepted = 1,
+          payment_id = COALESCE(?, payment_id),
+          partner_id = CASE WHEN (partner_id IS NULL OR partner_id = '') AND ? != '' THEN ? ELSE partner_id END,
+          partner_name = CASE WHEN (partner_name IS NULL OR partner_name = '') AND ? != '' THEN ? ELSE partner_name END,
+          updated_at = NOW()
+        WHERE (booking_id IS NOT NULL AND booking_id != '' AND booking_id = ?)
+           OR (request_id IS NOT NULL AND request_id != '' AND request_id = ?)
+      `, [bookingPayload.payment_id || null, partnerId, partnerId, partnerName, partnerName, bookingId, requestId]);
+
+      await db.query(`
+        UPDATE withme_partner_bookings 
+        SET 
+          payment_status = 'PAID',
+          is_paid = 1,
+          status = 'Confirmed',
+          is_accepted = 1,
+          payment_id = COALESCE(?, payment_id),
+          partner_id = CASE WHEN (partner_id IS NULL OR partner_id = '') AND ? != '' THEN ? ELSE partner_id END,
+          partner_name = CASE WHEN (partner_name IS NULL OR partner_name = '') AND ? != '' THEN ? ELSE partner_name END,
+          updated_at = NOW()
+        WHERE (booking_id IS NOT NULL AND booking_id != '' AND booking_id = ?)
+           OR (request_id IS NOT NULL AND request_id != '' AND request_id = ?)
+      `, [bookingPayload.payment_id || null, partnerId, partnerId, partnerName, partnerName, bookingId, requestId]);
+    }
+
+    // 2. Save / upsert into withme_partner_requests
     await savePartnerRequestToMysql(requestItem);
-    // Also store in withme_partner_bookings with status PENDING, is_accepted: 0
-    await savePartnerBookingToMysql({ ...requestItem, status: 'PENDING', is_accepted: 0 });
-    console.log(`[BOOKING] MySQL INSERT SUCCESS for bookingId=${bookingId}`);
+    // 3. Save / upsert into withme_partner_bookings
+    await savePartnerBookingToMysql({
+      ...requestItem,
+      status: isPaid ? 'CONFIRMED' : 'PENDING',
+      is_accepted: isAccepted
+    });
+    console.log(`[BOOKING] MySQL INSERT/UPDATE SUCCESS for bookingId=${bookingId}, isPaid=${isPaid}`);
   } catch (err) {
     console.error(`[BOOKING] MySQL save FAILED for bookingId=${bookingId}:`, err.message);
     return res.status(500).json({
@@ -284,19 +391,24 @@ const handleIncomingUserBooking = async (req, res) => {
 
   // Real-time socket delivery to partner
   try {
-    emitToUser(partnerId, 'new_request', requestItem);
-    emitToUser(partnerId, 'new_booking', requestItem);
+    emitToUser(partnerId, isPaid ? 'payment_success' : 'new_request', requestItem);
+    emitToUser(partnerId, isPaid ? 'booking_confirmed' : 'new_booking', requestItem);
     emitToUser(partnerId, 'incoming_booking', requestItem);
+    emitToUser(partnerId, 'request_updated', requestItem);
+    if (isPaid) {
+      emitToUser(partnerId, 'chat_unlocked', requestItem);
+      emitToUser(userId, 'chat_unlocked', requestItem);
+    }
   } catch (sErr) {
     console.error('[Socket] emit error on incoming-booking:', sErr.message);
   }
 
   // Push notification via FCM
   try {
-    sendEventNotification('booking_request', {
+    sendEventNotification(isPaid ? 'booking_confirmed' : 'booking_request', {
       targetUserId: partnerId,
-      name: userName,
-      customer_name: userName,
+      name: customerName,
+      customer_name: customerName,
       activity: interest,
       location,
       booking_id: bookingId,
@@ -308,18 +420,128 @@ const handleIncomingUserBooking = async (req, res) => {
     console.error('[FCM] Notification error:', e.message);
   }
 
-  console.log(`[Partner API] Registered incoming user booking as PENDING: ${bookingId}`);
+  console.log(`[Partner API] Registered incoming user booking: ${bookingId} (Status: ${status}, is_paid: ${isPaid})`);
 
   return res.status(200).json({
     success: true,
     status: true,
-    message: 'Booking received',
+    message: isPaid ? 'Payment received and booking confirmed' : 'Booking received',
     data: requestItem
   });
 };
 
 router.post('/incoming-booking', handleIncomingUserBooking);
 router.post('/sync-booking', handleIncomingUserBooking);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PAYMENT SUCCESS / WEBHOOK ENDPOINTS (Chat Unlocked)
+// ─────────────────────────────────────────────────────────────────────────────
+const handlePaymentSuccessWebhook = async (req, res) => {
+  const payload = req.body || {};
+  const bookingId = payload.booking_id || '';
+  const requestId = payload.request_id || '';
+  const paymentId = payload.payment_id || `pay_${Date.now()}`;
+  const partnerId = payload.partner_id || payload.receiver_id || '';
+  const userId = payload.user_id || payload.sender_id || '';
+
+  console.log(`[PAYMENT WEBHOOK] Processing payment for bookingId=${bookingId}, requestId=${requestId}, paymentId=${paymentId}`);
+
+  if (!bookingId && !requestId) {
+    return res.status(400).json({
+      status: false,
+      success: false,
+      message: 'booking_id or request_id is required',
+      error_code: 'IDENTIFIER_REQUIRED'
+    });
+  }
+
+  try {
+    const db = getDbPool();
+
+    // 1. Update withme_partner_requests
+    const [reqUpdate] = await db.query(
+      `UPDATE withme_partner_requests 
+       SET payment_status = 'PAID', is_paid = 1, status = 'CONFIRMED', is_accepted = 1, payment_id = COALESCE(?, payment_id), updated_at = NOW()
+       WHERE (booking_id IS NOT NULL AND booking_id != '' AND booking_id = ?)
+          OR (request_id IS NOT NULL AND request_id != '' AND request_id = ?)`,
+      [paymentId, bookingId, requestId]
+    );
+
+    // 2. Update withme_partner_bookings
+    const [bkUpdate] = await db.query(
+      `UPDATE withme_partner_bookings 
+       SET payment_status = 'PAID', is_paid = 1, status = 'Confirmed', is_accepted = 1, payment_id = COALESCE(?, payment_id), updated_at = NOW()
+       WHERE (booking_id IS NOT NULL AND booking_id != '' AND booking_id = ?)
+          OR (request_id IS NOT NULL AND request_id != '' AND request_id = ?)`,
+      [paymentId, bookingId, requestId]
+    );
+
+    console.log(`[PAYMENT WEBHOOK] Updated requests=${reqUpdate.affectedRows}, bookings=${bkUpdate.affectedRows}`);
+
+    let targetPartnerId = partnerId;
+    let targetUserId = userId;
+
+    const [reqRows] = await db.query(
+      'SELECT * FROM withme_partner_requests WHERE (booking_id = ? AND booking_id != "") OR (request_id = ? AND request_id != "") LIMIT 1',
+      [bookingId, requestId]
+    );
+
+    if (reqRows.length > 0) {
+      if (!targetPartnerId) targetPartnerId = reqRows[0].partner_id;
+      if (!targetUserId) targetUserId = reqRows[0].user_id;
+    }
+
+    const socketPayload = {
+      booking_id: bookingId,
+      request_id: requestId,
+      payment_id: paymentId,
+      payment_status: 'PAID',
+      is_paid: true,
+      isPaid: true,
+      can_chat: true,
+      status: 'CONFIRMED',
+      chat_status: 'UNLOCKED',
+      partner_id: targetPartnerId,
+      user_id: targetUserId
+    };
+
+    if (targetPartnerId) {
+      emitToUser(targetPartnerId, 'payment_success', socketPayload);
+      emitToUser(targetPartnerId, 'payment_completed', socketPayload);
+      emitToUser(targetPartnerId, 'request_updated', socketPayload);
+      emitToUser(targetPartnerId, 'chat_unlocked', socketPayload);
+    }
+    if (targetUserId) {
+      emitToUser(targetUserId, 'payment_success', socketPayload);
+      emitToUser(targetUserId, 'chat_unlocked', socketPayload);
+    }
+
+    return res.status(200).json({
+      status: true,
+      success: true,
+      message: 'Payment recorded and chat unlocked successfully',
+      data: socketPayload
+    });
+  } catch (err) {
+    console.error('[PAYMENT WEBHOOK ERROR]:', err.message);
+    return res.status(500).json({
+      status: false,
+      success: false,
+      message: 'Failed to record payment',
+      error: err.message
+    });
+  }
+};
+
+router.post('/payment-success', handlePaymentSuccessWebhook);
+router.post('/payment-complete', handlePaymentSuccessWebhook);
+router.post('/payment-webhook', handlePaymentSuccessWebhook);
+router.post('/payment/success', handlePaymentSuccessWebhook);
+router.post('/payment/webhook', handlePaymentSuccessWebhook);
+router.post('/payment/callback', handlePaymentSuccessWebhook);
+router.post('/update-payment-status', handlePaymentSuccessWebhook);
+router.post('/booking/payment-success', handlePaymentSuccessWebhook);
+router.post('/request/payment-success', handlePaymentSuccessWebhook);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /partner/all — All registered partners (for User App integration)
@@ -441,8 +663,13 @@ router.get('/home', authenticateToken, async (req, res) => {
         return accepted === 0 && ['PENDING', 'PENDING_CONFIRMATION', 'NEW', 'PAID'].includes(s);
       })
       .map(r => {
-        const isPaid = Boolean(r.is_paid);
-        const payStatus = r.payment_status || (isPaid ? 'PAID' : 'UNPAID');
+        const isPaid =
+          r.is_paid === 1 || r.is_paid === true || r.is_paid === '1' ||
+          String(r.payment_status || '').toUpperCase() === 'PAID' ||
+          String(r.payment_status || '').toUpperCase() === 'COMPLETED' ||
+          String(r.status || '').toUpperCase() === 'CONFIRMED' ||
+          String(r.status || '').toUpperCase() === 'PAID';
+        const payStatus = isPaid ? 'PAID' : (r.payment_status || 'PENDING');
         const custName = r.customer_name || r.user_name || r.sender_name || r.name || 'User';
         const partName = r.partner_name || (req.user && req.user.name) || '';
         return {
@@ -490,8 +717,13 @@ router.get('/home', authenticateToken, async (req, res) => {
         return accepted === 1 && ['UPCOMING', 'CONFIRMED', 'ACCEPTED'].includes(s) && s !== 'PENDING';
       })
       .map(b => {
-        const isPaid = Boolean(b.is_paid);
-        const payStatus = b.payment_status || (isPaid ? 'PAID' : 'UNPAID');
+        const isPaid =
+          b.is_paid === 1 || b.is_paid === true || b.is_paid === '1' ||
+          String(b.payment_status || '').toUpperCase() === 'PAID' ||
+          String(b.payment_status || '').toUpperCase() === 'COMPLETED' ||
+          String(b.status || '').toUpperCase() === 'CONFIRMED' ||
+          String(b.status || '').toUpperCase() === 'PAID';
+        const payStatus = isPaid ? 'PAID' : (b.payment_status || 'PENDING');
         const custName = b.customer_name || b.user_name || b.sender_name || b.name || 'User';
         const partName = b.partner_name || (req.user && req.user.name) || '';
         return {
@@ -603,8 +835,13 @@ const handleGetAllPartnerRequests = async (req, res) => {
     const formattedList = filtered.map(r => {
       const photoUrl = formatPhotoUrl(r.image || r.profile_image, req);
       const isAcc = Number(r.is_accepted !== undefined ? r.is_accepted : (String(r.status).toUpperCase() === 'ACCEPTED' ? 1 : 0));
-      const isPaid = Boolean(r.is_paid);
-      const payStatus = r.payment_status || (isPaid ? 'PAID' : 'UNPAID');
+      const isPaid =
+        r.is_paid === 1 || r.is_paid === true || r.is_paid === '1' ||
+        String(r.payment_status || '').toUpperCase() === 'PAID' ||
+        String(r.payment_status || '').toUpperCase() === 'COMPLETED' ||
+        String(r.status || '').toUpperCase() === 'CONFIRMED' ||
+        String(r.status || '').toUpperCase() === 'PAID';
+      const payStatus = isPaid ? 'PAID' : (r.payment_status || 'PENDING');
       const custName = r.customer_name || r.user_name || r.sender_name || r.name || 'User Request';
       const partName = r.partner_name || (req.user && req.user.name) || '';
       return {
@@ -687,10 +924,33 @@ const handlePartnerAppRequestDetails = async (req, res) => {
     const dateVal = r.date || getISTDateString();
     const partnerUserIdVal = String(r.partner_id || req.user.user_id);
     const isAcc = Number(r.is_accepted !== undefined ? r.is_accepted : (String(r.status).toUpperCase() === 'ACCEPTED' ? 1 : 0));
-    const isPaid = Boolean(r.is_paid);
-    const payStatus = r.payment_status || (isPaid ? 'PAID' : 'UNPAID');
+
+    // Cross-table check: also query withme_partner_bookings by booking_id
+    let bkRow = null;
+    if (r.booking_id) {
+      const [bkRows] = await db.query(
+        'SELECT is_paid, payment_status, status FROM withme_partner_bookings WHERE booking_id = ? LIMIT 1',
+        [r.booking_id]
+      );
+      if (bkRows.length > 0) bkRow = bkRows[0];
+    }
+
+    const isPaid =
+      r.is_paid === 1 || r.is_paid === true || r.is_paid === '1' ||
+      String(r.payment_status || '').toUpperCase() === 'PAID' ||
+      String(r.payment_status || '').toUpperCase() === 'COMPLETED' ||
+      String(r.status || '').toUpperCase() === 'CONFIRMED' ||
+      String(r.status || '').toUpperCase() === 'PAID' ||
+      (bkRow && (
+        bkRow.is_paid === 1 || bkRow.is_paid === true || bkRow.is_paid === '1' ||
+        String(bkRow.payment_status || '').toUpperCase() === 'PAID' ||
+        String(bkRow.payment_status || '').toUpperCase() === 'COMPLETED' ||
+        String(bkRow.status || '').toUpperCase() === 'CONFIRMED'
+      ));
+    const payStatus = isPaid ? 'PAID' : (r.payment_status || 'PENDING');
     const custName = r.customer_name || r.user_name || r.sender_name || r.name || 'User';
     const partName = r.partner_name || (req.user && req.user.name) || '';
+
 
     const responseData = {
       request_id: r.request_id,
@@ -998,6 +1258,13 @@ router.get('/bookings/:booking_id', authenticateToken, async (req, res) => {
     const b = rows[0];
     const custName = b.customer_name || b.user_name || b.sender_name || b.name || 'User';
     const partName = b.partner_name || (req.user && req.user.name) || '';
+    const isPaid =
+      b.is_paid === 1 || b.is_paid === true || b.is_paid === '1' ||
+      String(b.payment_status || '').toUpperCase() === 'PAID' ||
+      String(b.payment_status || '').toUpperCase() === 'COMPLETED' ||
+      String(b.status || '').toUpperCase() === 'CONFIRMED' ||
+      String(b.status || '').toUpperCase() === 'PAID';
+    const payStatus = isPaid ? 'PAID' : (b.payment_status || 'PENDING');
     let meetingInfo = { date: b.date, time: b.time, place: b.location, type: b.activity, description: 'Meetup details' };
     let safetyChecklist = { start_safe_meet: false };
     let safeMeetMode = { location_allow: 1, notify_trusted_contact: 1, safety_check_in: 1 };
@@ -1029,6 +1296,17 @@ router.get('/bookings/:booking_id', authenticateToken, async (req, res) => {
         date: b.date,
         time: b.time,
         status: b.status,
+        is_accepted: b.is_accepted !== undefined ? Number(b.is_accepted) : 1,
+        is_paid: isPaid,
+        isPaid: isPaid,
+        payment_status: payStatus,
+        paymentStatus: payStatus,
+        is_payment_completed: isPaid,
+        payment_id: b.payment_id || null,
+        payment_status_text: isPaid ? 'Paid' : 'Pending',
+        can_chat: isPaid,
+        chat_status: isPaid ? 'UNLOCKED' : 'LOCKED',
+        badge: isPaid ? 'Payment Received - Chat Open' : 'Payment Pending',
         meeting_info: meetingInfo,
         safety_checklist: safetyChecklist,
         safe_meet_mode: safeMeetMode
@@ -1145,8 +1423,13 @@ router.get(['/bookings', '/bookings/list'], authenticateToken, async (req, res) 
     const dbBookings = await fetchPartnerBookingsFromMysql(currentUserId, status);
 
     const list = dbBookings.map(b => {
-      const isPaid = Boolean(b.is_paid);
-      const payStatus = b.payment_status || (isPaid ? 'PAID' : 'UNPAID');
+      const isPaid =
+        b.is_paid === 1 || b.is_paid === true || b.is_paid === '1' ||
+        String(b.payment_status || '').toUpperCase() === 'PAID' ||
+        String(b.payment_status || '').toUpperCase() === 'COMPLETED' ||
+        String(b.status || '').toUpperCase() === 'CONFIRMED' ||
+        String(b.status || '').toUpperCase() === 'PAID';
+      const payStatus = isPaid ? 'PAID' : (b.payment_status || 'PENDING');
       const custName = b.customer_name || b.user_name || b.sender_name || b.name || 'User';
       const partName = b.partner_name || (req.user && req.user.name) || '';
       return {
