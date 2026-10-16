@@ -221,13 +221,18 @@ function initChatSocket(server) {
           id: Number(savedMsg.id),
           messageId: Number(savedMsg.id),
           conversationId: Number(conversationId),
+          conversation_id: Number(conversationId),
           senderId: isNaN(senderId) ? senderId : Number(senderId),
+          sender_id: isNaN(senderId) ? senderId : Number(senderId),
           receiverId: isNaN(receiverId) ? String(receiverId) : Number(receiverId),
+          receiver_id: isNaN(receiverId) ? String(receiverId) : Number(receiverId),
           messageType: 'text',
+          message_type: 'text',
           message: savedMsg.message,
           isDelivered: false,
           isRead: false,
-          createdAt: toIST(savedMsg.created_at)
+          createdAt: toIST(savedMsg.created_at),
+          created_at: toIST(savedMsg.created_at)
         };
 
         // Emit message_sent to sender
@@ -249,13 +254,23 @@ function initChatSocket(server) {
 
         io.to(convRoom).emit('receive_message', msgPayload);
         io.to(convRoom).emit('new_message', msgPayload);
+        io.to(convRoom).emit('chat_message', msgPayload);
         io.to(rIdStr).emit('receive_message', msgPayload);
         io.to(rIdStr).emit('new_message', msgPayload);
+        io.to(rIdStr).emit('chat_message', msgPayload);
         if (rDigits) {
           io.to(rDigits).emit('receive_message', msgPayload);
+          io.to(rDigits).emit('new_message', msgPayload);
+          io.to(rDigits).emit('chat_message', msgPayload);
           io.to(`usr_${rDigits}`).emit('receive_message', msgPayload);
+          io.to(`usr_${rDigits}`).emit('new_message', msgPayload);
+          io.to(`usr_${rDigits}`).emit('chat_message', msgPayload);
           io.to(`user_${rDigits}`).emit('receive_message', msgPayload);
+          io.to(`user_${rDigits}`).emit('new_message', msgPayload);
+          io.to(`user_${rDigits}`).emit('chat_message', msgPayload);
           io.to(`partner_${rDigits}`).emit('receive_message', msgPayload);
+          io.to(`partner_${rDigits}`).emit('new_message', msgPayload);
+          io.to(`partner_${rDigits}`).emit('chat_message', msgPayload);
         }
 
         if (activeSockets.size > 0) {
@@ -265,6 +280,7 @@ function initChatSocket(server) {
           activeSockets.forEach(sId => {
             io.to(sId).emit('receive_message', msgPayload);
             io.to(sId).emit('new_message', msgPayload);
+            io.to(sId).emit('chat_message', msgPayload);
           });
 
           // Notify sender of delivery status

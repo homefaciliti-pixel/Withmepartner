@@ -32,7 +32,16 @@ async function handleCreateOrGetConversation(req, res, next) {
     return res.status(200).json({
       success: true,
       can_chat: true,
-      conversationId: result.conversationId
+      conversationId: result.conversationId,
+      conversation_id: result.conversationId,
+      // Socket hints: frontend should join this room and listen to these events
+      socket_hints: {
+        join_room: `conv_${result.conversationId}`,
+        emit_on_open: { event: 'join_conversation', data: { conversationId: result.conversationId } },
+        listen_events: ['receive_message', 'new_message', 'chat_message'],
+        send_event: 'send_message',
+        receiver_id: targetUserId
+      }
     });
   } catch (err) {
     if (err.message === "User is blocked" || err.message === "Cannot create conversation with yourself") {
@@ -227,27 +236,42 @@ async function handleSendMessage(req, res, next) {
       messageType: messageType || 'text'
     });
 
+    const { toIST } = chatService;
     const msgPayload = {
       id: Number(savedMsg.id),
       messageId: Number(savedMsg.id),
       conversationId: Number(conversationId),
+      conversation_id: Number(conversationId),
       senderId: isNaN(currentUserId) ? currentUserId : Number(currentUserId),
+      sender_id: isNaN(currentUserId) ? currentUserId : Number(currentUserId),
       receiverId: isNaN(receiverId) ? String(receiverId) : Number(receiverId),
+      receiver_id: isNaN(receiverId) ? String(receiverId) : Number(receiverId),
       messageType: messageType || 'text',
+      message_type: messageType || 'text',
       message: savedMsg.message,
       isDelivered: false,
       isRead: false,
-      createdAt: typeof savedMsg.created_at === 'string' ? savedMsg.created_at : new Date(savedMsg.created_at).toISOString()
+      createdAt: toIST(savedMsg.created_at),
+      created_at: toIST(savedMsg.created_at)
     };
 
-    // Broadcast Socket.IO real-time event if io instance is attached
+    // Broadcast Socket.IO real-time event — emit all 3 event names for frontend compatibility
     if (req.app && req.app.get('io')) {
       const io = req.app.get('io');
       const rIdStr = String(receiverId);
-      io.to(rIdStr).emit('receive_message', msgPayload);
-      io.to(rIdStr).emit('new_message', msgPayload);
+      const rDigits = rIdStr.replace(/\D/g, '');
+      // Emit to conversation room
       io.to(`conv_${conversationId}`).emit('receive_message', msgPayload);
       io.to(`conv_${conversationId}`).emit('new_message', msgPayload);
+      io.to(`conv_${conversationId}`).emit('chat_message', msgPayload);
+      // Emit directly to receiver user room variants
+      [rIdStr, rDigits, `usr_${rDigits}`, `user_${rDigits}`, `partner_${rDigits}`].forEach(room => {
+        if (room) {
+          io.to(room).emit('receive_message', msgPayload);
+          io.to(room).emit('new_message', msgPayload);
+          io.to(room).emit('chat_message', msgPayload);
+        }
+      });
     }
 
     // Trigger FCM Push Notification

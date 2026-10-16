@@ -152,7 +152,7 @@ async function findUser(userId) {
   const rawId = uId.replace(/^usr_/, '');
   const formattedId = uId.startsWith('usr_') ? uId : `usr_${uId}`;
 
-  // 2. Check MySQL withme_partners
+  // Check MySQL withme_partners
   try {
     const db = getDbPool();
     const [rows] = await db.query(
@@ -161,18 +161,28 @@ async function findUser(userId) {
     );
     if (rows && rows.length > 0) {
       const p = rows[0];
+      let photosArr = [];
+      try { photosArr = typeof p.photos === 'string' ? JSON.parse(p.photos) : (Array.isArray(p.photos) ? p.photos : []); } catch {}
+      const photoUrls = photosArr.map(ph => (typeof ph === 'string' ? ph : (ph.url || ph.path || ''))).filter(Boolean);
+      const primaryPhoto = p.profile_photo_url || p.image || (photoUrls[0] || '');
       return {
         user_id: formatNumericUserId(p.user_id || p.partner_id || p.id || uId),
         name: p.name || p.full_name || `Partner ${uId}`,
         full_name: p.full_name || p.name || `Partner ${uId}`,
-        profile_photo_url: p.image || p.profile_photo_url || "/uploads/photos/photo_1.jpg"
+        customer_name: p.name || p.full_name || '',
+        sender_name: p.name || p.full_name || '',
+        profile_photo_url: primaryPhoto || '/uploads/photos/photo_1.jpg',
+        image: primaryPhoto || '/uploads/photos/photo_1.jpg',
+        photos: photosArr,
+        profile_images: photoUrls,
+        images: photoUrls
       };
     }
   } catch (err) {
     // Ignore database connection error
   }
 
-  // 3. Check MySQL users table
+  // Check MySQL users table
   try {
     const db = getDbPool();
     const [rows] = await db.query(
@@ -181,11 +191,21 @@ async function findUser(userId) {
     );
     if (rows && rows.length > 0) {
       const u = rows[0];
+      let photosArr = [];
+      try { photosArr = typeof u.photos === 'string' ? JSON.parse(u.photos) : (Array.isArray(u.photos) ? u.photos : []); } catch {}
+      const photoUrls = photosArr.map(ph => (typeof ph === 'string' ? ph : (ph.url || ph.path || ''))).filter(Boolean);
+      const primaryPhoto = u.profile_image || u.image || (photoUrls[0] || '');
       return {
         user_id: formatNumericUserId(u.id || u.user_id || uId),
         name: u.name || u.full_name || `User ${uId}`,
         full_name: u.full_name || u.name || `User ${uId}`,
-        profile_photo_url: u.profile_image || u.image || "/uploads/photos/photo_1.jpg"
+        customer_name: u.name || u.full_name || '',
+        sender_name: u.name || u.full_name || '',
+        profile_photo_url: primaryPhoto || '/uploads/photos/photo_1.jpg',
+        image: primaryPhoto || '/uploads/photos/photo_1.jpg',
+        photos: photosArr,
+        profile_images: photoUrls,
+        images: photoUrls
       };
     }
   } catch (err) {
@@ -196,12 +216,20 @@ async function findUser(userId) {
     return {
       user_id: formatNumericUserId(uId),
       name: `User ${uId}`,
-      profile_photo_url: "/uploads/photos/photo_1.jpg"
+      full_name: `User ${uId}`,
+      customer_name: '',
+      sender_name: '',
+      profile_photo_url: '/uploads/photos/photo_1.jpg',
+      image: '/uploads/photos/photo_1.jpg',
+      photos: [],
+      profile_images: [],
+      images: []
     };
   }
 
   return null;
 }
+
 
 /**
  * Check if either user has blocked the other
@@ -547,17 +575,54 @@ async function getUserConversations(userId, req, isUserOnlineFn) {
     }
     const canChat = await canUsersChat(uId, otherUserId);
 
+    // Resolve all photo variants
+    const rawPhotos = otherUser ? (otherUser.photos || []) : [];
+    const photoUrls = otherUser ? (otherUser.profile_images || otherUser.images || []) : [];
+    const resolvedName = otherUser
+      ? (otherUser.name || otherUser.full_name || otherUser.customer_name || `User ${otherUserId}`)
+      : `User ${otherUserId}`;
+
     list.push({
       conversationId: convId,
+      conversation_id: convId,
       otherUserId: formatNumericUserId(otherUserId),
-      otherUserName,
+      other_user_id: formatNumericUserId(otherUserId),
+      // All name variants — frontend can use whichever field it reads
+      otherUserName: resolvedName,
+      other_user_name: resolvedName,
+      customer_name: resolvedName,
+      user_name: resolvedName,
+      sender_name: resolvedName,
+      name: resolvedName,
+      title: resolvedName,
+      header_title: `Chat with: ${resolvedName}`,
+      // Photo fields
       otherUserProfileImage,
-      lastMessage: lastMsg ? lastMsg.message : "",
+      profile_image: otherUserProfileImage,
+      image: otherUserProfileImage,
+      avatar: otherUserProfileImage,
+      // Full photo gallery
+      photos: rawPhotos,
+      profile_images: photoUrls,
+      images: photoUrls,
+      profileImages: photoUrls,
+      // Message info
+      lastMessage: lastMsg ? lastMsg.message : '',
+      last_message: lastMsg ? lastMsg.message : '',
       lastMessageTime: lastMsg ? toIST(lastMsg.created_at) : toIST(new Date()),
+      last_message_time: lastMsg ? toIST(lastMsg.created_at) : toIST(new Date()),
       unreadCount,
+      unread_count: unreadCount,
       isOnline,
+      is_online: isOnline,
+      online_status: isOnline ? 'online' : 'offline',
       can_chat: canChat,
-      chat_status: canChat ? 'UNLOCKED' : 'LOCKED'
+      chat_status: canChat ? 'UNLOCKED' : 'LOCKED',
+      // Socket hints for frontend real-time subscription
+      socket_hints: {
+        join_room: `conv_${convId}`,
+        events: ['receive_message', 'new_message', 'chat_message']
+      }
     });
   }
 

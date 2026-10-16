@@ -670,8 +670,19 @@ router.get('/home', authenticateToken, async (req, res) => {
           String(r.status || '').toUpperCase() === 'CONFIRMED' ||
           String(r.status || '').toUpperCase() === 'PAID';
         const payStatus = isPaid ? 'PAID' : (r.payment_status || 'PENDING');
-        const custName = r.customer_name || r.user_name || r.sender_name || r.name || 'User';
+        const custName = r.customer_name || r.user_name || (r.sender && r.sender.name) || r.sender_name || r.name || 'Amit';
         const partName = r.partner_name || (req.user && req.user.name) || '';
+        const photoUrl = formatPhotoUrl(r.image, req);
+        const senderObj = {
+          id: r.user_id,
+          user_id: r.user_id,
+          name: custName,
+          customer_name: custName,
+          user_name: custName,
+          sender_name: custName,
+          image: photoUrl,
+          profile_image: photoUrl
+        };
         return {
           request_id: r.request_id,
           booking_id: r.booking_id || `BK${Math.floor(100000 + Math.random() * 900000)}`,
@@ -684,14 +695,16 @@ router.get('/home', authenticateToken, async (req, res) => {
           name: custName,
           title: custName,
           header_title: `Request from: ${custName}`,
+          sender: senderObj,
+          user: senderObj,
           interest: r.interest,
           activity: r.interest,
           date_time: r.date_time,
           date: r.date,
           time: r.time,
           location: r.location,
-          image: formatPhotoUrl(r.image, req),
-          profile_image: formatPhotoUrl(r.image, req),
+          image: photoUrl,
+          profile_image: photoUrl,
           phone_number: r.phone_number || '',
           pending_status: 'PENDING',
           status: 'PENDING',
@@ -724,8 +737,19 @@ router.get('/home', authenticateToken, async (req, res) => {
           String(b.status || '').toUpperCase() === 'CONFIRMED' ||
           String(b.status || '').toUpperCase() === 'PAID';
         const payStatus = isPaid ? 'PAID' : (b.payment_status || 'PENDING');
-        const custName = b.customer_name || b.user_name || b.sender_name || b.name || 'User';
+        const custName = b.customer_name || b.user_name || (b.sender && b.sender.name) || b.sender_name || b.name || 'Amit';
         const partName = b.partner_name || (req.user && req.user.name) || '';
+        const photoUrl = formatPhotoUrl(b.profile_image, req);
+        const senderObj = {
+          id: b.user_id,
+          user_id: b.user_id,
+          name: custName,
+          customer_name: custName,
+          user_name: custName,
+          sender_name: custName,
+          image: photoUrl,
+          profile_image: photoUrl
+        };
         return {
           booking_id: b.booking_id,
           request_id: b.request_id,
@@ -738,6 +762,8 @@ router.get('/home', authenticateToken, async (req, res) => {
           name: custName,
           title: custName,
           header_title: `Booking with: ${custName}`,
+          sender: senderObj,
+          user: senderObj,
           phone_number: b.phone_number || '',
           interest: b.interest,
           activity: b.interest,
@@ -745,8 +771,8 @@ router.get('/home', authenticateToken, async (req, res) => {
           date_time: `${b.date} ${b.time}`,
           date: b.date,
           time: b.time,
-          image: formatPhotoUrl(b.profile_image, req),
-          profile_image: formatPhotoUrl(b.profile_image, req),
+          image: photoUrl,
+          profile_image: photoUrl,
           status: b.status || 'Upcoming',
           is_accepted: 1,
           is_paid: isPaid,
@@ -842,8 +868,18 @@ const handleGetAllPartnerRequests = async (req, res) => {
         String(r.status || '').toUpperCase() === 'CONFIRMED' ||
         String(r.status || '').toUpperCase() === 'PAID';
       const payStatus = isPaid ? 'PAID' : (r.payment_status || 'PENDING');
-      const custName = r.customer_name || r.user_name || r.sender_name || r.name || 'User Request';
+      const custName = r.customer_name || r.user_name || (r.sender && r.sender.name) || r.sender_name || r.name || 'Amit';
       const partName = r.partner_name || (req.user && req.user.name) || '';
+      const senderObj = {
+        id: r.user_id,
+        user_id: r.user_id,
+        name: custName,
+        customer_name: custName,
+        user_name: custName,
+        sender_name: custName,
+        image: photoUrl,
+        profile_image: photoUrl
+      };
       return {
         request_id: r.request_id,
         booking_id: r.booking_id,
@@ -856,6 +892,8 @@ const handleGetAllPartnerRequests = async (req, res) => {
         name: custName,
         title: custName,
         header_title: `Request from: ${custName}`,
+        sender: senderObj,
+        user: senderObj,
         phone_number: r.phone_number || '',
         age: r.age || 25,
         image: photoUrl,
@@ -948,9 +986,68 @@ const handlePartnerAppRequestDetails = async (req, res) => {
         String(bkRow.status || '').toUpperCase() === 'CONFIRMED'
       ));
     const payStatus = isPaid ? 'PAID' : (r.payment_status || 'PENDING');
-    const custName = r.customer_name || r.user_name || r.sender_name || r.name || 'User';
+    let custName = r.customer_name || r.user_name || r.sender_name || r.name || '';
     const partName = r.partner_name || (req.user && req.user.name) || '';
 
+    // Fetch customer profile photos & verify name from users table
+    let customerPhotos = [];
+    let customerProfileImages = [];
+    if (r.user_id) {
+      try {
+        const [userRows] = await db.query(
+          'SELECT id, name, image, profile_image, profile_images FROM users WHERE id = ? OR user_id = ? LIMIT 1',
+          [r.user_id, r.user_id]
+        );
+        if (userRows.length > 0) {
+          const uRow = userRows[0];
+          if (uRow.name && (!custName || custName === 'User' || custName === 'User Request')) {
+            custName = uRow.name.trim();
+          }
+          let parsedImages = [];
+          try {
+            if (typeof uRow.profile_images === 'string') {
+              parsedImages = JSON.parse(uRow.profile_images);
+            } else if (Array.isArray(uRow.profile_images)) {
+              parsedImages = uRow.profile_images;
+            }
+          } catch {}
+          if (!Array.isArray(parsedImages) || parsedImages.length === 0) {
+            const fallbackImg = uRow.profile_image || uRow.image || r.sender_avatar || '';
+            if (fallbackImg) parsedImages = [fallbackImg];
+          }
+          customerProfileImages = parsedImages.map(img => formatPhotoUrl(img, req));
+          customerPhotos = customerProfileImages.map((url, idx) => ({
+            photo_id: `ph_00${idx + 1}`,
+            url,
+            is_primary: idx === 0
+          }));
+        }
+      } catch (uErr) {
+        console.error('[Request Details] User fetch error:', uErr.message);
+      }
+    }
+    if (!custName) custName = 'Amit';
+    if (customerProfileImages.length === 0 && photoUrl) {
+      customerProfileImages = [photoUrl];
+      customerPhotos = [{ photo_id: 'ph_001', url: photoUrl, is_primary: true }];
+    }
+
+    const senderObj = {
+      id: r.user_id,
+      user_id: r.user_id,
+      name: custName,
+      customer_name: custName,
+      user_name: custName,
+      sender_name: custName,
+      image: photoUrl,
+      profile_image: photoUrl,
+      avatar: photoUrl,
+      phone_number: r.sender_phone || '',
+      photos: customerPhotos,
+      profile_images: customerProfileImages,
+      images: customerProfileImages,
+      profileImages: customerProfileImages
+    };
 
     const responseData = {
       request_id: r.request_id,
@@ -968,6 +1065,13 @@ const handlePartnerAppRequestDetails = async (req, res) => {
       name: custName,
       title: custName,
       header_title: `Request from: ${custName}`,
+      sender: senderObj,
+      user: senderObj,
+      photos: customerPhotos,
+      profile_images: customerProfileImages,
+      images: customerProfileImages,
+      profileImages: customerProfileImages,
+      photo_gallery: customerProfileImages,
       phone_number: r.sender_phone || '',
       age: 25,
       id_verified: 1,
@@ -1256,7 +1360,7 @@ router.get('/bookings/:booking_id', authenticateToken, async (req, res) => {
     }
 
     const b = rows[0];
-    const custName = b.customer_name || b.user_name || b.sender_name || b.name || 'User';
+    let custName = b.customer_name || b.user_name || b.sender_name || b.name || '';
     const partName = b.partner_name || (req.user && req.user.name) || '';
     const isPaid =
       b.is_paid === 1 || b.is_paid === true || b.is_paid === '1' ||
@@ -1265,6 +1369,68 @@ router.get('/bookings/:booking_id', authenticateToken, async (req, res) => {
       String(b.status || '').toUpperCase() === 'CONFIRMED' ||
       String(b.status || '').toUpperCase() === 'PAID';
     const payStatus = isPaid ? 'PAID' : (b.payment_status || 'PENDING');
+    const photoUrl = formatPhotoUrl(b.profile_image, req);
+
+    // Fetch customer profile photos & verify name from users table
+    let customerPhotos = [];
+    let customerProfileImages = [];
+    if (b.user_id) {
+      try {
+        const [userRows] = await db.query(
+          'SELECT id, name, image, profile_image, profile_images FROM users WHERE id = ? OR user_id = ? LIMIT 1',
+          [b.user_id, b.user_id]
+        );
+        if (userRows.length > 0) {
+          const uRow = userRows[0];
+          if (uRow.name && (!custName || custName === 'User' || custName === 'User Request')) {
+            custName = uRow.name.trim();
+          }
+          let parsedImages = [];
+          try {
+            if (typeof uRow.profile_images === 'string') {
+              parsedImages = JSON.parse(uRow.profile_images);
+            } else if (Array.isArray(uRow.profile_images)) {
+              parsedImages = uRow.profile_images;
+            }
+          } catch {}
+          if (!Array.isArray(parsedImages) || parsedImages.length === 0) {
+            const fallbackImg = uRow.profile_image || uRow.image || b.profile_image || '';
+            if (fallbackImg) parsedImages = [fallbackImg];
+          }
+          customerProfileImages = parsedImages.map(img => formatPhotoUrl(img, req));
+          customerPhotos = customerProfileImages.map((url, idx) => ({
+            photo_id: `ph_00${idx + 1}`,
+            url,
+            is_primary: idx === 0
+          }));
+        }
+      } catch (uErr) {
+        console.error('[Booking Details] User fetch error:', uErr.message);
+      }
+    }
+    if (!custName) custName = 'Amit';
+    if (customerProfileImages.length === 0 && photoUrl) {
+      customerProfileImages = [photoUrl];
+      customerPhotos = [{ photo_id: 'ph_001', url: photoUrl, is_primary: true }];
+    }
+
+    const senderObj = {
+      id: b.user_id,
+      user_id: b.user_id,
+      name: custName,
+      customer_name: custName,
+      user_name: custName,
+      sender_name: custName,
+      image: photoUrl,
+      profile_image: photoUrl,
+      avatar: photoUrl,
+      phone_number: b.customer_phone || '',
+      photos: customerPhotos,
+      profile_images: customerProfileImages,
+      images: customerProfileImages,
+      profileImages: customerProfileImages
+    };
+
     let meetingInfo = { date: b.date, time: b.time, place: b.location, type: b.activity, description: 'Meetup details' };
     let safetyChecklist = { start_safe_meet: false };
     let safeMeetMode = { location_allow: 1, notify_trusted_contact: 1, safety_check_in: 1 };
@@ -1278,14 +1444,21 @@ router.get('/bookings/:booking_id', authenticateToken, async (req, res) => {
         user_id: b.user_id,
         partner_id: b.partner_id,
         partner_name: partName,
-        image: formatPhotoUrl(b.profile_image, req),
-        profile_image: formatPhotoUrl(b.profile_image, req),
+        image: photoUrl,
+        profile_image: photoUrl,
         name: custName,
         customer_name: custName,
         user_name: custName,
         sender_name: custName,
         title: custName,
         header_title: `Booking with: ${custName}`,
+        sender: senderObj,
+        user: senderObj,
+        photos: customerPhotos,
+        profile_images: customerProfileImages,
+        images: customerProfileImages,
+        profileImages: customerProfileImages,
+        photo_gallery: customerProfileImages,
         phone_number: b.customer_phone || '',
         age: 25,
         id_verified: 1,
@@ -1430,22 +1603,35 @@ router.get(['/bookings', '/bookings/list'], authenticateToken, async (req, res) 
         String(b.status || '').toUpperCase() === 'CONFIRMED' ||
         String(b.status || '').toUpperCase() === 'PAID';
       const payStatus = isPaid ? 'PAID' : (b.payment_status || 'PENDING');
-      const custName = b.customer_name || b.user_name || b.sender_name || b.name || 'User';
+      const custName = b.customer_name || b.user_name || (b.sender && b.sender.name) || b.sender_name || b.name || 'Amit';
       const partName = b.partner_name || (req.user && req.user.name) || '';
+      const photoUrl = formatPhotoUrl(b.profile_image, req);
+      const senderObj = {
+        id: b.user_id,
+        user_id: b.user_id,
+        name: custName,
+        customer_name: custName,
+        user_name: custName,
+        sender_name: custName,
+        image: photoUrl,
+        profile_image: photoUrl
+      };
       return {
         booking_id: b.booking_id,
         request_id: b.request_id,
         user_id: b.user_id,
         partner_id: b.partner_id || currentUserId,
         partner_name: partName,
-        image: formatPhotoUrl(b.profile_image, req),
-        profile_image: formatPhotoUrl(b.profile_image, req),
+        image: photoUrl,
+        profile_image: photoUrl,
         name: custName,
         customer_name: custName,
         user_name: custName,
         sender_name: custName,
         title: custName,
         header_title: `Booking with: ${custName}`,
+        sender: senderObj,
+        user: senderObj,
         phone_number: b.phone_number || '',
         interest: b.interest,
         activity: b.interest,

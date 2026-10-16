@@ -904,7 +904,16 @@ async function fetchPartnerRequestsFromMysql(partnerId) {
   }
 
   const placeholders = idList.map(() => '?').join(', ');
-  const sql = `SELECT * FROM withme_partner_requests WHERE partner_id IN (${placeholders}) ORDER BY created_at DESC LIMIT 200`;
+  const sql = `
+    SELECT r.*, 
+           b.is_paid AS b_is_paid, 
+           b.payment_status AS b_payment_status, 
+           b.status AS b_status
+    FROM withme_partner_requests r
+    LEFT JOIN withme_partner_bookings b ON (r.booking_id IS NOT NULL AND r.booking_id != '' AND r.booking_id = b.booking_id)
+    WHERE r.partner_id IN (${placeholders}) 
+    ORDER BY r.created_at DESC LIMIT 200
+  `;
   const params = idList;
 
   console.log(`[WithMe DB] fetchPartnerRequests partnerId=${pId}, checking IDs: [${idList.join(', ')}]`);
@@ -915,11 +924,32 @@ async function fetchPartnerRequestsFromMysql(partnerId) {
   }
 
   return rows.map(r => {
-    const isAcc = r.is_accepted !== undefined ? Number(r.is_accepted) : (r.status === 'ACCEPTED' || r.status === 'CONFIRMED' ? 1 : 0);
-    const isPaid = Boolean(r.is_paid == 1 || r.is_paid === true || String(r.payment_status).toUpperCase() === 'PAID');
+    const isPaid = Boolean(
+      r.is_paid == 1 || r.is_paid === true || r.is_paid === '1' ||
+      String(r.payment_status).toUpperCase() === 'PAID' ||
+      String(r.status).toUpperCase() === 'CONFIRMED' ||
+      String(r.status).toUpperCase() === 'PAID' ||
+      r.b_is_paid == 1 || r.b_is_paid === true || r.b_is_paid === '1' ||
+      String(r.b_payment_status).toUpperCase() === 'PAID' ||
+      String(r.b_status).toUpperCase() === 'CONFIRMED' ||
+      String(r.b_status).toUpperCase() === 'PAID'
+    );
+    const isAcc = isPaid ? 1 : (r.is_accepted !== undefined ? Number(r.is_accepted) : (r.status === 'ACCEPTED' || r.status === 'CONFIRMED' ? 1 : 0));
     const payStatus = isPaid ? 'PAID' : (r.payment_status || 'PENDING');
-    const custName = r.sender_name || 'User';
+    const custName = r.customer_name || r.sender_name || r.user_name || r.name || 'Amit';
     const partName = r.partner_name || '';
+    const finalStatus = isPaid ? 'CONFIRMED' : (r.status || (isAcc ? 'ACCEPTED' : 'PENDING'));
+    const photoUrl = r.sender_avatar || '';
+    const senderObj = {
+      id: r.user_id,
+      user_id: r.user_id,
+      name: custName,
+      customer_name: custName,
+      user_name: custName,
+      sender_name: custName,
+      image: photoUrl,
+      profile_image: photoUrl
+    };
     return {
       request_id: r.request_id || `req_${r.id}`,
       booking_id: r.booking_id,
@@ -932,10 +962,12 @@ async function fetchPartnerRequestsFromMysql(partnerId) {
       sender_name: custName,
       title: custName,
       header_title: `Request from: ${custName}`,
+      sender: senderObj,
+      user: senderObj,
       phone_number: r.sender_phone || '',
       age: 25,
-      image: r.sender_avatar || '',
-      profile_image: r.sender_avatar || '',
+      image: photoUrl,
+      profile_image: photoUrl,
       id_verified: 1,
       selfie_verified: 1,
       interest: r.activity || 'Coffee',
@@ -944,13 +976,15 @@ async function fetchPartnerRequestsFromMysql(partnerId) {
       time: r.time || '06:00 PM',
       location: r.location || 'Jaipur',
       price: r.price || 1,
-      status: r.status || (isAcc ? 'ACCEPTED' : 'PENDING'),
-      pending_status: r.status || (isAcc ? 'ACCEPTED' : 'PENDING'),
+      status: finalStatus,
+      pending_status: finalStatus,
       is_accepted: isAcc,
       payment_status: payStatus,
       is_paid: isPaid,
+      isPaid: isPaid,
+      is_payment_completed: isPaid,
       can_chat: isPaid,
-      can_pay: Boolean(isAcc === 1 && !isPaid),
+      can_pay: Boolean(!isPaid && isAcc === 1),
       chat_status: isPaid ? 'UNLOCKED' : 'LOCKED',
       badge: isPaid ? 'Payment Received - Chat Open' : (isAcc === 1 ? 'Payment Pending' : 'New Request'),
       message: r.message,
@@ -1119,11 +1153,28 @@ async function fetchPartnerBookingsFromMysql(partnerId, statusFilter) {
     return [];
   }
   return rows.map(r => {
-    const isPaid = Boolean(r.is_paid == 1 || r.is_paid === true || String(r.payment_status).toUpperCase() === 'PAID' || String(r.payment_status).toUpperCase() === 'COMPLETED');
-    const isAcc = r.is_accepted !== undefined ? Number(r.is_accepted) : (['UPCOMING', 'CONFIRMED', 'ACCEPTED'].includes(String(r.status).toUpperCase()) || isPaid ? 1 : 0);
+    const isPaid = Boolean(
+      r.is_paid == 1 || r.is_paid === true || r.is_paid === '1' ||
+      String(r.payment_status).toUpperCase() === 'PAID' ||
+      String(r.payment_status).toUpperCase() === 'COMPLETED' ||
+      String(r.status).toUpperCase() === 'CONFIRMED' ||
+      String(r.status).toUpperCase() === 'PAID'
+    );
+    const isAcc = isPaid ? 1 : (r.is_accepted !== undefined ? Number(r.is_accepted) : (['UPCOMING', 'CONFIRMED', 'ACCEPTED'].includes(String(r.status).toUpperCase()) ? 1 : 0));
     const payStatus = isPaid ? 'PAID' : (r.payment_status || 'PENDING');
-    const custName = r.customer_name || 'User';
+    const custName = r.customer_name || r.user_name || r.sender_name || r.name || 'Amit';
     const partName = r.partner_name || '';
+    const photoUrl = r.profile_image || '';
+    const senderObj = {
+      id: r.user_id,
+      user_id: r.user_id,
+      name: custName,
+      customer_name: custName,
+      user_name: custName,
+      sender_name: custName,
+      image: photoUrl,
+      profile_image: photoUrl
+    };
     return {
       booking_id: r.booking_id,
       request_id: r.request_id || null,
@@ -1137,21 +1188,26 @@ async function fetchPartnerBookingsFromMysql(partnerId, statusFilter) {
       sender_name: custName,
       title: custName,
       header_title: `Booking with: ${custName}`,
+      sender: senderObj,
+      user: senderObj,
       phone_number: r.customer_phone || '',
-      profile_image: r.profile_image || '',
+      profile_image: photoUrl,
+      image: photoUrl,
       interest: r.activity || 'Coffee',
       activity: r.activity || 'Coffee',
       location: r.location || 'Jaipur',
       date: r.date || new Date().toISOString().split('T')[0],
       time: r.time || '06:00 PM',
-      status: r.status || (isPaid ? 'CONFIRMED' : 'Upcoming'),
+      status: isPaid ? 'CONFIRMED' : (r.status || 'Upcoming'),
       is_accepted: isAcc,
       price: r.price || 1,
       currency: r.currency || 'INR',
       payment_status: payStatus,
       is_paid: isPaid,
+      isPaid: isPaid,
+      is_payment_completed: isPaid,
       can_chat: isPaid,
-      can_pay: Boolean(isAcc === 1 && !isPaid),
+      can_pay: Boolean(!isPaid && isAcc === 1),
       chat_status: isPaid ? 'UNLOCKED' : 'LOCKED',
       badge: isPaid ? 'Payment Received - Chat Open' : (isAcc === 1 ? 'Payment Pending' : 'New Request'),
       meeting_info: {
