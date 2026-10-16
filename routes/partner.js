@@ -70,7 +70,8 @@ const handleIncomingUserRequest = async (req, res) => {
   const paymentId = requestPayload.payment_id || `pay_${requestId}`;
   const partnerId = requestPayload.partner_id || requestPayload.receiver_id || '';
   const userId = requestPayload.user_id || requestPayload.sender_id || '';
-  const senderName = requestPayload.name || requestPayload.sender_name || 'User';
+  const partnerName = requestPayload.partner_name || '';
+  const customerName = requestPayload.user_name || requestPayload.customer_name || requestPayload.sender_name || requestPayload.name || 'User';
   const senderPhone = requestPayload.phone_number || requestPayload.sender_phone || '';
   const interest = requestPayload.interest || requestPayload.activity_name || requestPayload.activity || (requestPayload.activity && requestPayload.activity.type) || 'Coffee';
   const location = requestPayload.location || (requestPayload.activity && requestPayload.activity.area) || 'Jaipur';
@@ -89,16 +90,21 @@ const handleIncomingUserRequest = async (req, res) => {
   const isAccepted = 0;
   const message = requestPayload.message || 'Meetup request received.';
 
-  console.log(`[PARTNER REQUEST] Incoming sync: requestId=${requestId}, bookingId=${bookingId}, partnerId=${partnerId}, userId=${userId}, status=${status}, is_paid=${isPaid ? 1 : 0}`);
+  console.log(`[PARTNER REQUEST] Incoming sync: requestId=${requestId}, bookingId=${bookingId}, partnerId=${partnerId}, partnerName=${partnerName}, customerName=${customerName}, userId=${userId}, status=${status}, is_paid=${isPaid ? 1 : 0}`);
 
   const newRequest = {
     request_id: requestId,
     booking_id: bookingId,
     payment_id: paymentId,
     partner_id: partnerId,
+    partner_name: partnerName,
     user_id: userId,
-    name: senderName,
-    sender_name: senderName,
+    name: customerName,
+    customer_name: customerName,
+    user_name: customerName,
+    sender_name: customerName,
+    title: customerName,
+    header_title: `Request from: ${customerName}`,
     phone_number: senderPhone,
     sender_avatar: profileImage,
     age: requestPayload.age || 25,
@@ -189,7 +195,8 @@ const handleIncomingUserBooking = async (req, res) => {
   const requestId = bookingPayload.request_id || `req_b_${bookingId}`;
   const partnerId = bookingPayload.partner_id || bookingPayload.receiver_id || '';
   const userId = bookingPayload.user_id || bookingPayload.sender_id || '';
-  const userName = bookingPayload.name || bookingPayload.customer_name || bookingPayload.user_name || 'User';
+  const partnerName = bookingPayload.partner_name || '';
+  const customerName = bookingPayload.user_name || bookingPayload.customer_name || bookingPayload.sender_name || bookingPayload.name || 'User';
   const userPhone = bookingPayload.phone_number || bookingPayload.customer_phone || '';
   const interest = bookingPayload.interest || bookingPayload.activity || 'Coffee';
   const location = bookingPayload.location || (bookingPayload.meeting_info && (bookingPayload.meeting_info.location || bookingPayload.meeting_info.place)) || 'Jaipur';
@@ -208,19 +215,23 @@ const handleIncomingUserBooking = async (req, res) => {
   const status = 'PENDING';
   const isAccepted = 0;
 
-  console.log(`[PARTNER BOOKING] Incoming sync: bookingId=${bookingId}, requestId=${requestId}, partnerId=${partnerId}, userId=${userId}, status=PENDING, is_paid=${isPaid ? 1 : 0}`);
+  console.log(`[PARTNER BOOKING] Incoming sync: bookingId=${bookingId}, requestId=${requestId}, partnerId=${partnerId}, partnerName=${partnerName}, customerName=${customerName}, userId=${userId}, status=PENDING, is_paid=${isPaid ? 1 : 0}`);
 
   const requestItem = {
     request_id: requestId,
     booking_id: bookingId,
     user_id: userId,
     partner_id: partnerId,
+    partner_name: partnerName,
     profile_image: profileImage,
     image: profileImage,
     sender_avatar: profileImage,
-    name: userName,
-    sender_name: userName,
-    customer_name: userName,
+    name: customerName,
+    customer_name: customerName,
+    user_name: customerName,
+    sender_name: customerName,
+    title: customerName,
+    header_title: `Request from: ${customerName}`,
     phone_number: userPhone,
     age: bookingPayload.age || 25,
     id_verified: 1,
@@ -432,9 +443,20 @@ router.get('/home', authenticateToken, async (req, res) => {
       .map(r => {
         const isPaid = Boolean(r.is_paid);
         const payStatus = r.payment_status || (isPaid ? 'PAID' : 'UNPAID');
+        const custName = r.customer_name || r.user_name || r.sender_name || r.name || 'User';
+        const partName = r.partner_name || (req.user && req.user.name) || '';
         return {
           request_id: r.request_id,
           booking_id: r.booking_id || `BK${Math.floor(100000 + Math.random() * 900000)}`,
+          user_id: r.user_id,
+          partner_id: r.partner_id || currentUserId,
+          partner_name: partName,
+          customer_name: custName,
+          user_name: custName,
+          sender_name: custName,
+          name: custName,
+          title: custName,
+          header_title: `Request from: ${custName}`,
           interest: r.interest,
           activity: r.interest,
           date_time: r.date_time,
@@ -443,8 +465,6 @@ router.get('/home', authenticateToken, async (req, res) => {
           location: r.location,
           image: formatPhotoUrl(r.image, req),
           profile_image: formatPhotoUrl(r.image, req),
-          name: r.name,
-          sender_name: r.name,
           phone_number: r.phone_number || '',
           pending_status: 'PENDING',
           status: 'PENDING',
@@ -472,10 +492,20 @@ router.get('/home', authenticateToken, async (req, res) => {
       .map(b => {
         const isPaid = Boolean(b.is_paid);
         const payStatus = b.payment_status || (isPaid ? 'PAID' : 'UNPAID');
+        const custName = b.customer_name || b.user_name || b.sender_name || b.name || 'User';
+        const partName = b.partner_name || (req.user && req.user.name) || '';
         return {
           booking_id: b.booking_id,
-          name: b.name,
-          customer_name: b.name,
+          request_id: b.request_id,
+          user_id: b.user_id,
+          partner_id: b.partner_id || currentUserId,
+          partner_name: partName,
+          customer_name: custName,
+          user_name: custName,
+          sender_name: custName,
+          name: custName,
+          title: custName,
+          header_title: `Booking with: ${custName}`,
           phone_number: b.phone_number || '',
           interest: b.interest,
           activity: b.interest,
@@ -568,11 +598,20 @@ const handleGetAllPartnerRequests = async (req, res) => {
       const isAcc = Number(r.is_accepted !== undefined ? r.is_accepted : (String(r.status).toUpperCase() === 'ACCEPTED' ? 1 : 0));
       const isPaid = Boolean(r.is_paid);
       const payStatus = r.payment_status || (isPaid ? 'PAID' : 'UNPAID');
+      const custName = r.customer_name || r.user_name || r.sender_name || r.name || 'User Request';
+      const partName = r.partner_name || (req.user && req.user.name) || '';
       return {
         request_id: r.request_id,
         booking_id: r.booking_id,
-        name: r.name || r.sender_name || 'User Request',
-        sender_name: r.sender_name || r.name || 'User Request',
+        user_id: r.user_id,
+        partner_id: r.partner_id || currentUserId,
+        partner_name: partName,
+        customer_name: custName,
+        user_name: custName,
+        sender_name: custName,
+        name: custName,
+        title: custName,
+        header_title: `Request from: ${custName}`,
         phone_number: r.phone_number || '',
         age: r.age || 25,
         image: photoUrl,
@@ -642,18 +681,25 @@ const handlePartnerAppRequestDetails = async (req, res) => {
     const partnerUserIdVal = String(r.partner_id || req.user.user_id);
     const isAcc = Number(r.is_accepted !== undefined ? r.is_accepted : (String(r.status).toUpperCase() === 'ACCEPTED' ? 1 : 0));
     const isPaid = Boolean(r.is_paid);
-    const payStatus = r.payment_status || (isPaid ? 'PAID' : 'UNPAID');
+    const custName = r.customer_name || r.user_name || r.sender_name || r.name || 'User';
+    const partName = r.partner_name || (req.user && req.user.name) || '';
 
     const responseData = {
       request_id: r.request_id,
       booking_id: r.booking_id,
+      user_id: r.user_id,
       partner_id: r.partner_id,
+      partner_name: partName,
       partner_user_id: partnerUserIdVal,
       partnerUserId: partnerUserIdVal,
       image: photoUrl,
       profile_image: photoUrl,
-      name: r.sender_name || 'User',
-      sender_name: r.sender_name || 'User',
+      customer_name: custName,
+      user_name: custName,
+      sender_name: custName,
+      name: custName,
+      title: custName,
+      header_title: `Request from: ${custName}`,
       phone_number: r.sender_phone || '',
       age: 25,
       id_verified: 1,
@@ -795,14 +841,21 @@ const handlePartnerRequestDecision = async (req, res, actionType) => {
 
     if (isAccept) {
       // Create confirmed/upcoming booking in withme_partner_bookings
+      const custName = requestData.customer_name || requestData.user_name || requestData.sender_name || requestData.name || 'User';
+      const partName = requestData.partner_name || (req.user && req.user.name) || '';
       const newBooking = {
         booking_id: bookingId,
         request_id: requestId,
         user_id: requestData.user_id,
         partner_id: requestData.partner_id,
+        partner_name: partName,
         profile_image: requestData.sender_avatar || '',
-        name: requestData.sender_name || 'User',
-        customer_name: requestData.sender_name || 'User',
+        name: custName,
+        customer_name: custName,
+        user_name: custName,
+        sender_name: custName,
+        title: custName,
+        header_title: `Booking with: ${custName}`,
         phone_number: requestData.sender_phone || '',
         age: 25,
         id_verified: 1,
@@ -935,6 +988,8 @@ router.get('/bookings/:booking_id', authenticateToken, async (req, res) => {
     }
 
     const b = rows[0];
+    const custName = b.customer_name || b.user_name || b.sender_name || b.name || 'User';
+    const partName = b.partner_name || (req.user && req.user.name) || '';
     let meetingInfo = { date: b.date, time: b.time, place: b.location, type: b.activity, description: 'Meetup details' };
     let safetyChecklist = { start_safe_meet: false };
     let safeMeetMode = { location_allow: 1, notify_trusted_contact: 1, safety_check_in: 1 };
@@ -944,14 +999,28 @@ router.get('/bookings/:booking_id', authenticateToken, async (req, res) => {
       message: 'Success',
       data: {
         booking_id: b.booking_id,
+        request_id: b.request_id || null,
+        user_id: b.user_id,
+        partner_id: b.partner_id,
+        partner_name: partName,
         image: formatPhotoUrl(b.profile_image, req),
         profile_image: formatPhotoUrl(b.profile_image, req),
-        name: b.customer_name || 'User',
+        name: custName,
+        customer_name: custName,
+        user_name: custName,
+        sender_name: custName,
+        title: custName,
+        header_title: `Booking with: ${custName}`,
+        phone_number: b.customer_phone || '',
         age: 25,
         id_verified: 1,
         selfie_verified: 1,
         location: b.location,
         interest: b.activity,
+        activity: b.activity,
+        date: b.date,
+        time: b.time,
+        status: b.status,
         meeting_info: meetingInfo,
         safety_checklist: safetyChecklist,
         safe_meet_mode: safeMeetMode
@@ -1070,13 +1139,22 @@ router.get(['/bookings', '/bookings/list'], authenticateToken, async (req, res) 
     const list = dbBookings.map(b => {
       const isPaid = Boolean(b.is_paid);
       const payStatus = b.payment_status || (isPaid ? 'PAID' : 'UNPAID');
+      const custName = b.customer_name || b.user_name || b.sender_name || b.name || 'User';
+      const partName = b.partner_name || (req.user && req.user.name) || '';
       return {
         booking_id: b.booking_id,
         request_id: b.request_id,
+        user_id: b.user_id,
+        partner_id: b.partner_id || currentUserId,
+        partner_name: partName,
         image: formatPhotoUrl(b.profile_image, req),
         profile_image: formatPhotoUrl(b.profile_image, req),
-        name: b.name,
-        customer_name: b.name,
+        name: custName,
+        customer_name: custName,
+        user_name: custName,
+        sender_name: custName,
+        title: custName,
+        header_title: `Booking with: ${custName}`,
         phone_number: b.phone_number || '',
         interest: b.interest,
         activity: b.interest,

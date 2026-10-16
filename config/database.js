@@ -119,6 +119,7 @@ async function initMysqlDatabase() {
         booking_id VARCHAR(50),
         user_id VARCHAR(50),
         partner_id VARCHAR(50) NOT NULL,
+        partner_name VARCHAR(150) DEFAULT NULL,
         sender_name VARCHAR(150),
         sender_phone VARCHAR(30),
         sender_avatar TEXT,
@@ -142,6 +143,7 @@ async function initMysqlDatabase() {
         booking_id VARCHAR(50) NOT NULL UNIQUE,
         user_id VARCHAR(50),
         partner_id VARCHAR(50) NOT NULL,
+        partner_name VARCHAR(150) DEFAULT NULL,
         customer_name VARCHAR(150),
         customer_phone VARCHAR(30),
         profile_image TEXT,
@@ -264,10 +266,12 @@ async function initMysqlDatabase() {
       'ALTER TABLE withme_partners ADD COLUMN profile_step_pending VARCHAR(100) DEFAULT NULL',
       'ALTER TABLE withme_partners ADD COLUMN profile_completed TINYINT(1) DEFAULT 0',
       'ALTER TABLE withme_partners ADD COLUMN pincode VARCHAR(20) DEFAULT NULL',
+      'ALTER TABLE withme_partner_requests ADD COLUMN partner_name VARCHAR(150) DEFAULT NULL',
       'ALTER TABLE withme_partner_requests ADD COLUMN is_accepted TINYINT(1) DEFAULT 0',
       'ALTER TABLE withme_partner_requests ADD COLUMN payment_status VARCHAR(50) DEFAULT "PENDING"',
       'ALTER TABLE withme_partner_requests ADD COLUMN is_paid TINYINT(1) DEFAULT 0',
       'ALTER TABLE withme_partner_requests ADD COLUMN payment_id VARCHAR(100) DEFAULT NULL',
+      'ALTER TABLE withme_partner_bookings ADD COLUMN partner_name VARCHAR(150) DEFAULT NULL',
       'ALTER TABLE withme_partner_bookings ADD COLUMN profile_image TEXT DEFAULT NULL',
       'ALTER TABLE withme_partner_bookings ADD COLUMN is_accepted TINYINT(1) DEFAULT 0',
       'ALTER TABLE withme_partner_bookings ADD COLUMN payment_status VARCHAR(50) DEFAULT "PENDING"',
@@ -898,13 +902,20 @@ async function fetchPartnerRequestsFromMysql(partnerId) {
     const isAcc = r.is_accepted !== undefined ? Number(r.is_accepted) : (r.status === 'ACCEPTED' || r.status === 'CONFIRMED' ? 1 : 0);
     const isPaid = Boolean(r.is_paid == 1 || r.is_paid === true || String(r.payment_status).toUpperCase() === 'PAID');
     const payStatus = isPaid ? 'PAID' : (r.payment_status || 'PENDING');
+    const custName = r.sender_name || 'User';
+    const partName = r.partner_name || '';
     return {
       request_id: r.request_id || `req_${r.id}`,
       booking_id: r.booking_id,
       user_id: r.user_id,
       partner_id: r.partner_id,
-      name: r.sender_name || 'User Request',
-      sender_name: r.sender_name || 'User Request',
+      partner_name: partName,
+      name: custName,
+      customer_name: custName,
+      user_name: custName,
+      sender_name: custName,
+      title: custName,
+      header_title: `Request from: ${custName}`,
       phone_number: r.sender_phone || '',
       age: 25,
       image: r.sender_avatar || '',
@@ -947,7 +958,7 @@ async function savePartnerRequestToMysql(requestData) {
   const db = getDbPool();
   const reqId = requestData.request_id || `req_${Date.now()}`;
   const bId = requestData.booking_id || `BK${Date.now()}`;
-  const senderName = requestData.name || requestData.sender_name || 'User';
+  const custName = requestData.customer_name || requestData.user_name || requestData.sender_name || requestData.name || 'User';
   const senderPhone = requestData.phone_number || requestData.sender_phone || '';
   const senderAvatar = requestData.image || requestData.profile_image || requestData.sender_avatar || '';
   const userId = requestData.user_id || requestData.sender_id || '';
@@ -972,13 +983,22 @@ async function savePartnerRequestToMysql(requestData) {
   // Resolve partner_id to canonical DB identifier
   const resolvedPartnerId = await resolvePartnerCanonicalId(rawPartnerId);
 
+  let partnerName = requestData.partner_name || '';
+  if (!partnerName && resolvedPartnerId) {
+    try {
+      const p = await findPartnerByIdFromMysql(resolvedPartnerId);
+      if (p) partnerName = p.name || '';
+    } catch (e) {}
+  }
+
   await db.query(
     `INSERT INTO withme_partner_requests (
-      request_id, booking_id, user_id, partner_id, sender_name, sender_phone, sender_avatar,
+      request_id, booking_id, user_id, partner_id, partner_name, sender_name, sender_phone, sender_avatar,
       activity, date, time, location, message, price, status, is_accepted, payment_status, is_paid, payment_id
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON DUPLICATE KEY UPDATE
       partner_id = VALUES(partner_id),
+      partner_name = VALUES(partner_name),
       sender_name = VALUES(sender_name),
       sender_phone = VALUES(sender_phone),
       sender_avatar = VALUES(sender_avatar),
@@ -994,9 +1014,9 @@ async function savePartnerRequestToMysql(requestData) {
       is_paid = VALUES(is_paid),
       payment_id = VALUES(payment_id),
       updated_at = NOW()`,
-    [reqId, bId, userId, resolvedPartnerId, senderName, senderPhone, senderAvatar, activity, date, time, location, message, price, status, isAccepted, paymentStatus, isPaid ? 1 : 0, paymentId]
+    [reqId, bId, userId, resolvedPartnerId, partnerName, custName, senderPhone, senderAvatar, activity, date, time, location, message, price, status, isAccepted, paymentStatus, isPaid ? 1 : 0, paymentId]
   );
-  console.log(`[WithMe DB] Saved partner request ${reqId} (partner_id=${resolvedPartnerId}, status=${status}, is_accepted=${isAccepted}, is_paid=${isPaid ? 1 : 0}) to 'withme_partner_requests' table.`);
+  console.log(`[WithMe DB] Saved partner request ${reqId} (partner_id=${resolvedPartnerId}, partner_name=${partnerName}, customer_name=${custName}, status=${status}, is_accepted=${isAccepted}, is_paid=${isPaid ? 1 : 0}) to 'withme_partner_requests' table.`);
 }
 
 /**
@@ -1086,14 +1106,21 @@ async function fetchPartnerBookingsFromMysql(partnerId, statusFilter) {
     const isPaid = Boolean(r.is_paid == 1 || r.is_paid === true || String(r.payment_status).toUpperCase() === 'PAID' || String(r.payment_status).toUpperCase() === 'COMPLETED');
     const isAcc = r.is_accepted !== undefined ? Number(r.is_accepted) : (['UPCOMING', 'CONFIRMED', 'ACCEPTED'].includes(String(r.status).toUpperCase()) || isPaid ? 1 : 0);
     const payStatus = isPaid ? 'PAID' : (r.payment_status || 'PENDING');
+    const custName = r.customer_name || 'User';
+    const partName = r.partner_name || '';
     return {
       booking_id: r.booking_id,
       request_id: r.request_id || null,
       payment_id: r.payment_id || `pay_${r.booking_id}`,
       partner_id: r.partner_id,
+      partner_name: partName,
       user_id: r.user_id,
-      name: r.customer_name || 'User',
-      customer_name: r.customer_name || 'User',
+      name: custName,
+      customer_name: custName,
+      user_name: custName,
+      sender_name: custName,
+      title: custName,
+      header_title: `Booking with: ${custName}`,
       phone_number: r.customer_phone || '',
       profile_image: r.profile_image || '',
       interest: r.activity || 'Coffee',
@@ -1128,10 +1155,19 @@ async function fetchPartnerBookingsFromMysql(partnerId, statusFilter) {
 async function savePartnerBookingToMysql(bookingData) {
   const db = getDbPool();
   const bId = bookingData.booking_id || `BK${Date.now()}`;
-  const custName = bookingData.name || bookingData.customer_name || 'User';
+  const custName = bookingData.customer_name || bookingData.user_name || bookingData.sender_name || bookingData.name || 'User';
   const custPhone = bookingData.phone_number || bookingData.customer_phone || '';
   const rawPartnerId = String(bookingData.partner_id || bookingData.receiver_id || '');
   const resolvedPartnerId = await resolvePartnerCanonicalId(rawPartnerId);
+
+  let partnerName = bookingData.partner_name || '';
+  if (!partnerName && resolvedPartnerId) {
+    try {
+      const p = await findPartnerByIdFromMysql(resolvedPartnerId);
+      if (p) partnerName = p.name || '';
+    } catch (e) {}
+  }
+
   const userId = bookingData.user_id || '';
   const profileImage = bookingData.profile_image || bookingData.user_image || '';
   const activity = bookingData.interest || bookingData.activity || (bookingData.meeting_info && (bookingData.meeting_info.activity || bookingData.meeting_info.type)) || 'Coffee';
@@ -1149,11 +1185,12 @@ async function savePartnerBookingToMysql(bookingData) {
 
   await db.query(
     `INSERT INTO withme_partner_bookings (
-      booking_id, request_id, user_id, partner_id, customer_name, customer_phone, profile_image, activity, date, time, location, price, currency, payment_status, status, is_accepted, is_paid, payment_id
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      booking_id, request_id, user_id, partner_id, partner_name, customer_name, customer_phone, profile_image, activity, date, time, location, price, currency, payment_status, status, is_accepted, is_paid, payment_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON DUPLICATE KEY UPDATE
       request_id = VALUES(request_id),
       partner_id = VALUES(partner_id),
+      partner_name = VALUES(partner_name),
       customer_name = VALUES(customer_name),
       customer_phone = VALUES(customer_phone),
       profile_image = VALUES(profile_image),
@@ -1169,9 +1206,9 @@ async function savePartnerBookingToMysql(bookingData) {
       is_paid = VALUES(is_paid),
       payment_id = VALUES(payment_id),
       updated_at = NOW()`,
-    [bId, requestId, userId, resolvedPartnerId, custName, custPhone, profileImage, activity, date, time, location, price, currency, paymentStatus, status, isAccepted, isPaid ? 1 : 0, paymentId]
+    [bId, requestId, userId, resolvedPartnerId, partnerName, custName, custPhone, profileImage, activity, date, time, location, price, currency, paymentStatus, status, isAccepted, isPaid ? 1 : 0, paymentId]
   );
-  console.log(`[WithMe DB] Saved partner booking ${bId} (partner_id=${resolvedPartnerId}, status=${status}, is_accepted=${isAccepted}, is_paid=${isPaid ? 1 : 0}) to 'withme_partner_bookings' table.`);
+  console.log(`[WithMe DB] Saved partner booking ${bId} (partner_id=${resolvedPartnerId}, partner_name=${partnerName}, customer_name=${custName}, status=${status}, is_accepted=${isAccepted}, is_paid=${isPaid ? 1 : 0}) to 'withme_partner_bookings' table.`);
 }
 
 /**
