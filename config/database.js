@@ -511,10 +511,25 @@ async function fetchUsersFromMysql(filter = {}) {
 async function findPartnerByIdFromMysql(userId) {
   if (!userId) return null;
   const db = getDbPool();
-  const [rows] = await db.query(
-    "SELECT * FROM withme_partners WHERE partner_id = ? OR user_id = ? LIMIT 1",
-    [String(userId), String(userId)]
-  );
+  const rawId = String(userId).trim();
+  const cleanMobile = rawId.replace(/\D/g, '');
+  const isNum = !isNaN(Number(rawId)) && Number(rawId) > 0;
+
+  let sql = "SELECT * FROM withme_partners WHERE partner_id = ? OR user_id = ?";
+  let params = [rawId, rawId];
+
+  if (isNum) {
+    sql += " OR id = ?";
+    params.push(Number(rawId));
+  }
+  if (cleanMobile && cleanMobile.length >= 10) {
+    const last10 = cleanMobile.slice(-10);
+    sql += " OR mobile_number = ? OR phone_number = ? OR mobile_number = ? OR phone_number = ?";
+    params.push(last10, last10, `91${last10}`, `91${last10}`);
+  }
+  sql += " LIMIT 1";
+
+  const [rows] = await db.query(sql, params);
   if (rows.length === 0) return null;
   return mapMysqlRowToPartner(rows[0]);
 }

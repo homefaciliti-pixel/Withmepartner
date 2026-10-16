@@ -540,4 +540,62 @@ router.get('/delete', authenticateToken, handleDeleteAuthAccount);
 router.post('/delete', authenticateToken, handleDeleteAuthAccount);
 router.delete('/delete', authenticateToken, handleDeleteAuthAccount);
 
+// ─────────────────────────────────────────────────────────────────────────────
+// SESSION VERIFY / GET CURRENT USER (Prevents logout on app restart)
+// ─────────────────────────────────────────────────────────────────────────────
+const handleGetSessionUser = async (req, res) => {
+  try {
+    const uid = (req.user && (req.user.user_id || req.user.partner_id || req.user.id)) || (req.query && req.query.user_id) || (req.body && req.body.user_id);
+    if (!uid) {
+      return res.status(401).json({ status: false, success: false, message: 'Unauthorized', error_code: 'UNAUTHORIZED' });
+    }
+    const user = await findPartnerByIdFromMysql(uid);
+    if (!user) {
+      return res.status(404).json({ status: false, success: false, message: 'User not found', error_code: 'USER_NOT_FOUND' });
+    }
+    const userPhoto = formatPhotoUrl(user.profile_photo_url || (user.photos && user.photos[0] ? user.photos[0].url : PHOTO_1), req);
+    const partnerObj = {
+      id: user.user_id,
+      user_id: user.user_id,
+      partner_id: user.user_id,
+      name: user.name,
+      full_name: user.name,
+      email: user.email || '',
+      country_code: user.country_code || '+91',
+      mobile_number: user.mobile_number,
+      phone: user.mobile_number,
+      gender: user.gender || '',
+      dob: user.dob || '',
+      city: user.city || '',
+      state: user.state || '',
+      area: user.area || user.locality || '',
+      profile_photo_url: userPhoto,
+      image: userPhoto,
+      photos: user.photos || [],
+      interests: user.interests || [],
+      about: user.about || null,
+      availability: user.availability || null,
+      rating: user.rating || 4.8,
+      profile_completed: Boolean(user.profile_completed),
+      profile_step_pending: user.profile_step_pending || null,
+      is_approved: true,
+      is_verified: true,
+      status: 'ACTIVE'
+    };
+    return res.status(200).json({
+      status: true,
+      success: true,
+      message: 'Session is valid',
+      partner: partnerObj,
+      user: partnerObj,
+      data: partnerObj
+    });
+  } catch (err) {
+    return res.status(500).json({ status: false, success: false, message: 'Server error', error_code: 'SERVER_ERROR' });
+  }
+};
+
+router.get(['/me', '/user', '/verify-token', '/verify', '/session', '/status', '/profile'], authenticateToken, handleGetSessionUser);
+router.post(['/me', '/user', '/verify-token', '/verify', '/session', '/status'], authenticateToken, handleGetSessionUser);
+
 module.exports = router;

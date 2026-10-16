@@ -551,6 +551,13 @@ router.get('/home', authenticateToken, async (req, res) => {
   }
 });
 
+router.get(['/me', '/profile', '/user', '/session'], authenticateToken, async (req, res) => {
+  const uid = (req.user && (req.user.user_id || req.user.partner_id || req.user.id)) || (req.query && req.query.user_id) || (req.body && req.body.user_id);
+  const user = await findPartnerByIdFromMysql(uid);
+  if (!user) return res.status(404).json({ status: false, message: 'Partner not found', error_code: 'USER_NOT_FOUND' });
+  return res.status(200).json({ status: true, success: true, message: 'Success', data: user, partner: user });
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 11. REQUEST DETAIL & ACCEPT / DECLINE
 // ─────────────────────────────────────────────────────────────────────────────
