@@ -915,6 +915,49 @@ async function deleteMessage(messageId, senderId) {
   };
 }
 
+/**
+ * Clear all messages in a conversation
+ */
+async function clearConversationMessages(conversationId) {
+  const convId = Number(conversationId);
+  // Clear from memory
+  for (const [key, msg] of memoryMessages.entries()) {
+    if (Number(msg.conversation_id) === convId) {
+      memoryMessages.delete(key);
+    }
+  }
+
+  try {
+    const db = getDbPool();
+    await db.query(`DELETE FROM messages WHERE conversation_id = ?`, [convId]);
+  } catch (err) {
+    console.error('[clearConversationMessages error]:', err.message);
+  }
+
+  return {
+    success: true,
+    message: "Chat conversation cleared successfully"
+  };
+}
+
+/**
+ * Clear all messages completely
+ */
+async function clearAllMessages() {
+  memoryMessages.clear();
+  try {
+    const db = getDbPool();
+    await db.query(`DELETE FROM messages`);
+  } catch (err) {
+    console.error('[clearAllMessages error]:', err.message);
+  }
+
+  return {
+    success: true,
+    message: "All chat messages cleared successfully"
+  };
+}
+
 module.exports = {
   findUser,
   isUserBlocked,
@@ -928,6 +971,8 @@ module.exports = {
   markMessageDelivered,
   markMessageRead,
   deleteMessage,
+  clearConversationMessages,
+  clearAllMessages,
   toIST,
   canUsersChat,
   unlockChat

@@ -7,7 +7,8 @@ const {
   handleGetMessages,
   handleDeleteMessage,
   handleBlockUser,
-  handleSendMessage
+  handleSendMessage,
+  handleClearChat
 } = require('../controllers/chatController');
 
 // 1. Create/Get Conversation
@@ -42,5 +43,13 @@ router.post('/message/:messageId/delete', authenticateToken, handleDeleteMessage
 
 // 6. Block User
 router.post('/block', authenticateToken, handleBlockUser);
+
+// 7. Clear Chat Messages
+router.delete('/messages/:conversationId/clear', authenticateToken, handleClearChat);
+router.post('/messages/:conversationId/clear', authenticateToken, handleClearChat);
+router.delete('/conversation/:conversationId/messages', authenticateToken, handleClearChat);
+router.post('/conversation/:conversationId/clear', authenticateToken, handleClearChat);
+router.delete('/clear', authenticateToken, handleClearChat);
+router.post('/clear', authenticateToken, handleClearChat);
 
 module.exports = router;

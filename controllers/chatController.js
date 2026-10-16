@@ -295,11 +295,45 @@ async function handleSendMessage(req, res, next) {
   }
 }
 
+/**
+ * API 7 – Clear Chat Messages
+ * DELETE /api/chat/messages/:conversationId/clear
+ * POST /api/chat/messages/:conversationId/clear
+ * DELETE /api/chat/clear
+ * POST /api/chat/clear
+ */
+async function handleClearChat(req, res, next) {
+  try {
+    const conversationId = (req.params && (req.params.conversationId || req.params.id)) ||
+                           (req.body && (req.body.conversationId || req.body.conversation_id)) ||
+                           (req.query && (req.query.conversationId || req.query.conversation_id));
+
+    if (conversationId) {
+      const result = await chatService.clearConversationMessages(conversationId);
+      if (req.app && req.app.get('io')) {
+        const io = req.app.get('io');
+        io.to(`conv_${conversationId}`).emit('chat_cleared', { conversationId: Number(conversationId) });
+      }
+      return res.status(200).json(result);
+    }
+
+    const result = await chatService.clearAllMessages();
+    if (req.app && req.app.get('io')) {
+      const io = req.app.get('io');
+      io.emit('chat_cleared', { all: true });
+    }
+    return res.status(200).json(result);
+  } catch (err) {
+    return next(err);
+  }
+}
+
 module.exports = {
   handleCreateOrGetConversation,
   handleGetConversations,
   handleGetMessages,
   handleDeleteMessage,
   handleBlockUser,
-  handleSendMessage
+  handleSendMessage,
+  handleClearChat
 };
