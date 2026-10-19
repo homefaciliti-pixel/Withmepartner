@@ -849,6 +849,26 @@ router.get(['/me', '/profile', '/user', '/session'], authenticateToken, async (r
   return res.status(200).json({ status: true, success: true, message: 'Success', data: enrichedUser, partner: enrichedUser });
 });
 
+// Profile edit & photos endpoints on /partner router
+const {
+  handleUploadPhotos,
+  handleGetPhotos,
+  handleUpdateSinglePhoto,
+  handleSaveProfileAndPhotos
+} = require('./profile');
+
+router.put(['/profile', '/profile/edit', '/edit-profile'], authenticateToken, handleSaveProfileAndPhotos);
+router.post(['/profile', '/profile/edit', '/edit-profile'], authenticateToken, handleSaveProfileAndPhotos);
+router.patch(['/profile', '/profile/edit', '/edit-profile'], authenticateToken, handleSaveProfileAndPhotos);
+
+router.post(['/photos', '/profile/photos'], authenticateToken, handleUploadPhotos);
+router.put(['/photos', '/profile/photos'], authenticateToken, handleUploadPhotos);
+router.get(['/photos', '/profile/photos'], authenticateToken, handleGetPhotos);
+
+router.put(['/photos/:photo_id', '/profile/photos/:photo_id'], authenticateToken, handleUpdateSinglePhoto);
+router.post(['/photos/:photo_id', '/profile/photos/:photo_id'], authenticateToken, handleUpdateSinglePhoto);
+router.patch(['/photos/:photo_id', '/profile/photos/:photo_id'], authenticateToken, handleUpdateSinglePhoto);
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 11. REQUEST DETAIL & ACCEPT / DECLINE
 // ─────────────────────────────────────────────────────────────────────────────
