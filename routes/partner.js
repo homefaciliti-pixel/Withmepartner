@@ -100,15 +100,19 @@ const handleIncomingUserRequest = async (req, res) => {
   // Issue 6: Block incoming requests if target partner is not verified
   try {
     const targetPartner = await findPartnerByIdFromMysql(partnerId);
-    if (targetPartner && !targetPartner.is_verified && !targetPartner.aadhar) {
+    const verified = targetPartner && (targetPartner.is_verified === true || targetPartner.is_verified === 1 || String(targetPartner.is_verified).toLowerCase() === 'true');
+    const approved = targetPartner && (targetPartner.is_approved === true || targetPartner.is_approved === 1 || String(targetPartner.is_approved).toLowerCase() === 'true');
+    if (!targetPartner || !verified || !approved) {
       return res.status(403).json({
         success: false,
         status: false,
-        message: 'This partner is not verified to receive bookings or requests.',
+        message: 'This partner is not verified and approved to receive bookings or requests.',
         error_code: 'PARTNER_NOT_VERIFIED'
       });
     }
-  } catch (err) {}
+  } catch (err) {
+    return res.status(503).json({ success: false, status: false, message: 'Partner verification status could not be confirmed.', error_code: 'PARTNER_VERIFICATION_UNAVAILABLE' });
+  }
 
   const newRequest = {
     request_id: requestId,
@@ -297,15 +301,19 @@ const handleIncomingUserBooking = async (req, res) => {
   // Issue 6: Block incoming bookings if target partner is not verified
   try {
     const targetPartner = await findPartnerByIdFromMysql(partnerId);
-    if (targetPartner && !targetPartner.is_verified && !targetPartner.aadhar) {
+    const verified = targetPartner && (targetPartner.is_verified === true || targetPartner.is_verified === 1 || String(targetPartner.is_verified).toLowerCase() === 'true');
+    const approved = targetPartner && (targetPartner.is_approved === true || targetPartner.is_approved === 1 || String(targetPartner.is_approved).toLowerCase() === 'true');
+    if (!targetPartner || !verified || !approved) {
       return res.status(403).json({
         success: false,
         status: false,
-        message: 'This partner is not verified to receive bookings or requests.',
+        message: 'This partner is not verified and approved to receive bookings or requests.',
         error_code: 'PARTNER_NOT_VERIFIED'
       });
     }
-  } catch (err) {}
+  } catch (err) {
+    return res.status(503).json({ success: false, status: false, message: 'Partner verification status could not be confirmed.', error_code: 'PARTNER_VERIFICATION_UNAVAILABLE' });
+  }
 
   const requestItem = {
     request_id: requestId,
@@ -582,7 +590,14 @@ router.get(['/all', '/list-all', '/registered', '/partners'], async (req, res) =
     if (req.query.limit) filter.limit = req.query.limit;
 
     const allUsers = await fetchUsersFromMysql(filter);
-    const partnerList = allUsers.map(u => {
+    // Public discovery must contain only partners that have completed verification and approval.
+    const eligibleUsers = (allUsers || []).filter(u => {
+      const verified = u.is_verified === true || u.is_verified === 1 || String(u.is_verified).toLowerCase() === 'true';
+      const approved = u.is_approved === true || u.is_approved === 1 || String(u.is_approved).toLowerCase() === 'true';
+      const status = String(u.status || '').toUpperCase();
+      return verified && approved && status !== 'DELETED' && status !== 'REJECTED' && status !== 'SUSPENDED';
+    });
+    const partnerList = eligibleUsers.map(u => {
       const rawPhoto = u.profile_photo_url || (u.photos && u.photos[0] ? u.photos[0].url : '');
       const photoUrl = rawPhoto ? formatPhotoUrl(rawPhoto, req) : '';
       const formattedPhotos = (u.photos || []).map((p, idx) => {
@@ -623,9 +638,9 @@ router.get(['/all', '/list-all', '/registered', '/partners'], async (req, res) =
         email: u.email,
         mobile_number: u.mobile_number,
         phone: u.mobile_number,
-        gender: u.gender || 'Female',
+        gender: u.gender || '',
         dob: u.dob || '',
-        age: calculateAge(u.dob) || u.age || 21,
+        age: (u.dob ? calculateAge(u.dob) : null) || u.age || null,
         area: u.area || '',
         locality: u.area || '',
         city: u.city || '',
@@ -639,22 +654,22 @@ router.get(['/all', '/list-all', '/registered', '/partners'], async (req, res) =
         profileImages: photoUrlsList,
         secondary_photos: secondaryPhotos,
         photo_gallery: photoUrlsList,
-        category: (aboutData.interests && aboutData.interests[0]) || u.category || 'Coffee',
-        activity: (aboutData.interests && aboutData.interests[0]) || u.activity || 'Coffee',
-        interests: aboutData.interests || u.interests || ['Coffee', 'Travel'],
+        category: (aboutData.interests && aboutData.interests[0]) || u.category || '',
+        activity: (aboutData.interests && aboutData.interests[0]) || u.activity || '',
+        interests: aboutData.interests || u.interests || [],
         description: aboutData.description || u.description || '',
-        rating: u.rating !== undefined ? u.rating : 4.8,
+        rating: u.rating !== undefined ? u.rating : null,
         total_ratings: u.total_ratings || 0,
         total_reviews: u.total_ratings || 0,
-        price: (avail.pricing && avail.pricing[0] && avail.pricing[0].price) || u.price || 1,
+        price: (avail.pricing && avail.pricing[0] && avail.pricing[0].price) || u.price || null,
         currency: 'INR',
         profile_completed: Boolean(u.profile_completed !== undefined ? u.profile_completed : true),
         is_approved: Boolean(u.is_approved),
         is_verified: Boolean(u.is_verified),
-        status: u.status || 'ACTIVE',
+        status: u.status || 'PENDING',
         availability_status: avail.availability_status || 'Available',
-        receive_requests: avail.receive_requests !== undefined ? avail.receive_requests : true,
-        about: aboutData && Object.keys(aboutData).length > 0 ? aboutData : { description: u.description || '', interests: u.interests || ['Coffee', 'Travel'] },
+        receive_requests: avail.receive_requests !== undefined ? avail.receive_requests : false,
+        about: aboutData && Object.keys(aboutData).length > 0 ? aboutData : { description: u.description || '', interests: u.interests || [] },
         availability: avail,
         created_at: u.created_at || new Date().toISOString()
       };
@@ -977,7 +992,7 @@ const handleGetAllPartnerRequests = async (req, res) => {
         sender: senderObj,
         user: senderObj,
         phone_number: r.phone_number || '',
-        age: r.age || 25,
+        age: r.age || null,
         image: photoUrl,
         profile_image: photoUrl,
         id_verified: r.id_verified !== undefined ? r.id_verified : 1,
@@ -1155,9 +1170,9 @@ const handlePartnerAppRequestDetails = async (req, res) => {
       profileImages: customerProfileImages,
       photo_gallery: customerProfileImages,
       phone_number: r.sender_phone || '',
-      age: 25,
-      id_verified: 1,
-      selfie_verified: 1,
+      age: null,
+      id_verified: 0,
+      selfie_verified: 0,
       location: meetupLoc,
       meetup_location: meetupLoc,
       meetup_address: meetupLoc,
@@ -1311,9 +1326,9 @@ const handlePartnerRequestDecision = async (req, res, actionType) => {
         title: custName,
         header_title: `Booking with: ${custName}`,
         phone_number: requestData.sender_phone || '',
-        age: 25,
-        id_verified: 1,
-        selfie_verified: 1,
+        age: null,
+        id_verified: 0,
+        selfie_verified: 0,
         interest: requestData.activity || 'Coffee',
         activity: requestData.activity || 'Coffee',
         location: requestData.location || '',
@@ -1542,9 +1557,9 @@ router.get('/bookings/:booking_id', authenticateToken, async (req, res) => {
         profileImages: customerProfileImages,
         photo_gallery: customerProfileImages,
         phone_number: b.customer_phone || '',
-        age: 25,
-        id_verified: 1,
-        selfie_verified: 1,
+        age: null,
+        id_verified: 0,
+        selfie_verified: 0,
         location: b.location,
         interest: b.activity,
         activity: b.activity,

@@ -544,30 +544,31 @@ router.post('/aadhar', authenticateToken, (req, res) => {
         if (backFile) { const s = saveUploadedFile(backFile, `aadhar_back_${user.user_id}`); if (s) backUrl = s; }
       }
 
-      // Mark Aadhaar approved and partner verified
+      // Store submitted Aadhaar details as pending. Format/checksum validation and image upload
+      // are not proof of identity; only a successful verification-provider response may approve it.
       await updatePartnerInMysql(user.user_id, {
         aadhar: {
-          aadhar_number: cleanAadhar,
+          aadhar_number: encryptedAadhar,
           aadhar_front_url: frontUrl,
           aadhar_back_url: backUrl,
-          aadhar_verification_status: 'APPROVED'
+          aadhar_verification_status: 'PENDING'
         },
-        is_verified: 1,
-        is_approved: 1,
-        profile_step_pending: 'ABOUT_YOU'
+        is_verified: 0,
+        is_approved: 0,
+        profile_step_pending: 'AADHAAR_VERIFICATION'
       });
 
-      // Sync verified partner to User App
+      // Sync the pending state to User App so this partner remains hidden until genuinely verified.
       syncPartnerToUserApp({
         ...user,
-        is_verified: true,
-        is_approved: true,
-        aadhar: { aadhar_number: cleanAadhar, aadhar_verification_status: 'APPROVED' }
+        is_verified: false,
+        is_approved: false,
+        aadhar: { aadhar_verification_status: 'PENDING' }
       }).catch(() => {});
 
-      return res.status(201).json({
+      return res.status(202).json({
         status: true,
-        message: 'Aadhar details verified successfully',
+        message: 'Aadhaar details submitted and pending verification. The partner will not be visible until verification succeeds.',
         data: {
           aadhar_verification_status: 'APPROVED',
           is_verified: true,
