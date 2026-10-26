@@ -15,7 +15,8 @@ const {
   findPartnerByIdFromMysql,
   fetchPartnerBookingsFromMysql,
   fetchPartnerTransactionsFromMysql,
-  getDbPool
+  getDbPool,
+  calculateAge
 } = require('../config/database');
 const { syncPartnerToUserApp } = require('../services/userAppSyncService');
 
