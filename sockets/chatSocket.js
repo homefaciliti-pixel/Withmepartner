@@ -127,31 +127,42 @@ function initChatSocket(server) {
     io.emit('user_online', onlinePayload);
     io.emit('online_status', onlinePayload);
 
-    // Handle join_conversation room
+    // Handle join_conversation room (supports both numeric conversationId and bookingId)
     socket.on('join_conversation', (data) => {
       const cId = data ? (data.conversationId || data.conversation_id) : null;
+      const bId = data ? (data.bookingId || data.booking_id) : null;
       if (cId) {
         socket.join(`conv_${cId}`);
         socket.join(String(cId));
+      }
+      if (bId) {
+        socket.join(`conv_${bId}`);
+        socket.join(String(bId));
       }
     });
 
     socket.on('join_room', (data) => {
       const cId = data ? (data.conversationId || data.conversation_id || data.room) : null;
+      const bId = data ? (data.bookingId || data.booking_id) : null;
       if (cId) {
         socket.join(`conv_${cId}`);
         socket.join(String(cId));
       }
+      if (bId) {
+        socket.join(`conv_${bId}`);
+        socket.join(String(bId));
+      }
     });
 
-    // Handle send_message
+    // Handle send_message (supports bookingId for session-specific chats)
     socket.on('send_message', async (data, callback) => {
       try {
         const senderId = socket.userId; // ALWAYS use authenticated socket.userId
-        const { conversationId, receiverId, message } = data || {};
+        let { conversationId, bookingId, booking_id, receiverId, message } = data || {};
+        const bId = bookingId || booking_id || null;
 
-        if (!conversationId || !receiverId || message === undefined || message === null) {
-          const errRes = { success: false, message: "Missing required fields: conversationId, receiverId, message" };
+        if ((!conversationId && !bId) || !receiverId || message === undefined || message === null) {
+          const errRes = { success: false, message: "Missing required fields: conversationId (or bookingId), receiverId, message" };
           if (typeof callback === 'function') callback(errRes);
           socket.emit('error', errRes);
           return;
@@ -172,17 +183,25 @@ function initChatSocket(server) {
           return;
         }
 
-        // Auto-join sender to conversation room
-        socket.join(`conv_${conversationId}`);
-        socket.join(String(conversationId));
+        // Auto-join sender to conversation and booking rooms
+        if (conversationId) {
+          socket.join(`conv_${conversationId}`);
+          socket.join(String(conversationId));
+        }
+        if (bId) {
+          socket.join(`conv_${bId}`);
+          socket.join(String(bId));
+        }
 
-        // Verify sender is in conversation
-        const isMember = await chatService.isUserInConversation(conversationId, senderId);
-        if (!isMember) {
-          const errRes = { success: false, message: "Unauthorized: You are not a member of this conversation" };
-          if (typeof callback === 'function') callback(errRes);
-          socket.emit('error', errRes);
-          return;
+        // Verify sender is in conversation if conversationId is given
+        if (conversationId) {
+          const isMember = await chatService.isUserInConversation(conversationId, senderId);
+          if (!isMember && !bId) {
+            const errRes = { success: false, message: "Unauthorized: You are not a member of this conversation" };
+            if (typeof callback === 'function') callback(errRes);
+            socket.emit('error', errRes);
+            return;
+          }
         }
 
         // Verify blocks
@@ -194,8 +213,8 @@ function initChatSocket(server) {
           return;
         }
 
-        // Verify payment is completed before sending message
-        const canChat = await chatService.canUsersChat(senderId, receiverId);
+        // Verify payment is completed before sending message (supports session booking check)
+        const canChat = await chatService.canUsersChat(senderId, receiverId, bId);
         if (!canChat) {
           const errRes = {
             success: false,
@@ -208,20 +227,35 @@ function initChatSocket(server) {
           return;
         }
 
-        // Save message
+        // Save message with bookingId
         const savedMsg = await chatService.saveMessage({
           conversationId,
+          bookingId: bId,
           senderId,
           receiverId,
           message: cleanMessage,
           messageType: 'text'
         });
 
+        const resolvedConvId = Number(savedMsg.conversation_id || conversationId);
+        const resolvedBookingId = savedMsg.booking_id || bId || null;
+
+        if (resolvedConvId) {
+          socket.join(`conv_${resolvedConvId}`);
+          socket.join(String(resolvedConvId));
+        }
+        if (resolvedBookingId) {
+          socket.join(`conv_${resolvedBookingId}`);
+          socket.join(String(resolvedBookingId));
+        }
+
         const msgPayload = {
           id: Number(savedMsg.id),
           messageId: Number(savedMsg.id),
-          conversationId: Number(conversationId),
-          conversation_id: Number(conversationId),
+          conversationId: resolvedConvId,
+          conversation_id: resolvedConvId,
+          bookingId: resolvedBookingId,
+          booking_id: resolvedBookingId,
           senderId: isNaN(senderId) ? senderId : Number(senderId),
           sender_id: isNaN(senderId) ? senderId : Number(senderId),
           receiverId: isNaN(receiverId) ? String(receiverId) : Number(receiverId),
@@ -239,10 +273,27 @@ function initChatSocket(server) {
         socket.emit('message_sent', msgPayload);
         if (typeof callback === 'function') callback({ success: true, data: msgPayload });
 
-        // Deliver to receiver & conversation rooms across all key variants
+        // Deliver to conversation and booking rooms
+        if (resolvedConvId) {
+          io.to(`conv_${resolvedConvId}`).emit('receive_message', msgPayload);
+          io.to(`conv_${resolvedConvId}`).emit('new_message', msgPayload);
+          io.to(`conv_${resolvedConvId}`).emit('chat_message', msgPayload);
+          io.to(String(resolvedConvId)).emit('receive_message', msgPayload);
+          io.to(String(resolvedConvId)).emit('new_message', msgPayload);
+          io.to(String(resolvedConvId)).emit('chat_message', msgPayload);
+        }
+        if (resolvedBookingId) {
+          io.to(`conv_${resolvedBookingId}`).emit('receive_message', msgPayload);
+          io.to(`conv_${resolvedBookingId}`).emit('new_message', msgPayload);
+          io.to(`conv_${resolvedBookingId}`).emit('chat_message', msgPayload);
+          io.to(String(resolvedBookingId)).emit('receive_message', msgPayload);
+          io.to(String(resolvedBookingId)).emit('new_message', msgPayload);
+          io.to(String(resolvedBookingId)).emit('chat_message', msgPayload);
+        }
+
+        // Deliver to receiver direct user rooms across all key variants
         const rIdStr = String(receiverId).trim();
         const rDigits = rIdStr.replace(/\D/g, '');
-        const convRoom = `conv_${conversationId}`;
 
         // Gather all sockets registered for receiver ID
         const activeSockets = new Set();
@@ -252,9 +303,6 @@ function initChatSocket(server) {
           }
         });
 
-        io.to(convRoom).emit('receive_message', msgPayload);
-        io.to(convRoom).emit('new_message', msgPayload);
-        io.to(convRoom).emit('chat_message', msgPayload);
         io.to(rIdStr).emit('receive_message', msgPayload);
         io.to(rIdStr).emit('new_message', msgPayload);
         io.to(rIdStr).emit('chat_message', msgPayload);
@@ -286,17 +334,30 @@ function initChatSocket(server) {
           // Notify sender of delivery status
           socket.emit('message_delivered', {
             messageId: Number(savedMsg.id),
-            conversationId: Number(conversationId)
+            conversationId: resolvedConvId,
+            bookingId: resolvedBookingId
           });
         }
 
         // Trigger chat_message push notification async in background
-        setImmediate(() => {
+        setImmediate(async () => {
+          let senderName = 'User';
+          try {
+            const senderUser = await chatService.findUser(senderId);
+            if (senderUser) senderName = senderUser.name || senderUser.full_name || senderUser.customer_name || 'User';
+          } catch (e) {}
+
           sendEventNotification('chat_message', {
             targetUserId: receiverId,
             sender_id: senderId,
+            otherUserId: senderId,
+            otherUserName: senderName,
+            name: senderName,
             message: cleanMessage,
-            conversation_id: conversationId
+            conversation_id: resolvedConvId,
+            chatId: resolvedConvId,
+            bookingId: resolvedBookingId || '',
+            booking_id: resolvedBookingId || ''
           }).catch(() => {});
         });
       } catch (err) {

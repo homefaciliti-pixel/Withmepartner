@@ -26,13 +26,14 @@ router.post('/send', authenticateToken, handleSendMessage);
 // 4. Get Chat History
 router.get('/messages/:conversationId', authenticateToken, handleGetMessages);
 router.get('/messages', authenticateToken, (req, res, next) => {
-  if (req.query && req.query.conversationId) {
-    req.params.conversationId = req.query.conversationId;
+  const cId = req.query ? (req.query.conversationId || req.query.conversation_id || req.query.bookingId || req.query.booking_id) : null;
+  if (cId) {
+    req.params.conversationId = cId;
     return handleGetMessages(req, res, next);
   }
   return res.status(400).json({
     success: false,
-    message: "conversationId parameter is required",
+    message: "conversationId or bookingId parameter is required",
     error_code: "BAD_REQUEST"
   });
 });

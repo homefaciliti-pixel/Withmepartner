@@ -6,23 +6,39 @@ const { getDbPool } = require('../config/database');
 const memoryNotifications = new Map(); // notification_id -> object
 
 /**
- * Save / Update FCM Token for a user
+ * Save / Update FCM Token for a user (partner or customer)
  */
 async function saveUserFcmToken(userId, fcmToken, deviceType = 'android') {
   if (!userId || !fcmToken) {
     throw new Error("userId and fcm_token are required");
   }
 
-  const uId = String(userId);
+  const uId = String(userId).trim();
+  const digitsOnly = uId.replace(/\D/g, '');
+  const idVariants = Array.from(new Set([
+    uId,
+    digitsOnly,
+    `usr_${digitsOnly}`,
+    `user_${digitsOnly}`,
+    `partner_${digitsOnly}`
+  ].filter(Boolean)));
 
-  // Update in MySQL
+  // Update in MySQL across both withme_partners and users tables
   try {
     const db = getDbPool();
     if (db && typeof db.query === 'function') {
+      const ph = idVariants.map(() => '?').join(',');
       await db.query(
-        `UPDATE withme_partners SET fcm_token = ? WHERE user_id = ? OR partner_id = ? OR mobile_number = ?`,
-        [fcmToken, uId, uId, uId]
-      );
+        `UPDATE withme_partners SET fcm_token = ? 
+         WHERE user_id IN (${ph}) OR partner_id IN (${ph}) OR mobile_number IN (${ph}) OR id IN (${ph})`,
+        [fcmToken, ...idVariants, ...idVariants, ...idVariants, ...idVariants]
+      ).catch(() => {});
+
+      await db.query(
+        `UPDATE users SET fcm_token = ? 
+         WHERE user_id IN (${ph}) OR id IN (${ph}) OR phone_number IN (${ph})`,
+        [fcmToken, ...idVariants, ...idVariants, ...idVariants]
+      ).catch(() => {});
     }
   } catch (err) {
     // Ignore MySQL error if operating on local store
@@ -73,6 +89,17 @@ function sendFcmPushNotification(fcmToken, title, body, dataPayload = {}) {
       res.on('end', () => {
         try {
           const parsed = JSON.parse(data);
+          // If FCM reports invalid or unregistered token, clean up from DB
+          if (parsed && Array.isArray(parsed.results)) {
+            const hasInvalidToken = parsed.results.some(r => r && (r.error === 'NotRegistered' || r.error === 'InvalidRegistration'));
+            if (hasInvalidToken) {
+              const db = getDbPool();
+              if (db && typeof db.query === 'function') {
+                db.query(`UPDATE withme_partners SET fcm_token = NULL WHERE fcm_token = ?`, [fcmToken]).catch(() => {});
+                db.query(`UPDATE users SET fcm_token = NULL WHERE fcm_token = ?`, [fcmToken]).catch(() => {});
+              }
+            }
+          }
           resolve({ sent: true, response: parsed });
         } catch (e) {
           resolve({ sent: true, raw: data });
@@ -98,21 +125,43 @@ async function sendNotification({ userId, title, body, data = {} }) {
     throw new Error("userId, title, and body are required");
   }
 
-  const uId = String(userId);
+  const uId = String(userId).trim();
+  const digitsOnly = uId.replace(/\D/g, '');
+  const idVariants = Array.from(new Set([
+    uId,
+    digitsOnly,
+    `usr_${digitsOnly}`,
+    `user_${digitsOnly}`,
+    `partner_${digitsOnly}`
+  ].filter(Boolean)));
+
   const notificationId = `ntf_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
   const nowStr = new Date().toISOString();
 
-  // Find target user for FCM token
+  // Find target user for FCM token across both withme_partners and users tables
   let fcmToken = null;
   try {
     const db = getDbPool();
     if (db && typeof db.query === 'function') {
-      const [rows] = await db.query(
-        `SELECT fcm_token FROM withme_partners WHERE user_id = ? OR partner_id = ? OR mobile_number = ? LIMIT 1`,
-        [uId, uId, uId]
+      const ph = idVariants.map(() => '?').join(',');
+      const [rowsPartner] = await db.query(
+        `SELECT fcm_token FROM withme_partners 
+         WHERE (user_id IN (${ph}) OR partner_id IN (${ph}) OR mobile_number IN (${ph}) OR id IN (${ph})) 
+         AND fcm_token IS NOT NULL AND fcm_token != '' LIMIT 1`,
+        [...idVariants, ...idVariants, ...idVariants, ...idVariants]
       );
-      if (rows && rows.length > 0 && rows[0].fcm_token) {
-        fcmToken = rows[0].fcm_token;
+      if (rowsPartner && rowsPartner.length > 0 && rowsPartner[0].fcm_token) {
+        fcmToken = rowsPartner[0].fcm_token;
+      } else {
+        const [rowsUser] = await db.query(
+          `SELECT fcm_token FROM users 
+           WHERE (user_id IN (${ph}) OR id IN (${ph}) OR phone_number IN (${ph})) 
+           AND fcm_token IS NOT NULL AND fcm_token != '' LIMIT 1`,
+          [...idVariants, ...idVariants, ...idVariants]
+        );
+        if (rowsUser && rowsUser.length > 0 && rowsUser[0].fcm_token) {
+          fcmToken = rowsUser[0].fcm_token;
+        }
       }
     }
   } catch (err) {
@@ -363,7 +412,20 @@ async function sendEventNotification(eventType, params = {}) {
     case 'message':
       title = `New Message from ${name} 💬`;
       body = params.message ? (params.message.length > 80 ? params.message.substring(0, 80) + '...' : params.message) : "Sent you a new chat message.";
-      dataPayload = { type: "chat_message", conversation_id: params.conversation_id || '', sender_id: params.sender_id || '' };
+      dataPayload = {
+        type: "chat_message",
+        bookingId: String(bookingId || params.bookingId || params.booking_id || ''),
+        booking_id: String(bookingId || params.bookingId || params.booking_id || ''),
+        chatId: String(params.conversation_id || params.conversationId || params.chatId || ''),
+        conversation_id: String(params.conversation_id || params.conversationId || params.chatId || ''),
+        conversationId: String(params.conversation_id || params.conversationId || params.chatId || ''),
+        otherUserId: String(params.otherUserId || params.sender_id || params.senderId || ''),
+        other_user_id: String(params.otherUserId || params.sender_id || params.senderId || ''),
+        otherUserName: String(name || ''),
+        other_user_name: String(name || ''),
+        sender_id: String(params.sender_id || params.senderId || ''),
+        message: String(params.message || '')
+      };
       break;
 
     case 'review_rating':

@@ -8,26 +8,38 @@ const memoryMessages = new Map(); // messageId -> { id, conversation_id, sender_
 const memoryBlocks = new Set(); // "blockerId:blockedId"
 const unlockedChats = new Set(); // "user1Id:user2Id"
 
-function unlockChat(user1Id, user2Id) {
+function unlockChat(user1Id, user2Id, bookingId = null) {
   const u1 = toUserIdStr(user1Id);
   const u2 = toUserIdStr(user2Id);
+  const bId = bookingId ? String(bookingId).trim() : null;
   if (u1 && u2) {
     unlockedChats.add(`${u1}:${u2}`);
     unlockedChats.add(`${u2}:${u1}`);
+    if (bId) {
+      unlockedChats.add(`${u1}:${u2}:${bId}`);
+      unlockedChats.add(`${u2}:${u1}:${bId}`);
+    }
   }
 }
 
 /**
  * Check if chat between two users is unlocked (requires an accepted & paid booking/request)
+ * Supports optional bookingId parameter to verify a specific session.
  */
-async function canUsersChat(user1Id, user2Id) {
+async function canUsersChat(user1Id, user2Id, bookingId = null) {
   const u1 = toUserIdStr(user1Id);
   const u2 = toUserIdStr(user2Id);
+  const bId = bookingId ? String(bookingId).trim() : null;
 
   if (!u1 || !u2) return false;
   if (u1 === u2) return false;
 
   // 1. Fast check in-memory cache
+  if (bId) {
+    if (unlockedChats.has(`${u1}:${u2}:${bId}`) || unlockedChats.has(`${u2}:${u1}:${bId}`)) {
+      return true;
+    }
+  }
   if (unlockedChats.has(`${u1}:${u2}`) || unlockedChats.has(`${u2}:${u1}`)) {
     return true;
   }
@@ -43,10 +55,26 @@ async function canUsersChat(user1Id, user2Id) {
   const v1 = getVariants(u1);
   const v2 = getVariants(u2);
 
+  // If bookingId provided, prepare candidate booking variants
+  const bVariants = bId ? Array.from(new Set([
+    bId,
+    bId.replace(/\D/g, ''),
+    bId.startsWith('BK') ? bId : `BK${bId.replace(/\D/g, '')}`,
+    bId.startsWith('req_') ? bId : `req_${bId}`
+  ].filter(Boolean))) : [];
+
   try {
     const db = getDbPool();
     const ph1 = v1.map(() => '?').join(',');
     const ph2 = v2.map(() => '?').join(',');
+
+    let bookingSqlCondition = '';
+    let bookingParams = [];
+    if (bVariants.length > 0) {
+      const bPh = bVariants.map(() => '?').join(',');
+      bookingSqlCondition = ` AND (booking_id IN (${bPh}) OR request_id IN (${bPh}) OR id IN (${bPh}))`;
+      bookingParams = [...bVariants, ...bVariants, ...bVariants];
+    }
 
     // Check withme_partner_requests
     const [rowsReq] = await db.query(
@@ -56,15 +84,15 @@ async function canUsersChat(user1Id, user2Id) {
          (partner_id IN (${ph1}) AND user_id IN (${ph2}))
          OR
          (partner_id IN (${ph2}) AND user_id IN (${ph1}))
-       )
+       )${bookingSqlCondition}
        AND (is_paid = 1 OR UPPER(payment_status) = 'PAID' OR UPPER(payment_status) = 'COMPLETED')
        AND UPPER(status) NOT IN ('REJECTED', 'DECLINED', 'CANCELLED')
        LIMIT 1`,
-      [...v1, ...v2, ...v2, ...v1]
+      [...v1, ...v2, ...v2, ...v1, ...bookingParams]
     );
 
     if (rowsReq && rowsReq.length > 0) {
-      unlockChat(u1, u2);
+      unlockChat(u1, u2, bId);
       return true;
     }
 
@@ -76,16 +104,34 @@ async function canUsersChat(user1Id, user2Id) {
          (partner_id IN (${ph1}) AND user_id IN (${ph2}))
          OR
          (partner_id IN (${ph2}) AND user_id IN (${ph1}))
-       )
+       )${bookingSqlCondition}
        AND (is_paid = 1 OR UPPER(payment_status) = 'PAID' OR UPPER(payment_status) = 'COMPLETED')
        AND UPPER(status) NOT IN ('REJECTED', 'DECLINED', 'CANCELLED')
        LIMIT 1`,
-      [...v1, ...v2, ...v2, ...v1]
+      [...v1, ...v2, ...v2, ...v1, ...bookingParams]
     );
 
     if (rowsBk && rowsBk.length > 0) {
-      unlockChat(u1, u2);
+      unlockChat(u1, u2, bId);
       return true;
+    }
+
+    // If specific bookingId was given, verify if booking belongs to either user directly
+    if (bVariants.length > 0) {
+      const bPh = bVariants.map(() => '?').join(',');
+      const [directBk] = await db.query(
+        `SELECT id, partner_id, user_id, status, payment_status, is_paid 
+         FROM withme_partner_bookings 
+         WHERE (booking_id IN (${bPh}) OR request_id IN (${bPh}) OR id IN (${bPh}))
+         AND (is_paid = 1 OR UPPER(payment_status) = 'PAID' OR UPPER(payment_status) = 'COMPLETED')
+         AND UPPER(status) NOT IN ('REJECTED', 'DECLINED', 'CANCELLED')
+         LIMIT 1`,
+        [...bVariants, ...bVariants, ...bVariants]
+      );
+      if (directBk && directBk.length > 0) {
+        unlockChat(u1, u2, bId);
+        return true;
+      }
     }
   } catch (err) {
     console.error('[canUsersChat DB check error]:', err.message);
@@ -347,40 +393,70 @@ async function isUserInConversation(conversationId, userId) {
 /**
  * Find existing private conversation between two users
  */
-async function findPrivateConversation(user1Id, user2Id) {
+/**
+ * Find existing private conversation between two users (and optional bookingId)
+ */
+async function findPrivateConversation(user1Id, user2Id, bookingId = null) {
   const u1 = toUserIdStr(user1Id);
   const u2 = toUserIdStr(user2Id);
+  const bId = bookingId ? String(bookingId).trim() : null;
 
-  // Check memory
-  const user1Convs = memoryMembers.filter(m => toUserIdStr(m.user_id) === u1).map(m => m.conversation_id);
-  const commonConvId = user1Convs.find(cId =>
-    memoryMembers.some(m => m.conversation_id === cId && toUserIdStr(m.user_id) === u2)
-  );
-
-  if (commonConvId) {
-    return commonConvId;
+  // 1. If bookingId provided, search memory by booking_id
+  if (bId) {
+    for (const [convId, conv] of memoryConversations.entries()) {
+      if (conv.booking_id && String(conv.booking_id) === bId) {
+        return Number(convId);
+      }
+    }
+  } else {
+    // Check memory for general private conversation without booking_id
+    const user1Convs = memoryMembers.filter(m => toUserIdStr(m.user_id) === u1).map(m => m.conversation_id);
+    const commonConvId = user1Convs.find(cId => {
+      const conv = memoryConversations.get(cId);
+      if (conv && conv.booking_id) return false; // skip booking-specific convs
+      return memoryMembers.some(m => m.conversation_id === cId && toUserIdStr(m.user_id) === u2);
+    });
+    if (commonConvId) {
+      return commonConvId;
+    }
   }
 
-  // Check MySQL
+  // 2. Check MySQL
   try {
     const db = getDbPool();
-    const [rows] = await db.query(
-      `SELECT cm1.conversation_id
-       FROM conversation_members cm1
-       JOIN conversation_members cm2 ON cm1.conversation_id = cm2.conversation_id
-       JOIN conversations c ON c.id = cm1.conversation_id
-       WHERE cm1.user_id = ? AND cm2.user_id = ? AND c.type = 'private'
-       LIMIT 1`,
-      [u1, u2]
-    );
-    if (rows && rows.length > 0) {
-      const convId = Number(rows[0].conversation_id);
-      // Cache in memory
-      memoryMembers.push(
-        { id: memoryMembers.length + 1, conversation_id: convId, user_id: u1, joined_at: new Date().toISOString() },
-        { id: memoryMembers.length + 2, conversation_id: convId, user_id: u2, joined_at: new Date().toISOString() }
+    if (bId) {
+      const [rows] = await db.query(
+        `SELECT id, booking_id FROM conversations WHERE booking_id = ? LIMIT 1`,
+        [bId]
       );
-      return convId;
+      if (rows && rows.length > 0) {
+        const convId = Number(rows[0].id);
+        // Ensure members are recorded
+        await db.query(
+          `INSERT IGNORE INTO conversation_members (conversation_id, user_id) VALUES (?, ?), (?, ?)`,
+          [convId, u1, convId, u2]
+        ).catch(() => {});
+        return convId;
+      }
+    } else {
+      const [rows] = await db.query(
+        `SELECT cm1.conversation_id
+         FROM conversation_members cm1
+         JOIN conversation_members cm2 ON cm1.conversation_id = cm2.conversation_id
+         JOIN conversations c ON c.id = cm1.conversation_id
+         WHERE cm1.user_id = ? AND cm2.user_id = ? AND c.type = 'private' AND (c.booking_id IS NULL OR c.booking_id = '')
+         LIMIT 1`,
+        [u1, u2]
+      );
+      if (rows && rows.length > 0) {
+        const convId = Number(rows[0].conversation_id);
+        // Cache in memory
+        memoryMembers.push(
+          { id: memoryMembers.length + 1, conversation_id: convId, user_id: u1, joined_at: new Date().toISOString() },
+          { id: memoryMembers.length + 2, conversation_id: convId, user_id: u2, joined_at: new Date().toISOString() }
+        );
+        return convId;
+      }
     }
   } catch (err) {
     // Ignore MySQL error
@@ -391,10 +467,12 @@ async function findPrivateConversation(user1Id, user2Id) {
 
 /**
  * Create or Get a private conversation between current user and target user
+ * Supports bookingId for session-specific chats.
  */
-async function createOrGetConversation(currentUserId, targetUserId) {
+async function createOrGetConversation(currentUserId, targetUserId, bookingId = null) {
   const u1 = toUserIdStr(currentUserId);
   const u2 = toUserIdStr(targetUserId);
+  const bId = bookingId ? String(bookingId).trim() : null;
 
   if (!u2) {
     throw new Error("Target userId is required");
@@ -418,12 +496,13 @@ async function createOrGetConversation(currentUserId, targetUserId) {
 
   const nowStr = toIST(new Date());
 
-  // Check if conversation already exists
-  const existingConvId = await findPrivateConversation(u1, u2);
+  // Check if conversation already exists (for this bookingId if provided)
+  const existingConvId = await findPrivateConversation(u1, u2, bId);
   if (existingConvId) {
     return {
       success: true,
-      conversationId: Number(existingConvId)
+      conversationId: Number(existingConvId),
+      bookingId: bId
     };
   }
 
@@ -432,10 +511,18 @@ async function createOrGetConversation(currentUserId, targetUserId) {
 
   try {
     const db = getDbPool();
-    const [resConv] = await db.query(
-      `INSERT INTO conversations (type) VALUES ('private')`
-    );
-    newConvId = Number(resConv.insertId);
+    if (bId) {
+      const [resConv] = await db.query(
+        `INSERT INTO conversations (type, booking_id) VALUES ('private', ?)`,
+        [bId]
+      );
+      newConvId = Number(resConv.insertId);
+    } else {
+      const [resConv] = await db.query(
+        `INSERT INTO conversations (type) VALUES ('private')`
+      );
+      newConvId = Number(resConv.insertId);
+    }
 
     await db.query(
       `INSERT INTO conversation_members (conversation_id, user_id) VALUES (?, ?), (?, ?)`,
@@ -450,6 +537,7 @@ async function createOrGetConversation(currentUserId, targetUserId) {
   memoryConversations.set(newConvId, {
     id: newConvId,
     type: 'private',
+    booking_id: bId,
     created_at: nowStr,
     updated_at: nowStr
   });
@@ -461,7 +549,8 @@ async function createOrGetConversation(currentUserId, targetUserId) {
 
   return {
     success: true,
-    conversationId: Number(newConvId)
+    conversationId: Number(newConvId),
+    bookingId: bId
   };
 }
 
@@ -471,16 +560,25 @@ async function createOrGetConversation(currentUserId, targetUserId) {
 async function getUserConversations(userId, req, isUserOnlineFn) {
   const uId = toUserIdStr(userId);
   let conversationIds = [];
+  const convBookingMap = new Map(); // convId -> bookingId
 
   // Get from MySQL
   try {
     const db = getDbPool();
     const [rows] = await db.query(
-      `SELECT conversation_id FROM conversation_members WHERE user_id = ?`,
+      `SELECT cm.conversation_id, c.booking_id 
+       FROM conversation_members cm
+       LEFT JOIN conversations c ON c.id = cm.conversation_id
+       WHERE cm.user_id = ?`,
       [uId]
     );
     if (rows && rows.length > 0) {
       conversationIds = rows.map(r => Number(r.conversation_id));
+      rows.forEach(r => {
+        if (r.booking_id) {
+          convBookingMap.set(Number(r.conversation_id), String(r.booking_id));
+        }
+      });
     }
   } catch (err) {
     // Ignore MySQL error
@@ -489,6 +587,13 @@ async function getUserConversations(userId, req, isUserOnlineFn) {
   // Also combine from memory
   const memConvs = memoryMembers.filter(m => toUserIdStr(m.user_id) === uId).map(m => m.conversation_id);
   conversationIds = Array.from(new Set([...conversationIds, ...memConvs]));
+
+  memConvs.forEach(cId => {
+    if (!convBookingMap.has(cId) && memoryConversations.has(cId)) {
+      const c = memoryConversations.get(cId);
+      if (c.booking_id) convBookingMap.set(cId, String(c.booking_id));
+    }
+  });
 
   const list = [];
 
@@ -517,8 +622,45 @@ async function getUserConversations(userId, req, isUserOnlineFn) {
 
     if (!otherUserId) continue;
 
+    const convBookingId = convBookingMap.get(convId) || null;
+
+    // If associated with a booking, fetch booking details for customer name & session context
+    let bookingCustomerName = null;
+    let bookingActivity = null;
+    let bookingDate = null;
+    let bookingTime = null;
+    if (convBookingId) {
+      try {
+        const db = getDbPool();
+        const [bRows] = await db.query(
+          `SELECT customer_name, customer_phone, activity, date, time, location, status 
+           FROM withme_partner_bookings 
+           WHERE booking_id = ? OR request_id = ? LIMIT 1`,
+          [convBookingId, convBookingId]
+        );
+        if (bRows && bRows.length > 0) {
+          bookingCustomerName = bRows[0].customer_name || null;
+          bookingActivity = bRows[0].activity || null;
+          bookingDate = bRows[0].date || null;
+          bookingTime = bRows[0].time || null;
+        } else {
+          const [rRows] = await db.query(
+            `SELECT customer_name, sender_name, activity, date, time, location, status 
+             FROM withme_partner_requests 
+             WHERE booking_id = ? OR request_id = ? LIMIT 1`,
+            [convBookingId, convBookingId]
+          );
+          if (rRows && rRows.length > 0) {
+            bookingCustomerName = rRows[0].customer_name || rRows[0].sender_name || null;
+            bookingActivity = rRows[0].activity || null;
+            bookingDate = rRows[0].date || null;
+            bookingTime = rRows[0].time || null;
+          }
+        }
+      } catch (e) {}
+    }
+
     const otherUser = await findUser(otherUserId);
-    const otherUserName = otherUser ? (otherUser.name || otherUser.full_name || `User ${otherUserId}`) : `User ${otherUserId}`;
     const rawPhoto = otherUser ? (otherUser.profile_photo_url || otherUser.image || '') : '';
     const otherUserProfileImage = formatPhotoUrl(rawPhoto, req);
 
@@ -573,18 +715,23 @@ async function getUserConversations(userId, req, isUserOnlineFn) {
                  isUserOnlineFn(`user_${oDigits}`) ||
                  isUserOnlineFn(`partner_${oDigits}`);
     }
-    const canChat = await canUsersChat(uId, otherUserId);
+    const canChat = await canUsersChat(uId, otherUserId, convBookingId);
 
     // Resolve all photo variants
     const rawPhotos = otherUser ? (otherUser.photos || []) : [];
     const photoUrls = otherUser ? (otherUser.profile_images || otherUser.images || []) : [];
-    const resolvedName = otherUser
-      ? (otherUser.name || otherUser.full_name || otherUser.customer_name || `User ${otherUserId}`)
-      : `User ${otherUserId}`;
+    const resolvedName = bookingCustomerName || (otherUser
+      ? (otherUser.customer_name || otherUser.name || otherUser.full_name || `User ${otherUserId}`)
+      : `User ${otherUserId}`);
 
     list.push({
       conversationId: convId,
       conversation_id: convId,
+      bookingId: convBookingId,
+      booking_id: convBookingId,
+      activity: bookingActivity,
+      booking_date: bookingDate,
+      booking_time: bookingTime,
       otherUserId: formatNumericUserId(otherUserId),
       other_user_id: formatNumericUserId(otherUserId),
       // All name variants — frontend can use whichever field it reads
@@ -621,6 +768,8 @@ async function getUserConversations(userId, req, isUserOnlineFn) {
       // Socket hints for frontend real-time subscription
       socket_hints: {
         join_room: `conv_${convId}`,
+        booking_room: convBookingId ? `conv_${convBookingId}` : null,
+        booking_id: convBookingId || null,
         events: ['receive_message', 'new_message', 'chat_message']
       }
     });
@@ -636,13 +785,106 @@ async function getUserConversations(userId, req, isUserOnlineFn) {
 }
 
 /**
- * Get messages history for a conversation
+ * Get messages history for a conversation (supports numeric conversationId or bookingId string)
  */
 async function getConversationMessages(conversationId, userId) {
-  const convId = Number(conversationId);
   const uId = toUserIdStr(userId);
+  let convId = Number(conversationId);
+  let resolvedBookingId = null;
 
-  const isMember = await isUserInConversation(convId, uId);
+  // 1. If conversationId is non-numeric (e.g. 'BK927619' or 'req_...'), resolve conversation by booking_id
+  if (isNaN(convId) || convId <= 0) {
+    resolvedBookingId = String(conversationId).trim();
+    // Look up conversation in memory
+    for (const [id, c] of memoryConversations.entries()) {
+      if (c.booking_id && String(c.booking_id) === resolvedBookingId) {
+        convId = Number(id);
+        break;
+      }
+    }
+    // Look up conversation in MySQL
+    if (isNaN(convId) || convId <= 0) {
+      try {
+        const db = getDbPool();
+        const [rows] = await db.query(
+          `SELECT id, booking_id FROM conversations WHERE booking_id = ? LIMIT 1`,
+          [resolvedBookingId]
+        );
+        if (rows && rows.length > 0) {
+          convId = Number(rows[0].id);
+        }
+      } catch (e) {}
+    }
+
+    // If conversation doesn't exist yet for this booking, check if booking exists in DB and auto-create
+    if (isNaN(convId) || convId <= 0) {
+      try {
+        const db = getDbPool();
+        const [bkRows] = await db.query(
+          `SELECT id, booking_id, user_id, partner_id FROM withme_partner_bookings WHERE booking_id = ? OR request_id = ? OR id = ? LIMIT 1`,
+          [resolvedBookingId, resolvedBookingId, resolvedBookingId]
+        );
+        if (bkRows && bkRows.length > 0) {
+          const bk = bkRows[0];
+          const newConv = await createOrGetConversation(bk.partner_id, bk.user_id, resolvedBookingId);
+          convId = Number(newConv.conversationId);
+        } else {
+          const [reqRows] = await db.query(
+            `SELECT id, booking_id, user_id, partner_id FROM withme_partner_requests WHERE booking_id = ? OR request_id = ? OR id = ? LIMIT 1`,
+            [resolvedBookingId, resolvedBookingId, resolvedBookingId]
+          );
+          if (reqRows && reqRows.length > 0) {
+            const rq = reqRows[0];
+            const newConv = await createOrGetConversation(rq.partner_id, rq.user_id, resolvedBookingId);
+            convId = Number(newConv.conversationId);
+          }
+        }
+      } catch (e) {}
+    }
+  } else {
+    // It's numeric, check if it has an associated booking_id
+    if (memoryConversations.has(convId)) {
+      resolvedBookingId = memoryConversations.get(convId).booking_id || null;
+    }
+    if (!resolvedBookingId) {
+      try {
+        const db = getDbPool();
+        const [cRows] = await db.query(`SELECT booking_id FROM conversations WHERE id = ? LIMIT 1`, [convId]);
+        if (cRows && cRows.length > 0 && cRows[0].booking_id) {
+          resolvedBookingId = cRows[0].booking_id;
+        }
+      } catch (e) {}
+    }
+  }
+
+  if (isNaN(convId) || convId <= 0) {
+    return {
+      success: true,
+      data: []
+    };
+  }
+
+  // Verify membership / booking authorization
+  let isMember = await isUserInConversation(convId, uId);
+  if (!isMember && resolvedBookingId) {
+    try {
+      const db = getDbPool();
+      const [bkRows] = await db.query(
+        `SELECT partner_id, user_id FROM withme_partner_bookings WHERE booking_id = ? OR request_id = ? LIMIT 1`,
+        [resolvedBookingId, resolvedBookingId]
+      );
+      if (bkRows && bkRows.length > 0) {
+        const pStr = toUserIdStr(bkRows[0].partner_id);
+        const uStr = toUserIdStr(bkRows[0].user_id);
+        if (pStr === uId || uStr === uId) {
+          isMember = true;
+          memoryMembers.push({ id: memoryMembers.length + 1, conversation_id: convId, user_id: uId, joined_at: toIST(new Date()) });
+          db.query(`INSERT IGNORE INTO conversation_members (conversation_id, user_id) VALUES (?, ?)`, [convId, uId]).catch(() => {});
+        }
+      }
+    } catch (e) {}
+  }
+
   if (!isMember) {
     const err = new Error("Access denied: You are not a member of this conversation");
     err.statusCode = 403;
@@ -668,7 +910,7 @@ async function getConversationMessages(conversationId, userId) {
   }
 
   if (otherMemberId) {
-    const canChat = await canUsersChat(uId, otherMemberId);
+    const canChat = await canUsersChat(uId, otherMemberId, resolvedBookingId);
     if (!canChat) {
       const err = new Error("Chat will be unlocked once payment is completed!");
       err.statusCode = 403;
@@ -684,9 +926,12 @@ async function getConversationMessages(conversationId, userId) {
     const db = getDbPool();
     const [rows] = await db.query(
       `SELECT * FROM (
-        SELECT * FROM messages WHERE conversation_id = ? AND is_deleted = 0 ORDER BY created_at DESC, id DESC LIMIT 50
+        SELECT * FROM messages 
+        WHERE (conversation_id = ? OR (booking_id IS NOT NULL AND booking_id != '' AND booking_id = ?)) 
+        AND is_deleted = 0 
+        ORDER BY created_at DESC, id DESC LIMIT 50
        ) sub ORDER BY created_at ASC, id ASC`,
-      [convId]
+      [convId, resolvedBookingId || '']
     );
     if (rows) dbMessages = rows;
   } catch (err) {
@@ -695,7 +940,7 @@ async function getConversationMessages(conversationId, userId) {
 
   // Fetch from memory
   const memMsgs = Array.from(memoryMessages.values())
-    .filter(m => m.conversation_id === convId && !m.is_deleted)
+    .filter(m => (m.conversation_id === convId || (resolvedBookingId && m.booking_id === resolvedBookingId)) && !m.is_deleted)
     .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
 
   // Merge and deduplicate by id first
@@ -704,7 +949,6 @@ async function getConversationMessages(conversationId, userId) {
   memMsgs.forEach(m => msgMap.set(Number(m.id), m));
 
   // Secondary dedup by content fingerprint — catches temp-ID vs MySQL-ID duplicates
-  // Fingerprint = sender_id + message_text + minute-truncated timestamp
   const seen = new Set();
   const allMsgs = Array.from(msgMap.values())
     .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
@@ -717,15 +961,23 @@ async function getConversationMessages(conversationId, userId) {
     });
 
   const formatted = allMsgs.map(m => ({
+    id: Number(m.id),
     messageId: Number(m.id),
-    conversationId: Number(m.conversation_id),
+    conversationId: Number(m.conversation_id || convId),
+    conversation_id: Number(m.conversation_id || convId),
+    bookingId: m.booking_id || resolvedBookingId || null,
+    booking_id: m.booking_id || resolvedBookingId || null,
     senderId: formatNumericUserId(m.sender_id),
+    sender_id: formatNumericUserId(m.sender_id),
     receiverId: formatNumericUserId(m.receiver_id),
+    receiver_id: formatNumericUserId(m.receiver_id),
     message: m.message,
     messageType: m.message_type || 'text',
+    message_type: m.message_type || 'text',
     isDelivered: Boolean(m.is_delivered),
     isRead: Boolean(m.is_read),
-    createdAt: toIST(m.created_at)
+    createdAt: toIST(m.created_at),
+    created_at: toIST(m.created_at)
   }));
 
   return {
@@ -735,33 +987,72 @@ async function getConversationMessages(conversationId, userId) {
 }
 
 /**
- * Save new message to database & memory
+ * Save new message to database & memory (supports bookingId)
  */
-async function saveMessage({ conversationId, senderId, receiverId, message, messageType = 'text' }) {
-  const convId = Number(conversationId);
+async function saveMessage({ conversationId, bookingId, senderId, receiverId, message, messageType = 'text' }) {
+  let convId = Number(conversationId);
+  let bId = bookingId ? String(bookingId).trim() : null;
   const sId = toUserIdStr(senderId);
   const rId = toUserIdStr(receiverId);
   const cleanMsg = String(message).trim();
   const nowStr = toIST(new Date());
+
+  // Resolve bookingId from conversation if missing
+  if (!bId && convId && convId > 0) {
+    if (memoryConversations.has(convId) && memoryConversations.get(convId).booking_id) {
+      bId = memoryConversations.get(convId).booking_id;
+    } else {
+      try {
+        const db = getDbPool();
+        const [cRows] = await db.query(`SELECT booking_id FROM conversations WHERE id = ? LIMIT 1`, [convId]);
+        if (cRows && cRows.length > 0 && cRows[0].booking_id) {
+          bId = cRows[0].booking_id;
+        }
+      } catch (e) {}
+    }
+  }
+
+  // Resolve conversationId from bookingId if convId is missing or invalid
+  if ((!convId || isNaN(convId) || convId <= 0) && bId) {
+    try {
+      const db = getDbPool();
+      const [cRows] = await db.query(`SELECT id FROM conversations WHERE booking_id = ? LIMIT 1`, [bId]);
+      if (cRows && cRows.length > 0) {
+        convId = Number(cRows[0].id);
+      } else {
+        const res = await createOrGetConversation(sId, rId, bId);
+        convId = Number(res.conversationId);
+      }
+    } catch (e) {}
+  }
 
   autoMessageId += 1;
   const newId = autoMessageId;
 
   const msgObj = {
     id: newId,
+    messageId: newId,
     conversation_id: convId,
+    conversationId: convId,
+    booking_id: bId,
+    bookingId: bId,
     sender_id: sId,
+    senderId: sId,
     receiver_id: rId,
+    receiverId: rId,
     message_type: messageType,
+    messageType: messageType,
     message: cleanMsg,
     is_delivered: 0,
+    isDelivered: false,
     is_read: 0,
+    isRead: false,
     is_deleted: 0,
-    created_at: nowStr
+    created_at: nowStr,
+    createdAt: nowStr
   };
 
   memoryMessages.set(newId, msgObj);
-  // Also store a temp-ID reference for lookup before MySQL resolves
   memoryMessages.set(`tmp_${newId}`, msgObj);
 
   // Background MySQL insert without blocking real-time socket delivery
@@ -769,14 +1060,15 @@ async function saveMessage({ conversationId, senderId, receiverId, message, mess
     try {
       const db = getDbPool();
       const [result] = await db.query(
-        `INSERT INTO messages (conversation_id, sender_id, receiver_id, message_type, message) VALUES (?, ?, ?, ?, ?)`,
-        [convId, sId, rId, messageType, cleanMsg]
+        `INSERT INTO messages (conversation_id, booking_id, sender_id, receiver_id, message_type, message) VALUES (?, ?, ?, ?, ?, ?)`,
+        [convId, bId, sId, rId, messageType, cleanMsg]
       );
       const mysqlId = Number(result.insertId);
 
       // Remap memory entry from temp ID to real MySQL ID to prevent duplicates
       if (mysqlId && mysqlId !== newId) {
         msgObj.id = mysqlId;
+        msgObj.messageId = mysqlId;
         memoryMessages.delete(newId);
         memoryMessages.delete(`tmp_${newId}`);
         memoryMessages.set(mysqlId, msgObj);
@@ -916,20 +1208,26 @@ async function deleteMessage(messageId, senderId) {
 }
 
 /**
- * Clear all messages in a conversation
+ * Clear all messages in a conversation (supports numeric conversationId or bookingId string)
  */
 async function clearConversationMessages(conversationId) {
+  const bId = String(conversationId).trim();
   const convId = Number(conversationId);
+
   // Clear from memory
   for (const [key, msg] of memoryMessages.entries()) {
-    if (Number(msg.conversation_id) === convId) {
+    if ((!isNaN(convId) && convId > 0 && Number(msg.conversation_id) === convId) || (msg.booking_id && String(msg.booking_id) === bId)) {
       memoryMessages.delete(key);
     }
   }
 
   try {
     const db = getDbPool();
-    await db.query(`DELETE FROM messages WHERE conversation_id = ?`, [convId]);
+    if (!isNaN(convId) && convId > 0) {
+      await db.query(`DELETE FROM messages WHERE conversation_id = ? OR booking_id = ?`, [convId, bId]);
+    } else {
+      await db.query(`DELETE FROM messages WHERE booking_id = ?`, [bId]);
+    }
   } catch (err) {
     console.error('[clearConversationMessages error]:', err.message);
   }

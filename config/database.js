@@ -278,7 +278,9 @@ async function initMysqlDatabase() {
       'ALTER TABLE withme_partner_bookings ADD COLUMN is_paid TINYINT(1) DEFAULT 0',
       'ALTER TABLE withme_partner_bookings ADD COLUMN payment_id VARCHAR(100) DEFAULT NULL',
       'ALTER TABLE withme_partner_bookings ADD COLUMN request_id VARCHAR(50) DEFAULT NULL',
-      'ALTER TABLE withme_partner_requests ADD COLUMN customer_name VARCHAR(150) DEFAULT NULL'
+      'ALTER TABLE withme_partner_requests ADD COLUMN customer_name VARCHAR(150) DEFAULT NULL',
+      'ALTER TABLE conversations ADD COLUMN booking_id VARCHAR(100) DEFAULT NULL',
+      'ALTER TABLE messages ADD COLUMN booking_id VARCHAR(100) DEFAULT NULL'
     ];
 
     for (const sql of alterStatements) {

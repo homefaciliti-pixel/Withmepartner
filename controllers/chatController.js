@@ -8,7 +8,8 @@ const { isUserOnline } = require('../sockets/chatSocket');
 async function handleCreateOrGetConversation(req, res, next) {
   try {
     const currentUserId = (req.user && (req.user.user_id || req.user.id)) || 'usr_10001';
-    const targetUserId = req.body ? (req.body.userId || req.body.target_user_id || req.body.user_id) : null;
+    const targetUserId = req.body ? (req.body.userId || req.body.target_user_id || req.body.user_id || req.body.partner_id || req.body.otherUserId) : null;
+    const bookingId = req.body ? (req.body.bookingId || req.body.booking_id || req.body.requestId || req.body.request_id) : null;
 
     if (!targetUserId) {
       return res.status(400).json({
@@ -18,7 +19,7 @@ async function handleCreateOrGetConversation(req, res, next) {
       });
     }
 
-    const canChat = await chatService.canUsersChat(currentUserId, targetUserId);
+    const canChat = await chatService.canUsersChat(currentUserId, targetUserId, bookingId);
     if (!canChat) {
       return res.status(403).json({
         success: false,
@@ -28,16 +29,25 @@ async function handleCreateOrGetConversation(req, res, next) {
       });
     }
 
-    const result = await chatService.createOrGetConversation(currentUserId, targetUserId);
+    const result = await chatService.createOrGetConversation(currentUserId, targetUserId, bookingId);
     return res.status(200).json({
       success: true,
       can_chat: true,
       conversationId: result.conversationId,
       conversation_id: result.conversationId,
+      bookingId: result.bookingId || null,
+      booking_id: result.bookingId || null,
       // Socket hints: frontend should join this room and listen to these events
       socket_hints: {
         join_room: `conv_${result.conversationId}`,
-        emit_on_open: { event: 'join_conversation', data: { conversationId: result.conversationId } },
+        booking_room: result.bookingId ? `conv_${result.bookingId}` : null,
+        emit_on_open: {
+          event: 'join_conversation',
+          data: {
+            conversationId: result.conversationId,
+            bookingId: result.bookingId || undefined
+          }
+        },
         listen_events: ['receive_message', 'new_message', 'chat_message'],
         send_event: 'send_message',
         receiver_id: targetUserId
@@ -181,12 +191,13 @@ async function handleBlockUser(req, res, next) {
 async function handleSendMessage(req, res, next) {
   try {
     const currentUserId = (req.user && (req.user.user_id || req.user.id)) || 'usr_10001';
-    const { conversationId, receiverId, message, messageType } = req.body || {};
+    let { conversationId, bookingId, booking_id, receiverId, message, messageType } = req.body || {};
+    const bId = bookingId || booking_id || null;
 
-    if (!conversationId || !receiverId || message === undefined || message === null) {
+    if ((!conversationId && !bId) || !receiverId || message === undefined || message === null) {
       return res.status(400).json({
         success: false,
-        message: "Missing required fields: conversationId, receiverId, message",
+        message: "Missing required fields: conversationId (or bookingId), receiverId, message",
         error_code: "BAD_REQUEST"
       });
     }
@@ -200,13 +211,15 @@ async function handleSendMessage(req, res, next) {
       });
     }
 
-    const isMember = await chatService.isUserInConversation(conversationId, currentUserId);
-    if (!isMember) {
-      return res.status(403).json({
-        success: false,
-        message: "Unauthorized: You are not a member of this conversation",
-        error_code: "FORBIDDEN"
-      });
+    if (conversationId) {
+      const isMember = await chatService.isUserInConversation(conversationId, currentUserId);
+      if (!isMember && !bId) {
+        return res.status(403).json({
+          success: false,
+          message: "Unauthorized: You are not a member of this conversation",
+          error_code: "FORBIDDEN"
+        });
+      }
     }
 
     const isBlocked = await chatService.isUserBlocked(currentUserId, receiverId);
@@ -218,7 +231,7 @@ async function handleSendMessage(req, res, next) {
       });
     }
 
-    const canChat = await chatService.canUsersChat(currentUserId, receiverId);
+    const canChat = await chatService.canUsersChat(currentUserId, receiverId, bId);
     if (!canChat) {
       return res.status(403).json({
         success: false,
@@ -230,18 +243,24 @@ async function handleSendMessage(req, res, next) {
 
     const savedMsg = await chatService.saveMessage({
       conversationId,
+      bookingId: bId,
       senderId: currentUserId,
       receiverId,
       message: cleanMessage,
       messageType: messageType || 'text'
     });
 
+    const resolvedConvId = Number(savedMsg.conversation_id || conversationId);
+    const resolvedBookingId = savedMsg.booking_id || bId || null;
+
     const { toIST } = chatService;
     const msgPayload = {
       id: Number(savedMsg.id),
       messageId: Number(savedMsg.id),
-      conversationId: Number(conversationId),
-      conversation_id: Number(conversationId),
+      conversationId: resolvedConvId,
+      conversation_id: resolvedConvId,
+      bookingId: resolvedBookingId,
+      booking_id: resolvedBookingId,
       senderId: isNaN(currentUserId) ? currentUserId : Number(currentUserId),
       sender_id: isNaN(currentUserId) ? currentUserId : Number(currentUserId),
       receiverId: isNaN(receiverId) ? String(receiverId) : Number(receiverId),
@@ -260,10 +279,25 @@ async function handleSendMessage(req, res, next) {
       const io = req.app.get('io');
       const rIdStr = String(receiverId);
       const rDigits = rIdStr.replace(/\D/g, '');
-      // Emit to conversation room
-      io.to(`conv_${conversationId}`).emit('receive_message', msgPayload);
-      io.to(`conv_${conversationId}`).emit('new_message', msgPayload);
-      io.to(`conv_${conversationId}`).emit('chat_message', msgPayload);
+
+      // Emit to conversation room & booking room
+      if (resolvedConvId) {
+        io.to(`conv_${resolvedConvId}`).emit('receive_message', msgPayload);
+        io.to(`conv_${resolvedConvId}`).emit('new_message', msgPayload);
+        io.to(`conv_${resolvedConvId}`).emit('chat_message', msgPayload);
+        io.to(String(resolvedConvId)).emit('receive_message', msgPayload);
+        io.to(String(resolvedConvId)).emit('new_message', msgPayload);
+        io.to(String(resolvedConvId)).emit('chat_message', msgPayload);
+      }
+      if (resolvedBookingId) {
+        io.to(`conv_${resolvedBookingId}`).emit('receive_message', msgPayload);
+        io.to(`conv_${resolvedBookingId}`).emit('new_message', msgPayload);
+        io.to(`conv_${resolvedBookingId}`).emit('chat_message', msgPayload);
+        io.to(String(resolvedBookingId)).emit('receive_message', msgPayload);
+        io.to(String(resolvedBookingId)).emit('new_message', msgPayload);
+        io.to(String(resolvedBookingId)).emit('chat_message', msgPayload);
+      }
+
       // Emit directly to receiver user room variants
       [rIdStr, rDigits, `usr_${rDigits}`, `user_${rDigits}`, `partner_${rDigits}`].forEach(room => {
         if (room) {
@@ -276,12 +310,24 @@ async function handleSendMessage(req, res, next) {
 
     // Trigger FCM Push Notification
     const { sendEventNotification } = require('../services/notificationService');
-    setImmediate(() => {
+    setImmediate(async () => {
+      let senderName = 'User';
+      try {
+        const senderUser = await chatService.findUser(currentUserId);
+        if (senderUser) senderName = senderUser.name || senderUser.full_name || senderUser.customer_name || 'User';
+      } catch (e) {}
+
       sendEventNotification('chat_message', {
         targetUserId: receiverId,
         sender_id: currentUserId,
+        otherUserId: currentUserId,
+        otherUserName: senderName,
+        name: senderName,
         message: cleanMessage,
-        conversation_id: conversationId
+        conversation_id: resolvedConvId,
+        chatId: resolvedConvId,
+        bookingId: resolvedBookingId || '',
+        booking_id: resolvedBookingId || ''
       }).catch(() => {});
     });
 
@@ -305,14 +351,15 @@ async function handleSendMessage(req, res, next) {
 async function handleClearChat(req, res, next) {
   try {
     const conversationId = (req.params && (req.params.conversationId || req.params.id)) ||
-                           (req.body && (req.body.conversationId || req.body.conversation_id)) ||
-                           (req.query && (req.query.conversationId || req.query.conversation_id));
+                           (req.body && (req.body.conversationId || req.body.conversation_id || req.body.bookingId || req.body.booking_id)) ||
+                           (req.query && (req.query.conversationId || req.query.conversation_id || req.query.bookingId || req.query.booking_id));
 
     if (conversationId) {
       const result = await chatService.clearConversationMessages(conversationId);
       if (req.app && req.app.get('io')) {
         const io = req.app.get('io');
-        io.to(`conv_${conversationId}`).emit('chat_cleared', { conversationId: Number(conversationId) });
+        io.to(`conv_${conversationId}`).emit('chat_cleared', { conversationId });
+        io.to(String(conversationId)).emit('chat_cleared', { conversationId });
       }
       return res.status(200).json(result);
     }

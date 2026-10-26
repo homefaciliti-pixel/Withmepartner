@@ -2176,4 +2176,8 @@ router.get('/withdrawable', authenticateToken, handleGetWithdrawable);
 router.post('/withdraw/withdrawable', authenticateToken, handlePostWithdrawable);
 router.post('/withdrawable', authenticateToken, handlePostWithdrawable);
 
+// Register FCM Device Token for Partner
+const { handleSaveFcmToken } = require('../controllers/notificationController');
+router.post(['/fcm-token', '/token', '/device-token'], authenticateToken, handleSaveFcmToken);
+
 module.exports = router;
