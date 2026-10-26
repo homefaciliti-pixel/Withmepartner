@@ -29,6 +29,8 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Register routes
+app.use('/api/notifications', notificationRoutes);
+app.use('/notifications', notificationRoutes);
 app.use('/api/notification', notificationRoutes);
 app.use('/notification', notificationRoutes);
 app.use('/api/chat', chatRoutes);

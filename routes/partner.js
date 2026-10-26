@@ -14,7 +14,8 @@ const {
   fetchPartnerTransactionsFromMysql,
   updatePartnerInMysql,
   savePartnerTransactionToMysql,
-  getDbPool
+  getDbPool,
+  calculateAge
 } = require('../config/database');
 const { authenticateToken } = require('../middleware/auth');
 const { sendEventNotification } = require('../services/notificationService');
@@ -95,6 +96,19 @@ const handleIncomingUserRequest = async (req, res) => {
   const message = requestPayload.message || (isPaid ? 'Payment completed. Meetup confirmed.' : 'Meetup request received.');
 
   console.log(`[PARTNER REQUEST] Incoming sync: requestId=${requestId}, bookingId=${bookingId}, partnerId=${partnerId}, partnerName=${partnerName}, customerName=${customerName}, userId=${userId}, status=${status}, is_paid=${isPaid ? 1 : 0}`);
+
+  // Issue 6: Block incoming requests if target partner is not verified
+  try {
+    const targetPartner = await findPartnerByIdFromMysql(partnerId);
+    if (targetPartner && !targetPartner.is_verified && !targetPartner.aadhar) {
+      return res.status(403).json({
+        success: false,
+        status: false,
+        message: 'This partner is not verified to receive bookings or requests.',
+        error_code: 'PARTNER_NOT_VERIFIED'
+      });
+    }
+  } catch (err) {}
 
   const newRequest = {
     request_id: requestId,
@@ -279,6 +293,19 @@ const handleIncomingUserBooking = async (req, res) => {
   const isAccepted = isPaid ? 1 : 0;
 
   console.log(`[PARTNER BOOKING] Incoming sync: bookingId=${bookingId}, requestId=${requestId}, partnerId=${partnerId}, partnerName=${partnerName}, customerName=${customerName}, userId=${userId}, status=${status}, is_paid=${isPaid ? 1 : 0}`);
+
+  // Issue 6: Block incoming bookings if target partner is not verified
+  try {
+    const targetPartner = await findPartnerByIdFromMysql(partnerId);
+    if (targetPartner && !targetPartner.is_verified && !targetPartner.aadhar) {
+      return res.status(403).json({
+        success: false,
+        status: false,
+        message: 'This partner is not verified to receive bookings or requests.',
+        error_code: 'PARTNER_NOT_VERIFIED'
+      });
+    }
+  } catch (err) {}
 
   const requestItem = {
     request_id: requestId,
@@ -598,6 +625,7 @@ router.get(['/all', '/list-all', '/registered', '/partners'], async (req, res) =
         phone: u.mobile_number,
         gender: u.gender || 'Female',
         dob: u.dob || '',
+        age: calculateAge(u.dob) || u.age || 21,
         area: u.area || '',
         locality: u.area || '',
         city: u.city || '',
@@ -614,18 +642,19 @@ router.get(['/all', '/list-all', '/registered', '/partners'], async (req, res) =
         category: (aboutData.interests && aboutData.interests[0]) || u.category || 'Coffee',
         activity: (aboutData.interests && aboutData.interests[0]) || u.activity || 'Coffee',
         interests: aboutData.interests || u.interests || ['Coffee', 'Travel'],
+        description: aboutData.description || u.description || '',
         rating: u.rating !== undefined ? u.rating : 4.8,
         total_ratings: u.total_ratings || 0,
         total_reviews: u.total_ratings || 0,
         price: (avail.pricing && avail.pricing[0] && avail.pricing[0].price) || u.price || 1,
         currency: 'INR',
-        profile_completed: true,
-        is_approved: true,
-        is_verified: true,
-        status: 'ACTIVE',
+        profile_completed: Boolean(u.profile_completed !== undefined ? u.profile_completed : true),
+        is_approved: Boolean(u.is_approved),
+        is_verified: Boolean(u.is_verified),
+        status: u.status || 'ACTIVE',
         availability_status: avail.availability_status || 'Available',
         receive_requests: avail.receive_requests !== undefined ? avail.receive_requests : true,
-        about: aboutData,
+        about: aboutData && Object.keys(aboutData).length > 0 ? aboutData : { description: u.description || '', interests: u.interests || ['Coffee', 'Travel'] },
         availability: avail,
         created_at: u.created_at || new Date().toISOString()
       };
@@ -2176,8 +2205,11 @@ router.get('/withdrawable', authenticateToken, handleGetWithdrawable);
 router.post('/withdraw/withdrawable', authenticateToken, handlePostWithdrawable);
 router.post('/withdrawable', authenticateToken, handlePostWithdrawable);
 
-// Register FCM Device Token for Partner
-const { handleSaveFcmToken } = require('../controllers/notificationController');
+// Notifications for Partner
+const { handleSaveFcmToken, handleGetNotifications, handleMarkRead } = require('../controllers/notificationController');
 router.post(['/fcm-token', '/token', '/device-token'], authenticateToken, handleSaveFcmToken);
+router.get(['/notifications', '/notification', '/notifications/list'], authenticateToken, handleGetNotifications);
+router.post(['/notifications/:notification_id/read', '/notification/:notification_id/read', '/notifications/read', '/notification/read'], authenticateToken, handleMarkRead);
+router.patch(['/notifications/:notification_id/read', '/notification/:notification_id/read', '/notifications/read', '/notification/read'], authenticateToken, handleMarkRead);
 
 module.exports = router;

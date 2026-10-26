@@ -1,4 +1,5 @@
 const { formatPhotoUrl } = require('../store/db');
+const { calculateAge } = require('../config/database');
 
 const getUserApiUrl = () => {
   return process.env.USER_APP_API_URL || process.env.WITME_USER_APP_URL || 'https://withmeapi-userapp.onrender.com';
@@ -48,6 +49,7 @@ async function syncPartnerToUserApp(partnerUser) {
     mobile_number: partnerUser.mobile_number,
     gender: partnerUser.gender || 'Female',
     dob: partnerUser.dob || '2001-05-14',
+    age: calculateAge(partnerUser.dob) || partnerUser.age || 21,
     city: partnerUser.city || 'Jaipur',
     state: partnerUser.state || 'Rajasthan',
     area: partnerUser.area || 'Malviya Nagar',
@@ -62,17 +64,19 @@ async function syncPartnerToUserApp(partnerUser) {
     profileImages: photoUrlsList,
     secondary_photos: secondaryPhotosList,
     photo_gallery: photoUrlsList,
-    category: (partnerUser.about && partnerUser.about.interests && partnerUser.about.interests[0]) || 'Coffee',
-    activity: (partnerUser.about && partnerUser.about.interests && partnerUser.about.interests[0]) || 'Coffee',
+    category: (partnerUser.about && partnerUser.about.interests && partnerUser.about.interests[0]) || partnerUser.category || 'Coffee',
+    activity: (partnerUser.about && partnerUser.about.interests && partnerUser.about.interests[0]) || partnerUser.activity || 'Coffee',
+    interests: (partnerUser.about && partnerUser.about.interests) || partnerUser.interests || ['Coffee', 'Travel'],
     rating: partnerUser.rating !== undefined ? partnerUser.rating : 4.8,
     total_reviews: partnerUser.total_ratings || 120,
     price: (partnerUser.availability && partnerUser.availability.pricing && partnerUser.availability.pricing[0] && partnerUser.availability.pricing[0].price) || 1,
     currency: 'INR',
-    is_approved: true,
-    is_verified: true,
-    status: 'ACTIVE',
-    profile_completed: true,
-    about: partnerUser.about || { description: `Hi! I am ${name}`, interests: ["Coffee", "Travel"] },
+    is_approved: Boolean(partnerUser.is_approved),
+    is_verified: Boolean(partnerUser.is_verified),
+    status: partnerUser.status || 'ACTIVE',
+    profile_completed: Boolean(partnerUser.profile_completed !== undefined ? partnerUser.profile_completed : true),
+    about: (partnerUser.about && Object.keys(partnerUser.about).length > 0) ? partnerUser.about : { description: partnerUser.description || `Hi! I am ${name}`, interests: partnerUser.interests || ["Coffee", "Travel"] },
+    description: (partnerUser.about && partnerUser.about.description) || partnerUser.description || `Hi! I am ${name}`,
     availability: partnerUser.availability || { availability_status: "Available", receive_requests: true },
     created_at: partnerUser.created_at || new Date().toISOString()
   };

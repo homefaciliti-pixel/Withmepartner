@@ -62,6 +62,16 @@ function sendFcmPushNotification(fcmToken, title, body, dataPayload = {}) {
   }
 
   return new Promise((resolve) => {
+    // FCM strictly requires all values in data payload to be string types
+    const stringData = {};
+    if (dataPayload && typeof dataPayload === 'object') {
+      for (const [k, v] of Object.entries(dataPayload)) {
+        if (v !== undefined && v !== null) {
+          stringData[k] = typeof v === 'object' ? JSON.stringify(v) : String(v);
+        }
+      }
+    }
+
     const payload = JSON.stringify({
       to: fcmToken,
       notification: {
@@ -69,7 +79,7 @@ function sendFcmPushNotification(fcmToken, title, body, dataPayload = {}) {
         body: body,
         sound: "default"
       },
-      data: dataPayload
+      data: stringData
     });
 
     const options = {
@@ -214,28 +224,42 @@ async function sendNotification({ userId, title, body, data = {} }) {
 }
 
 /**
- * Get notification list for a user
+ * Get notification list for a user (checks all identifier variants)
  */
 async function getUserNotifications(userId) {
-  const uId = String(userId);
+  const uId = String(userId || '').trim();
+  const digitsOnly = uId.replace(/\D/g, '');
+  const idVariants = Array.from(new Set([
+    uId,
+    digitsOnly,
+    `usr_${digitsOnly}`,
+    `user_${digitsOnly}`,
+    `partner_${digitsOnly}`
+  ].filter(Boolean)));
+
   let list = [];
 
   // Fetch from MySQL
   try {
     const db = getDbPool();
-    if (db && typeof db.query === 'function') {
+    if (db && typeof db.query === 'function' && idVariants.length > 0) {
+      const ph = idVariants.map(() => '?').join(',');
       const [rows] = await db.query(
-        `SELECT * FROM withme_notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 50`,
-        [uId]
+        `SELECT * FROM withme_notifications WHERE user_id IN (${ph}) ORDER BY created_at DESC LIMIT 100`,
+        idVariants
       );
       if (rows && rows.length > 0) {
         list = rows.map(r => ({
+          id: r.id || r.notification_id,
           notification_id: r.notification_id,
           title: r.title,
           body: r.body,
-          data: r.data_payload ? JSON.parse(r.data_payload) : {},
+          message: r.body,
+          data: r.data_payload ? (typeof r.data_payload === 'string' ? JSON.parse(r.data_payload) : r.data_payload) : {},
           is_read: Boolean(r.is_read),
-          created_at: typeof r.created_at === 'string' ? r.created_at : new Date(r.created_at).toISOString()
+          read: Boolean(r.is_read),
+          created_at: typeof r.created_at === 'string' ? r.created_at : new Date(r.created_at).toISOString(),
+          timestamp: new Date(r.created_at).getTime()
         }));
       }
     }
@@ -245,7 +269,19 @@ async function getUserNotifications(userId) {
 
   // Merge with memory store
   const memList = Array.from(memoryNotifications.values())
-    .filter(n => String(n.user_id) === uId)
+    .filter(n => idVariants.includes(String(n.user_id)))
+    .map(n => ({
+      id: n.notification_id,
+      notification_id: n.notification_id,
+      title: n.title,
+      body: n.body,
+      message: n.body,
+      data: n.data || {},
+      is_read: Boolean(n.is_read),
+      read: Boolean(n.is_read),
+      created_at: n.created_at,
+      timestamp: new Date(n.created_at).getTime()
+    }))
     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
   const map = new Map();
@@ -257,7 +293,10 @@ async function getUserNotifications(userId) {
 
   return {
     notifications: allNotifications,
-    unread_count: unreadCount
+    data: allNotifications,
+    unread_count: unreadCount,
+    unreadCount: unreadCount,
+    total: allNotifications.length
   };
 }
 

@@ -68,16 +68,21 @@ async function handleSendNotification(req, res, next) {
 
 /**
  * 3. Get User Notifications History
- * GET /api/notification
+ * GET /api/notification, GET /notifications
  */
 async function handleGetNotifications(req, res, next) {
   try {
-    const userId = (req.user && (req.user.user_id || req.user.id)) || 'usr_10001';
+    const userId = (req.user && (req.user.user_id || req.user.partner_id || req.user.id || req.user.mobile_number || req.user.phone_number)) || 'usr_10001';
     const result = await notificationService.getUserNotifications(userId);
     return res.status(200).json({
       status: true,
+      success: true,
       message: "Notifications retrieved successfully",
-      data: result
+      data: result.notifications,
+      notifications: result.notifications,
+      unread_count: result.unread_count,
+      unreadCount: result.unread_count,
+      total: result.total
     });
   } catch (err) {
     return next(err);

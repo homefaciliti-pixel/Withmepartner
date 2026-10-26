@@ -154,30 +154,34 @@ function formatNumericUserId(id) {
   return 101;
 }
 
-// Format a Date (or ISO string) into IST (UTC+5:30) ISO-8601 string
-// MySQL stores timestamps in UTC — we shift to IST for display.
-function toIST(dateInput) {
+// Format a Date (or ISO string) into standard UTC ISO-8601 string
+function formatMessageTimestamp(dateInput) {
   try {
     let d;
     if (dateInput instanceof Date) {
       d = dateInput;
+    } else if (typeof dateInput === 'number') {
+      d = new Date(dateInput);
     } else if (typeof dateInput === 'string') {
-      // MySQL returns "YYYY-MM-DD HH:MM:SS" without timezone → treat as UTC
-      const normalized = dateInput.includes('T') ? dateInput : dateInput.replace(' ', 'T') + 'Z';
-      d = new Date(normalized);
+      const s = dateInput.trim();
+      if (s.endsWith('Z') || s.includes('+') || (s.includes('-') && s.length > 19)) {
+        d = new Date(s);
+      } else {
+        d = new Date(s.replace(' ', 'T') + 'Z');
+      }
     } else {
       d = new Date();
     }
-    if (isNaN(d.getTime())) return new Date().toISOString().replace('Z', '+05:30');
-
-    // Shift from UTC to IST (UTC+5:30 = +330 minutes)
-    const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
-    const istDate = new Date(d.getTime() + IST_OFFSET_MS);
-    // Return as ISO-8601 with +05:30 suffix (drop the 'Z' appended by toISOString)
-    return istDate.toISOString().replace('Z', '+05:30');
+    if (isNaN(d.getTime())) return new Date().toISOString();
+    return d.toISOString();
   } catch {
-    return new Date().toISOString().replace('Z', '+05:30');
+    return new Date().toISOString();
   }
+}
+
+// Backward-compatible alias for formatMessageTimestamp
+function toIST(dateInput) {
+  return formatMessageTimestamp(dateInput);
 }
 
 // Helper to normalize user ID string
@@ -960,25 +964,29 @@ async function getConversationMessages(conversationId, userId) {
       return true;
     });
 
-  const formatted = allMsgs.map(m => ({
-    id: Number(m.id),
-    messageId: Number(m.id),
-    conversationId: Number(m.conversation_id || convId),
-    conversation_id: Number(m.conversation_id || convId),
-    bookingId: m.booking_id || resolvedBookingId || null,
-    booking_id: m.booking_id || resolvedBookingId || null,
-    senderId: formatNumericUserId(m.sender_id),
-    sender_id: formatNumericUserId(m.sender_id),
-    receiverId: formatNumericUserId(m.receiver_id),
-    receiver_id: formatNumericUserId(m.receiver_id),
-    message: m.message,
-    messageType: m.message_type || 'text',
-    message_type: m.message_type || 'text',
-    isDelivered: Boolean(m.is_delivered),
-    isRead: Boolean(m.is_read),
-    createdAt: toIST(m.created_at),
-    created_at: toIST(m.created_at)
-  }));
+  const formatted = allMsgs.map(m => {
+    const formattedTs = formatMessageTimestamp(m.created_at);
+    return {
+      id: Number(m.id),
+      messageId: Number(m.id),
+      conversationId: Number(m.conversation_id || convId),
+      conversation_id: Number(m.conversation_id || convId),
+      bookingId: m.booking_id || resolvedBookingId || null,
+      booking_id: m.booking_id || resolvedBookingId || null,
+      senderId: formatNumericUserId(m.sender_id),
+      sender_id: formatNumericUserId(m.sender_id),
+      receiverId: formatNumericUserId(m.receiver_id),
+      receiver_id: formatNumericUserId(m.receiver_id),
+      message: m.message,
+      messageType: m.message_type || 'text',
+      message_type: m.message_type || 'text',
+      isDelivered: Boolean(m.is_delivered),
+      isRead: Boolean(m.is_read),
+      createdAt: formattedTs,
+      created_at: formattedTs,
+      timestamp: new Date(formattedTs).getTime()
+    };
+  });
 
   return {
     success: true,
@@ -995,7 +1003,25 @@ async function saveMessage({ conversationId, bookingId, senderId, receiverId, me
   const sId = toUserIdStr(senderId);
   const rId = toUserIdStr(receiverId);
   const cleanMsg = String(message).trim();
-  const nowStr = toIST(new Date());
+  const nowMs = Date.now();
+  const nowStr = formatMessageTimestamp(new Date());
+
+  // Deduplication check: catch immediate duplicate retry within 2.5s
+  for (const existing of memoryMessages.values()) {
+    if (
+      existing &&
+      !existing.is_deleted &&
+      toUserIdStr(existing.sender_id) === sId &&
+      toUserIdStr(existing.receiver_id) === rId &&
+      existing.message === cleanMsg &&
+      (Number(existing.conversation_id) === convId || (bId && existing.booking_id === bId))
+    ) {
+      const existingTime = new Date(existing.created_at).getTime();
+      if (nowMs - existingTime < 2500) {
+        return existing;
+      }
+    }
+  }
 
   // Resolve bookingId from conversation if missing
   if (!bId && convId && convId > 0) {
@@ -1026,12 +1052,33 @@ async function saveMessage({ conversationId, bookingId, senderId, receiverId, me
     } catch (e) {}
   }
 
-  autoMessageId += 1;
-  const newId = autoMessageId;
+  // Await MySQL insert so sender and receiver get the true persisted message ID immediately
+  let savedId = null;
+  try {
+    const db = getDbPool();
+    const [result] = await db.query(
+      `INSERT INTO messages (conversation_id, booking_id, sender_id, receiver_id, message_type, message) VALUES (?, ?, ?, ?, ?, ?)`,
+      [convId, bId, sId, rId, messageType, cleanMsg]
+    );
+    if (result && result.insertId) {
+      savedId = Number(result.insertId);
+    }
+    await db.query(
+      `UPDATE conversations SET updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+      [convId]
+    ).catch(() => {});
+  } catch (err) {
+    // MySQL error fallback to in-memory ID if DB is temporarily unreachable
+  }
+
+  if (!savedId) {
+    autoMessageId += 1;
+    savedId = autoMessageId;
+  }
 
   const msgObj = {
-    id: newId,
-    messageId: newId,
+    id: savedId,
+    messageId: savedId,
     conversation_id: convId,
     conversationId: convId,
     booking_id: bId,
@@ -1049,39 +1096,12 @@ async function saveMessage({ conversationId, bookingId, senderId, receiverId, me
     isRead: false,
     is_deleted: 0,
     created_at: nowStr,
-    createdAt: nowStr
+    createdAt: nowStr,
+    timestamp: nowMs
   };
 
-  memoryMessages.set(newId, msgObj);
-  memoryMessages.set(`tmp_${newId}`, msgObj);
-
-  // Background MySQL insert without blocking real-time socket delivery
-  (async () => {
-    try {
-      const db = getDbPool();
-      const [result] = await db.query(
-        `INSERT INTO messages (conversation_id, booking_id, sender_id, receiver_id, message_type, message) VALUES (?, ?, ?, ?, ?, ?)`,
-        [convId, bId, sId, rId, messageType, cleanMsg]
-      );
-      const mysqlId = Number(result.insertId);
-
-      // Remap memory entry from temp ID to real MySQL ID to prevent duplicates
-      if (mysqlId && mysqlId !== newId) {
-        msgObj.id = mysqlId;
-        msgObj.messageId = mysqlId;
-        memoryMessages.delete(newId);
-        memoryMessages.delete(`tmp_${newId}`);
-        memoryMessages.set(mysqlId, msgObj);
-      }
-
-      await db.query(
-        `UPDATE conversations SET updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
-        [convId]
-      );
-    } catch (err) {
-      // Ignore MySQL connection / query error — message stays in memory with temp ID
-    }
-  })();
+  memoryMessages.set(savedId, msgObj);
+  memoryMessages.set(`msg_${savedId}`, msgObj);
 
   return msgObj;
 }
@@ -1272,6 +1292,7 @@ module.exports = {
   clearConversationMessages,
   clearAllMessages,
   toIST,
+  formatMessageTimestamp,
   canUsersChat,
   unlockChat
 };

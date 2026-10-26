@@ -270,8 +270,9 @@ async function handleSendMessage(req, res, next) {
       message: savedMsg.message,
       isDelivered: false,
       isRead: false,
-      createdAt: toIST(savedMsg.created_at),
-      created_at: toIST(savedMsg.created_at)
+      createdAt: savedMsg.created_at,
+      created_at: savedMsg.created_at,
+      timestamp: savedMsg.timestamp || Date.now()
     };
 
     // Broadcast Socket.IO real-time event — emit all 3 event names for frontend compatibility

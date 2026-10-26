@@ -8,15 +8,21 @@ const {
 } = require('../store/db');
 const { authenticateToken } = require('../middleware/auth');
 const { validateVerhoeff } = require('../utils/verhoeff');
-const { encrypt } = require('../utils/crypto');
+const { encrypt, maskAadhar } = require('../utils/crypto');
 const {
   deleteUserFromMysql,
   updatePartnerInMysql,
   findPartnerByIdFromMysql,
   fetchPartnerBookingsFromMysql,
-  fetchPartnerTransactionsFromMysql
+  fetchPartnerTransactionsFromMysql,
+  getDbPool
 } = require('../config/database');
 const { syncPartnerToUserApp } = require('../services/userAppSyncService');
+
+// In-memory rate limiting map for Aadhaar verification: userId -> [timestamp1, timestamp2, ...]
+const aadharAttempts = new Map();
+const AADHAAR_MAX_ATTEMPTS = 5;
+const AADHAAR_WINDOW_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Multer setup
@@ -472,6 +478,61 @@ router.post('/aadhar', authenticateToken, (req, res) => {
       const user = await findPartnerByIdFromMysql(req.user.user_id);
       if (!user) return res.status(404).json({ status: false, message: 'User not found', error_code: 'USER_NOT_FOUND' });
 
+      // Issue 8: Check Aadhaar verification rate limit (max 5 attempts within 24h)
+      const now = Date.now();
+      let userAttempts = aadharAttempts.get(user.user_id) || [];
+      userAttempts = userAttempts.filter(ts => now - ts < AADHAAR_WINDOW_MS);
+      if (userAttempts.length >= AADHAAR_MAX_ATTEMPTS) {
+        return res.status(429).json({
+          status: false,
+          message: 'Aadhaar verification attempt limit exceeded. Please try again after 24 hours.',
+          error_code: 'AADHAAR_LIMIT_EXCEEDED'
+        });
+      }
+      userAttempts.push(now);
+      aadharAttempts.set(user.user_id, userAttempts);
+
+      if (!aadhar_number || !/^\d{12}$/.test(String(aadhar_number).trim())) {
+        return res.status(400).json({ status: false, message: 'Invalid Aadhar number format. Must be 12 digits.', error_code: 'INVALID_AADHAR' });
+      }
+
+      const cleanAadhar = String(aadhar_number).trim();
+
+      // Issue 8: Validate Verhoeff checksum
+      if (!validateVerhoeff(cleanAadhar)) {
+        return res.status(400).json({
+          status: false,
+          message: 'Invalid Aadhaar number checksum. Please check the digits.',
+          error_code: 'INVALID_AADHAR_CHECKSUM'
+        });
+      }
+
+      const masked = maskAadhar(cleanAadhar);
+      console.log(`[Aadhar Verification] Submitting for user ${user.user_id}: ${masked}`);
+
+      // Issue 8: Check for duplicate Aadhaar across partners
+      const encryptedAadhar = encrypt(cleanAadhar);
+      try {
+        const db = getDbPool();
+        if (db && typeof db.query === 'function') {
+          const [dupRows] = await db.query(
+            `SELECT user_id, partner_id FROM withme_partners 
+             WHERE (aadhar_number = ? OR aadhar_number = ?) 
+             AND user_id != ? AND partner_id != ? LIMIT 1`,
+            [cleanAadhar, encryptedAadhar, user.user_id, user.user_id]
+          );
+          if (dupRows && dupRows.length > 0) {
+            return res.status(409).json({
+              status: false,
+              message: 'This Aadhaar number is already registered with another partner account.',
+              error_code: 'AADHAAR_ALREADY_EXISTS'
+            });
+          }
+        }
+      } catch (dbErr) {
+        console.warn(`[Aadhar Check DB Warning]: ${dbErr.message}`);
+      }
+
       const files = req.files || [];
       let frontUrl = `https://private-bucket.s3.amazonaws.com/${user.user_id}/aadhar_front.jpg`;
       let backUrl = `https://private-bucket.s3.amazonaws.com/${user.user_id}/aadhar_back.jpg`;
@@ -483,26 +544,47 @@ router.post('/aadhar', authenticateToken, (req, res) => {
         if (backFile) { const s = saveUploadedFile(backFile, `aadhar_back_${user.user_id}`); if (s) backUrl = s; }
       }
 
-      if (!aadhar_number || !/^\d{12}$/.test(aadhar_number)) {
-        return res.status(400).json({ status: false, message: 'Invalid Aadhar number format. Must be 12 digits.', error_code: 'INVALID_AADHAR' });
-      }
-
+      // Mark Aadhaar approved and partner verified
       await updatePartnerInMysql(user.user_id, {
         aadhar: {
-          aadhar_number: encrypt(aadhar_number),
+          aadhar_number: cleanAadhar,
           aadhar_front_url: frontUrl,
-          aadhar_back_url: backUrl
+          aadhar_back_url: backUrl,
+          aadhar_verification_status: 'APPROVED'
         },
+        is_verified: 1,
+        is_approved: 1,
         profile_step_pending: 'ABOUT_YOU'
       });
 
+      // Sync verified partner to User App
+      syncPartnerToUserApp({
+        ...user,
+        is_verified: true,
+        is_approved: true,
+        aadhar: { aadhar_number: cleanAadhar, aadhar_verification_status: 'APPROVED' }
+      }).catch(() => {});
+
       return res.status(201).json({
         status: true,
-        message: 'Aadhar details submitted for verification',
-        data: { aadhar_verification_status: 'PENDING', profile_step_pending: 'ABOUT_YOU' }
+        message: 'Aadhar details verified successfully',
+        data: {
+          aadhar_verification_status: 'APPROVED',
+          is_verified: true,
+          is_approved: true,
+          profile_step_pending: 'ABOUT_YOU'
+        }
       });
     } catch (e) {
       console.error('[Aadhar Submit Error]:', e.message);
+      // Handle external verification quota/limit exceeded errors
+      if (e.message && (e.message.includes('LIMIT_EXCEEDED') || e.message.includes('QUOTA') || e.message.includes('429'))) {
+        return res.status(429).json({
+          status: false,
+          message: 'Aadhaar verification service rate limit exceeded. Please try again later.',
+          error_code: 'AADHAAR_LIMIT_EXCEEDED'
+        });
+      }
       return res.status(500).json({ status: false, message: 'Failed to submit Aadhar details.', error_code: 'SERVER_ERROR' });
     }
   });
@@ -646,12 +728,17 @@ router.get('/', authenticateToken, async (req, res) => {
         current_location: user.current_location || null,
         gender: user.gender,
         dob: user.dob,
+        age: calculateAge(user.dob) || user.age || 21,
         area: user.area,
         city: user.city,
         state: user.state,
         pincode: user.pincode,
-        description: user.about ? user.about.description : '',
-        interests: user.about ? user.about.interests : [],
+        about: user.about || { description: user.description || '', interests: user.interests || [] },
+        bio: (user.about && user.about.description) || user.description || '',
+        description: (user.about && user.about.description) || user.description || '',
+        interests: (user.about && user.about.interests) || user.interests || [],
+        is_approved: Boolean(user.is_approved),
+        is_verified: Boolean(user.is_verified),
         profile_completed: user.profile_completed || false
       }
     });
@@ -689,27 +776,6 @@ router.patch('/location', authenticateToken, async (req, res) => {
     return res.status(500).json({ status: false, message: 'Failed to update location.', error_code: 'SERVER_ERROR' });
   }
 });
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Age helper
-// ─────────────────────────────────────────────────────────────────────────────
-function calculateAge(dobStr) {
-  if (!dobStr) return -1;
-  let birthDate;
-  const str = String(dobStr).trim();
-  if (/^\d{1,2}[-\/]\d{1,2}[-\/]\d{4}$/.test(str)) {
-    const parts = str.split(/[-\/]/);
-    birthDate = new Date(parseInt(parts[2], 10), parseInt(parts[1], 10) - 1, parseInt(parts[0], 10));
-  } else {
-    birthDate = new Date(str);
-  }
-  if (isNaN(birthDate.getTime())) return -1;
-  const today = new Date();
-  let age = today.getFullYear() - birthDate.getFullYear();
-  const monthDiff = today.getMonth() - birthDate.getMonth();
-  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) age--;
-  return age;
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 8.3 Save Changes Profile (Edit: Photos, Name, Email, DOB)

@@ -22,12 +22,32 @@ function getDbPool() {
       password,
       database,
       waitForConnections: true,
-      connectionLimit: 15,
+      connectionLimit: 3,
       queueLimit: 0,
-      connectTimeout: 2000
+      connectTimeout: 5000
     });
   }
   return pool;
+}
+
+/**
+ * Calculate age dynamically from Date of Birth (dob) string (YYYY-MM-DD)
+ */
+function calculateAge(dob) {
+  if (!dob) return null;
+  try {
+    const birthDate = new Date(dob);
+    if (isNaN(birthDate.getTime())) return null;
+    const today = new Date();
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const m = today.getMonth() - birthDate.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+      age--;
+    }
+    return (age >= 18 && age <= 100) ? age : (age > 0 ? age : null);
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -457,7 +477,7 @@ function mapMysqlRowToPartner(r) {
     email: r.email || '',
     gender: r.gender || 'Female',
     dob: r.dob || '',
-    age: r.age || 24,
+    age: calculateAge(r.dob) || ((r.age && r.age > 0) ? r.age : 21),
     area: r.locality || '',
     locality: r.locality || '',
     city: r.city || '',
@@ -495,11 +515,11 @@ function mapMysqlRowToPartner(r) {
       aadhar_number: r.aadhar_number,
       aadhar_front_url: r.aadhar_front_url,
       aadhar_back_url: r.aadhar_back_url,
-      aadhar_verification_status: 'APPROVED'
+      aadhar_verification_status: (r.is_verified === 1 || r.is_approved === 1) ? 'APPROVED' : 'PENDING'
     } : null,
     fcm_token: r.fcm_token || null,
-    is_approved: Boolean(r.is_approved !== undefined ? r.is_approved : 1),
-    is_verified: Boolean(r.is_verified !== undefined ? r.is_verified : 1),
+    is_approved: Boolean(r.is_approved === 1 || r.is_approved === true),
+    is_verified: Boolean(r.is_verified === 1 || r.is_verified === true || (r.aadhar_number && (r.is_approved === 1 || r.is_approved === true))),
     status: r.status || 'ACTIVE',
     created_at: r.created_at || new Date().toISOString()
   };
@@ -512,6 +532,11 @@ async function fetchUsersFromMysql(filter = {}) {
   const db = getDbPool();
   let sql = "SELECT * FROM withme_partners WHERE 1=1";
   const params = [];
+
+  // Issue 6: Unverified partners should not be visible in discovery/listing
+  if (filter.includeUnverified !== true) {
+    sql += " AND (is_verified = 1 OR is_approved = 1 OR (aadhar_number IS NOT NULL AND aadhar_number != ''))";
+  }
 
   if (filter.status) {
     sql += " AND status = ?";
@@ -632,6 +657,9 @@ async function createPartnerInMysql(user) {
   const password = user.password || '';
   const gender = user.gender || 'Female';
   const dob = user.dob || '';
+  const calculatedAge = calculateAge(dob) || user.age || 21;
+  const isApproved = user.is_approved ? 1 : 0;
+  const isVerified = user.is_verified ? 1 : 0;
   const city = user.city || '';
   const state = user.state || '';
   const locality = user.area || user.locality || '';
@@ -648,16 +676,17 @@ async function createPartnerInMysql(user) {
   const sql = `
     INSERT INTO withme_partners (
       partner_id, user_id, name, full_name, email, mobile_number, phone_number, country_code,
-      password, gender, dob, city, state, locality, pincode, address, profile_photo_url, image,
+      password, gender, dob, age, city, state, locality, pincode, address, profile_photo_url, image,
       photos, interests, about, availability, profile_step_pending, profile_completed,
       failed_attempts, locked, is_approved, is_verified, status, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 1, 1, 'ACTIVE', NOW(), NOW())
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, 'ACTIVE', NOW(), NOW())
   `;
 
   await db.query(sql, [
     pId, pId, name, name, email, cleanMobile, cleanMobile, cc,
-    password, gender, dob, city, state, locality, pincode, address, photoUrl, photoUrl,
-    photosJson, interestsJson, aboutJson, availJson, profileStepPending, profileCompleted
+    password, gender, dob, calculatedAge, city, state, locality, pincode, address, photoUrl, photoUrl,
+    photosJson, interestsJson, aboutJson, availJson, profileStepPending, profileCompleted,
+    isApproved, isVerified
   ]);
 
   console.log(`[WithMe DB] Created partner ${name} (${pId}) in MySQL 'withme_partners'.`);
@@ -1410,5 +1439,6 @@ module.exports = {
   savePartnerBookingToMysql,
   fetchPartnerTransactionsFromMysql,
   savePartnerTransactionToMysql,
-  mapMysqlRowToPartner
+  mapMysqlRowToPartner,
+  calculateAge
 };
