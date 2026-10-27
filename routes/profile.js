@@ -632,32 +632,70 @@ router.post('/about', authenticateToken, async (req, res) => {
     const user = await findPartnerByIdFromMysql(req.user.user_id);
     if (!user) return res.status(404).json({ status: false, message: 'User not found', error_code: 'USER_NOT_FOUND' });
 
-    if (!interests || !Array.isArray(interests) || interests.length === 0) {
-      return res.status(400).json({ status: false, message: 'Select at least 1 interest', error_code: 'INTEREST_REQUIRED' });
+    const existingAbout = user.about || {};
+    const finalDescription = description !== undefined ? description : (existingAbout.description || user.description || '');
+    const finalInterests = interests !== undefined ? interests : (existingAbout.interests || user.interests || []);
+
+    if (interests !== undefined) {
+      if (!Array.isArray(interests) || interests.length === 0) {
+        return res.status(400).json({ status: false, message: 'Select at least 1 interest', error_code: 'INTEREST_REQUIRED' });
+      }
     }
 
-    if (description) {
-      const wordCount = description.trim().split(/\s+/).filter(Boolean).length;
+    if (finalDescription) {
+      const wordCount = finalDescription.trim().split(/\s+/).filter(Boolean).length;
       if (wordCount > 300) {
         return res.status(400).json({ status: false, message: 'Description exceeds 300 words', error_code: 'DESCRIPTION_TOO_LONG' });
       }
     }
 
     await updatePartnerInMysql(user.user_id, {
-      about: { description, interests },
-      interests: interests,
+      about: { description: finalDescription, interests: finalInterests },
+      interests: finalInterests,
       profile_step_pending: 'AVAILABILITY'
     });
+
+    const updatedUser = await findPartnerByIdFromMysql(user.user_id);
+    syncPartnerToUserApp(updatedUser).catch(() => {});
 
     return res.status(200).json({
       status: true,
       message: 'Profile details saved',
-      data: { description, interests, profile_step_pending: 'AVAILABILITY' }
+      data: { description: finalDescription, interests: finalInterests, profile_step_pending: 'AVAILABILITY' }
     });
   } catch (err) {
     console.error('[About Submit Error]:', err.message);
     return res.status(500).json({ status: false, message: 'Failed to save about details.', error_code: 'SERVER_ERROR' });
   }
+});
+
+router.get('/about', authenticateToken, async (req, res) => {
+  try {
+    const user = await findPartnerByIdFromMysql(req.user.user_id);
+    if (!user) return res.status(404).json({ status: false, message: 'User not found', error_code: 'USER_NOT_FOUND' });
+
+    const aboutObj = user.about || {};
+    const description = aboutObj.description || user.description || '';
+    const interests = aboutObj.interests || user.interests || [];
+
+    return res.status(200).json({
+      status: true,
+      message: 'Success',
+      data: { description, interests, about: aboutObj }
+    });
+  } catch (err) {
+    console.error('[Get About Error]:', err.message);
+    return res.status(500).json({ status: false, message: 'Failed to fetch about details.', error_code: 'SERVER_ERROR' });
+  }
+});
+
+router.put('/about', authenticateToken, async (req, res) => {
+  req.url = '/about';
+  return router.handle(req, res);
+});
+router.patch('/about', authenticateToken, async (req, res) => {
+  req.url = '/about';
+  return router.handle(req, res);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -699,8 +737,8 @@ router.get('/', authenticateToken, async (req, res) => {
         is_primary: isPrimary
       };
     });
-    const photoUrlsList = [...new Set(formattedPhotos.map(p => p.url).filter(Boolean))];
-    const secondaryPhotos = photoUrlsList.slice(1);
+    const photoUrlsList = [...new Set(formattedPhotos.map(p => p.url).filter(Boolean))].slice(0, 5);
+    const secondaryPhotos = photoUrlsList.slice(1, 5);
     const aadharVerified = user.aadhar ? (user.aadhar.aadhar_verification_status === 'APPROVED') : false;
     const avail = user.availability || {};
     const cc = user.country_code || '+91';
@@ -728,6 +766,8 @@ router.get('/', authenticateToken, async (req, res) => {
         secondary_photos: secondaryPhotos,
         photo_gallery: photoUrlsList,
         name: user.name,
+        nickname: user.nickname || null,
+        nick_name: user.nickname || null,
         rating: user.rating !== undefined ? user.rating : 0.0,
         total_ratings: user.total_ratings || 0,
         mail: user.email,
@@ -744,7 +784,7 @@ router.get('/', authenticateToken, async (req, res) => {
         current_location: user.current_location || null,
         gender: user.gender,
         dob: user.dob,
-        age: calculateAge(user.dob) || user.age || 21,
+        age: calculateAge(user.dob) || user.age || null,
         area: user.area,
         city: user.city,
         state: user.state,
@@ -804,7 +844,7 @@ const handleSaveProfileAndPhotos = async (req, res) => {
       const user = await findPartnerByIdFromMysql(req.user.user_id);
       if (!user) return res.status(404).json({ status: false, message: 'User not found', error_code: 'USER_NOT_FOUND' });
 
-      const { name, email, mail, dob } = req.body;
+      const { name, email, mail, dob, nickname, nick_name } = req.body;
       if (dob) {
         const userAge = calculateAge(dob);
         if (userAge >= 0 && userAge < 19) {
@@ -817,6 +857,11 @@ const handleSaveProfileAndPhotos = async (req, res) => {
 
       const updateFields = { name: updatedName, email: updatedEmail };
       if (dob) updateFields.dob = dob;
+      if (nickname !== undefined) {
+        updateFields.nickname = nickname ? String(nickname).trim() : null;
+      } else if (nick_name !== undefined) {
+        updateFields.nickname = nick_name ? String(nick_name).trim() : null;
+      }
 
       const { finalPhotos, primaryUrl } = extractPhotosFromRequest(req, user);
 
@@ -868,6 +913,8 @@ const handleSaveProfileAndPhotos = async (req, res) => {
           secondary_photos: secondaryPhotos,
           photo_gallery: photoUrlsList,
           name: updatedUser.name,
+          nickname: updatedUser.nickname || null,
+          nick_name: updatedUser.nickname || null,
           mail: updatedUser.email,
           email: updatedUser.email,
           phone: updatedUser.mobile_number,

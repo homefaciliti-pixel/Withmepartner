@@ -67,6 +67,7 @@ async function initMysqlDatabase() {
         user_id VARCHAR(50) NOT NULL UNIQUE,
         name VARCHAR(150) NOT NULL,
         full_name VARCHAR(150),
+        nickname VARCHAR(100) DEFAULT NULL,
         email VARCHAR(150),
         mobile_number VARCHAR(30) NOT NULL UNIQUE,
         phone_number VARCHAR(30),
@@ -269,6 +270,7 @@ async function initMysqlDatabase() {
     // Ensure missing columns are dynamically added if table was pre-created
     const alterStatements = [
       'ALTER TABLE withme_partners ADD COLUMN dob VARCHAR(20) DEFAULT NULL',
+      'ALTER TABLE withme_partners ADD COLUMN nickname VARCHAR(100) DEFAULT NULL',
       'ALTER TABLE withme_partners ADD COLUMN latitude DECIMAL(10, 7) DEFAULT NULL',
       'ALTER TABLE withme_partners ADD COLUMN longitude DECIMAL(10, 7) DEFAULT NULL',
       'ALTER TABLE withme_partners ADD COLUMN interests LONGTEXT DEFAULT NULL',
@@ -470,6 +472,8 @@ function mapMysqlRowToPartner(r) {
     id: pId,
     name: r.name || r.full_name || 'Partner User',
     full_name: r.name || r.full_name || 'Partner User',
+    nickname: r.nickname || null,
+    nick_name: r.nickname || null,
     country_code: r.country_code || '+91',
     mobile_number: r.mobile_number || r.phone_number,
     phone_number: r.mobile_number || r.phone_number,
@@ -653,6 +657,7 @@ async function createPartnerInMysql(user) {
   const pId = user.user_id || user.partner_id || `usr_${cleanMobile}`;
   const cc = user.country_code || '+91';
   const name = user.name || 'Partner User';
+  const nickname = user.nickname || user.nick_name || null;
   const email = user.email || '';
   const password = user.password || '';
   const gender = user.gender || 'Female';
@@ -675,15 +680,15 @@ async function createPartnerInMysql(user) {
 
   const sql = `
     INSERT INTO withme_partners (
-      partner_id, user_id, name, full_name, email, mobile_number, phone_number, country_code,
+      partner_id, user_id, name, full_name, nickname, email, mobile_number, phone_number, country_code,
       password, gender, dob, age, city, state, locality, pincode, address, profile_photo_url, image,
       photos, interests, about, availability, profile_step_pending, profile_completed,
       failed_attempts, locked, is_approved, is_verified, status, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, 'ACTIVE', NOW(), NOW())
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, 'ACTIVE', NOW(), NOW())
   `;
 
   await db.query(sql, [
-    pId, pId, name, name, email, cleanMobile, cleanMobile, cc,
+    pId, pId, name, name, nickname, email, cleanMobile, cleanMobile, cc,
     password, gender, dob, calculatedAge, city, state, locality, pincode, address, photoUrl, photoUrl,
     photosJson, interestsJson, aboutJson, availJson, profileStepPending, profileCompleted,
     isApproved, isVerified
@@ -706,6 +711,13 @@ async function updatePartnerInMysql(userId, fields = {}) {
   if (fields.name) {
     setClauses.push("name = ?", "full_name = ?");
     params.push(fields.name, fields.name);
+  }
+  if (fields.nickname !== undefined) {
+    setClauses.push("nickname = ?");
+    params.push(fields.nickname);
+  } else if (fields.nick_name !== undefined) {
+    setClauses.push("nickname = ?");
+    params.push(fields.nick_name);
   }
   if (fields.email) {
     setClauses.push("email = ?");
