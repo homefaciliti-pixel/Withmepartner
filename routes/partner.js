@@ -624,8 +624,8 @@ router.get(['/all', '/list-all', '/registered', '/partners'], async (req, res) =
           is_primary: isPrimary
         };
       });
-      const photoUrlsList = formattedPhotos.map(p => p.url).filter(Boolean);
-      const secondaryPhotos = photoUrlsList.slice(1);
+      const photoUrlsList = [...new Set(formattedPhotos.map(p => p.url).filter(Boolean))].slice(0, 5);
+      const secondaryPhotos = photoUrlsList.slice(1, 5);
       const avail = u.availability || {};
       const aboutData = u.about || {};
 
@@ -635,6 +635,8 @@ router.get(['/all', '/list-all', '/registered', '/partners'], async (req, res) =
         id: u.user_id,
         name: u.name,
         full_name: u.name,
+        nickname: u.nickname || null,
+        nick_name: u.nickname || null,
         email: u.email,
         mobile_number: u.mobile_number,
         phone: u.mobile_number,
@@ -873,8 +875,8 @@ router.get(['/me', '/profile', '/user', '/session'], authenticateToken, async (r
       is_primary: p && p.is_primary !== undefined ? Boolean(p.is_primary) : (idx === 0)
     };
   });
-  const photoUrlsList = formattedPhotos.map(p => p.url).filter(Boolean);
-  const secondaryPhotos = photoUrlsList.slice(1);
+  const photoUrlsList = [...new Set(formattedPhotos.map(p => p.url).filter(Boolean))].slice(0, 5);
+  const secondaryPhotos = photoUrlsList.slice(1, 5);
   const primaryUrl = (photoUrlsList[0] || formatPhotoUrl(user.profile_photo_url || user.image, req) || '');
 
   const enrichedUser = {

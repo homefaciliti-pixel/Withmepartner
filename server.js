@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
 const http = require('http');
 
 const authRoutes = require('./routes/auth');
@@ -27,6 +28,34 @@ app.use(express.urlencoded({ extended: true }));
 
 // Serve static uploads
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// Render Ephemeral Disk Fallback: restore uploaded file from MySQL backup if missing from local disk
+app.use('/uploads', async (req, res, next) => {
+  const relPath = req.path.replace(/^\//, '').split('?')[0];
+  const filename = path.basename(relPath);
+  if (filename) {
+    try {
+      const { getDbPool } = require('./config/database');
+      const db = getDbPool();
+      if (db && typeof db.query === 'function') {
+        const [rows] = await db.query('SELECT mimetype, data FROM withme_uploaded_files WHERE filename = ? LIMIT 1', [filename]);
+        if (rows && rows.length > 0) {
+          const fileRow = rows[0];
+          try {
+            const targetDir = path.join(__dirname, 'uploads', path.dirname(relPath));
+            if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
+            fs.writeFileSync(path.join(__dirname, 'uploads', relPath), fileRow.data);
+          } catch (_) {}
+          res.setHeader('Content-Type', fileRow.mimetype || 'image/jpeg');
+          return res.status(200).send(fileRow.data);
+        }
+      }
+    } catch (e) {
+      console.warn('[Upload DB Restore Warning]:', e.message);
+    }
+  }
+  return res.status(404).send('Not Found');
+});
 
 // Register routes
 app.use('/api/notifications', notificationRoutes);

@@ -95,8 +95,8 @@ router.post('/login', async (req, res) => {
         is_primary: p && p.is_primary !== undefined ? Boolean(p.is_primary) : (idx === 0)
       };
     });
-    const photoUrlsList = formattedPhotos.map(p => p.url).filter(Boolean);
-    const secondaryPhotos = photoUrlsList.slice(1);
+    const photoUrlsList = [...new Set(formattedPhotos.map(p => p.url).filter(Boolean))].slice(0, 5);
+    const secondaryPhotos = photoUrlsList.slice(1, 5);
     const userPhoto = (photoUrlsList[0] || formatPhotoUrl(user.profile_photo_url || (user.photos && user.photos[0] ? user.photos[0].url : PHOTO_1), req));
 
     const partnerObj = {
@@ -105,12 +105,15 @@ router.post('/login', async (req, res) => {
       partner_id: user.user_id,
       name: user.name,
       full_name: user.name,
+      nickname: user.nickname || null,
+      nick_name: user.nickname || null,
       email: user.email || '',
       country_code: user.country_code || normCC,
       mobile_number: user.mobile_number,
       phone: user.mobile_number,
       gender: user.gender || '',
       dob: user.dob || '',
+      age: calculateAge(user.dob) || user.age || null,
       city: user.city || '',
       state: user.state || '',
       area: user.area || user.locality || '',
@@ -395,7 +398,7 @@ function calculateAge(dobStr) {
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/register', async (req, res) => {
   const {
-    token, name, country_code, mobile_number, email, gender, dob,
+    token, name, nickname, nick_name, country_code, mobile_number, email, gender, dob,
     area, city, state, pincode, password, confirm_password
   } = req.body;
 
@@ -461,6 +464,7 @@ router.post('/register', async (req, res) => {
       user_id: userId,
       partner_id: userId,
       name,
+      nickname: (nickname || nick_name || '').trim() || null,
       country_code: normCC,
       mobile_number: finalMobile,
       email: email || '',
@@ -577,8 +581,8 @@ const handleGetSessionUser = async (req, res) => {
         is_primary: p && p.is_primary !== undefined ? Boolean(p.is_primary) : (idx === 0)
       };
     });
-    const photoUrlsList = formattedPhotos.map(p => p.url).filter(Boolean);
-    const secondaryPhotos = photoUrlsList.slice(1);
+    const photoUrlsList = [...new Set(formattedPhotos.map(p => p.url).filter(Boolean))].slice(0, 5);
+    const secondaryPhotos = photoUrlsList.slice(1, 5);
     const userPhoto = (photoUrlsList[0] || formatPhotoUrl(user.profile_photo_url || (user.photos && user.photos[0] ? user.photos[0].url : PHOTO_1), req));
 
     const partnerObj = {
@@ -587,12 +591,15 @@ const handleGetSessionUser = async (req, res) => {
       partner_id: user.user_id,
       name: user.name,
       full_name: user.name,
+      nickname: user.nickname || null,
+      nick_name: user.nickname || null,
       email: user.email || '',
       country_code: user.country_code || '+91',
       mobile_number: user.mobile_number,
       phone: user.mobile_number,
       gender: user.gender || '',
       dob: user.dob || '',
+      age: calculateAge(user.dob) || user.age || null,
       city: user.city || '',
       state: user.state || '',
       area: user.area || user.locality || '',

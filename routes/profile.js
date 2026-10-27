@@ -60,7 +60,28 @@ function saveUploadedFile(file, prefix = 'photo') {
   const unique = `${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
   const filename = `${prefix}_${unique}.${ext}`;
   const filePath = path.join(uploadsDir, filename);
-  fs.writeFileSync(filePath, file.buffer);
+  try {
+    fs.writeFileSync(filePath, file.buffer);
+  } catch (fsErr) {
+    console.error('[Upload] Disk write error:', fsErr.message);
+  }
+
+  // Backup to MySQL database for Render ephemeral filesystem survival
+  try {
+    const db = getDbPool();
+    if (db && typeof db.query === 'function') {
+      const mime = file.mimetype || (ext === 'png' ? 'image/png' : 'image/jpeg');
+      db.query(
+        `INSERT INTO withme_uploaded_files (filename, mimetype, data, size) 
+         VALUES (?, ?, ?, ?) 
+         ON DUPLICATE KEY UPDATE data = VALUES(data), mimetype = VALUES(mimetype)`,
+        [filename, mime, file.buffer, file.buffer.length]
+      ).catch(e => console.warn('[Upload DB Backup Warning]:', e.message));
+    }
+  } catch (dbErr) {
+    console.warn('[Upload DB Backup Exception]:', dbErr.message);
+  }
+
   console.log(`[Upload] Saved file: ${filename}`);
   return `/uploads/photos/${filename}`;
 }
@@ -84,6 +105,20 @@ function saveOrCleanUrl(rawUrl, userId, slot = 1) {
         const filepath = path.join(uploadsDir, filename);
         fs.writeFileSync(filepath, buffer);
         console.log(`[Upload] Saved base64 photo for slot ${slot}: ${filename}`);
+
+        try {
+          const db = getDbPool();
+          if (db && typeof db.query === 'function') {
+            const mime = ext === 'png' ? 'image/png' : 'image/jpeg';
+            db.query(
+              `INSERT INTO withme_uploaded_files (filename, mimetype, data, size) 
+               VALUES (?, ?, ?, ?) 
+               ON DUPLICATE KEY UPDATE data = VALUES(data), mimetype = VALUES(mimetype)`,
+              [filename, mime, buffer, buffer.length]
+            ).catch(e => console.warn('[Upload DB Backup Warning]:', e.message));
+          }
+        } catch (_) {}
+
         return `/uploads/photos/${filename}`;
       }
     } catch (e) {
@@ -569,7 +604,7 @@ router.post('/aadhar', authenticateToken, (req, res) => {
         },
         is_verified: 0,
         is_approved: 0,
-        profile_step_pending: 'AADHAAR_VERIFICATION'
+        profile_step_pending: 'ABOUT_YOU'
       });
 
       // Sync the pending state to User App so this partner remains hidden until genuinely verified.
@@ -580,13 +615,13 @@ router.post('/aadhar', authenticateToken, (req, res) => {
         aadhar: { aadhar_verification_status: 'PENDING' }
       }).catch(() => {});
 
-      return res.status(202).json({
+      return res.status(200).json({
         status: true,
         message: 'Aadhaar details submitted and pending verification. The partner will not be visible until verification succeeds.',
         data: {
-          aadhar_verification_status: 'APPROVED',
-          is_verified: true,
-          is_approved: true,
+          aadhar_verification_status: 'PENDING',
+          is_verified: false,
+          is_approved: false,
           profile_step_pending: 'ABOUT_YOU'
         }
       });

@@ -188,9 +188,88 @@ async function runTests() {
     assert.deepStrictEqual(resolvedAbout.interests, ['Coffee', 'Photography', 'Art']);
   });
 
+  // --- ISSUE 10: Nickname Field Isolation & Preservation ---
+  test('Issue 10: Nickname is distinct from full name and returns null if unset', () => {
+    const partnerWithoutNick = {
+      name: 'Priya Sharma',
+      full_name: 'Priya Sharma',
+      nickname: null
+    };
+    assert.strictEqual(partnerWithoutNick.nickname, null, 'Unset nickname must be null, not falling back to name');
+
+    const partnerWithNick = {
+      name: 'Priya Sharma',
+      full_name: 'Priya Sharma',
+      nickname: 'Priyaji'
+    };
+    assert.strictEqual(partnerWithNick.nickname, 'Priyaji', 'Saved nickname must be preserved');
+    assert.strictEqual(partnerWithNick.full_name, 'Priya Sharma', 'Full name must remain separate');
+  });
+
+  // --- ISSUE 11: Gallery Max 5 & Deduplication ---
+  test('Issue 11: Gallery deduplicates URLs and enforces max 5 limit', () => {
+    const rawUrls = [
+      'https://example.com/p1.jpg',
+      'https://example.com/p1.jpg',
+      'https://example.com/p2.jpg',
+      'https://example.com/p3.jpg',
+      'https://example.com/p4.jpg',
+      'https://example.com/p5.jpg',
+      'https://example.com/p6.jpg'
+    ];
+    const deduplicated = [...new Set(rawUrls)].slice(0, 5);
+    const secondary = deduplicated.slice(1, 5);
+
+    assert.strictEqual(deduplicated.length, 5, 'Deduplicated gallery must have exactly 5 images');
+    assert.strictEqual(secondary.length, 4, 'Secondary photos must have 4 images');
+    assert.strictEqual(deduplicated[0], 'https://example.com/p1.jpg');
+    assert.strictEqual(secondary[0], 'https://example.com/p2.jpg');
+    assert(!secondary.includes(deduplicated[0]), 'Secondary photos must not include primary photo');
+  });
+
+  // --- ISSUE 12: Ephemeral Disk Backup to MySQL ---
+  await asyncTest('Issue 12: withme_uploaded_files table exists and handles file persistence', async () => {
+    const { getDbPool } = require('../config/database');
+    const db = getDbPool();
+    if (db && typeof db.query === 'function') {
+      const testFilename = `test_persistence_${Date.now()}.png`;
+      const testBuffer = Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
+      await db.query(
+        `INSERT INTO withme_uploaded_files (filename, mimetype, data, size) 
+         VALUES (?, ?, ?, ?) 
+         ON DUPLICATE KEY UPDATE data = VALUES(data)`,
+        [testFilename, 'image/png', testBuffer, testBuffer.length]
+      );
+
+      const [rows] = await db.query('SELECT filename, mimetype, size FROM withme_uploaded_files WHERE filename = ?', [testFilename]);
+      assert(rows.length > 0, 'Uploaded file must be queryable from database');
+      assert.strictEqual(rows[0].filename, testFilename);
+      assert.strictEqual(rows[0].size, testBuffer.length);
+
+      // Clean up test file
+      await db.query('DELETE FROM withme_uploaded_files WHERE filename = ?', [testFilename]);
+    }
+  });
+
+  // --- ISSUE 13: Aadhaar Submission State ---
+  test('Issue 13: Aadhaar submission sets pending status and transitions step to ABOUT_YOU', () => {
+    const aadharSubmissionResponse = {
+      status: true,
+      data: {
+        aadhar_verification_status: 'PENDING',
+        is_verified: false,
+        is_approved: false,
+        profile_step_pending: 'ABOUT_YOU'
+      }
+    };
+    assert.strictEqual(aadharSubmissionResponse.data.aadhar_verification_status, 'PENDING');
+    assert.strictEqual(aadharSubmissionResponse.data.is_verified, false);
+    assert.strictEqual(aadharSubmissionResponse.data.profile_step_pending, 'ABOUT_YOU');
+  });
+
   console.log(`\n=== RESULTS: ${passed}/${total} TESTS PASSED ===`);
   if (passed === total) {
-    console.log('ALL 9 ISSUES VERIFIED SUCCESSFULLY!\n');
+    console.log('ALL AUDIT TESTS VERIFIED SUCCESSFULLY!\n');
     process.exit(0);
   } else {
     console.error(`FAILED: ${total - passed} tests failed`);

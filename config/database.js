@@ -75,7 +75,7 @@ async function initMysqlDatabase() {
         password VARCHAR(255) NOT NULL,
         gender VARCHAR(20) DEFAULT 'Female',
         dob VARCHAR(20),
-        age INT DEFAULT 24,
+        age INT DEFAULT NULL,
         city VARCHAR(100) DEFAULT 'Jaipur',
         state VARCHAR(100) DEFAULT 'Rajasthan',
         locality VARCHAR(150) DEFAULT 'Vaishali Nagar',
@@ -267,10 +267,23 @@ async function initMysqlDatabase() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
 
+    // Persistent storage backup table for Render ephemeral filesystem
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS withme_uploaded_files (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        filename VARCHAR(255) NOT NULL UNIQUE,
+        mimetype VARCHAR(100),
+        data LONGBLOB,
+        size INT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
     // Ensure missing columns are dynamically added if table was pre-created
     const alterStatements = [
       'ALTER TABLE withme_partners ADD COLUMN dob VARCHAR(20) DEFAULT NULL',
       'ALTER TABLE withme_partners ADD COLUMN nickname VARCHAR(100) DEFAULT NULL',
+      'ALTER TABLE withme_partners MODIFY COLUMN age INT DEFAULT NULL',
       'ALTER TABLE withme_partners ADD COLUMN latitude DECIMAL(10, 7) DEFAULT NULL',
       'ALTER TABLE withme_partners ADD COLUMN longitude DECIMAL(10, 7) DEFAULT NULL',
       'ALTER TABLE withme_partners ADD COLUMN interests LONGTEXT DEFAULT NULL',
@@ -481,7 +494,7 @@ function mapMysqlRowToPartner(r) {
     email: r.email || '',
     gender: r.gender || 'Female',
     dob: r.dob || '',
-    age: calculateAge(r.dob) || ((r.age && r.age > 0) ? r.age : 21),
+    age: calculateAge(r.dob) || ((r.age && r.age > 0) ? r.age : null),
     area: r.locality || '',
     locality: r.locality || '',
     city: r.city || '',
@@ -662,7 +675,7 @@ async function createPartnerInMysql(user) {
   const password = user.password || '';
   const gender = user.gender || 'Female';
   const dob = user.dob || '';
-  const calculatedAge = calculateAge(dob) || user.age || 21;
+  const calculatedAge = calculateAge(dob) || (user.age ? Number(user.age) : null);
   const isApproved = user.is_approved ? 1 : 0;
   const isVerified = user.is_verified ? 1 : 0;
   const city = user.city || '';

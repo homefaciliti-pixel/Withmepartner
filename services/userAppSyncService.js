@@ -33,23 +33,26 @@ async function syncPartnerToUserApp(partnerUser) {
     };
   });
 
-  const photoUrlsList = formattedPhotos.map(p => p.url).filter(Boolean);
+  let photoUrlsList = formattedPhotos.map(p => p.url).filter(Boolean);
   if (photoUrl && !photoUrlsList.includes(photoUrl)) {
     photoUrlsList.unshift(photoUrl);
   }
-  const secondaryPhotosList = photoUrlsList.slice(1);
+  const finalGallery = [...new Set(photoUrlsList)].slice(0, 5);
+  const secondaryPhotosList = finalGallery.slice(1, 5);
 
   const payload = {
     user_id: partnerUser.user_id,
     partner_id: partnerUser.user_id,
     name: name,
     full_name: name,
+    nickname: partnerUser.nickname || partnerUser.nick_name || null,
+    nick_name: partnerUser.nickname || partnerUser.nick_name || null,
     email: partnerUser.email || `${String(name).toLowerCase().replace(/[^a-z0-9]/g, '') || 'user'}@withme.app`,
     phone_number: partnerUser.mobile_number,
     mobile_number: partnerUser.mobile_number,
     gender: partnerUser.gender || 'Female',
-    dob: partnerUser.dob || '2001-05-14',
-    age: calculateAge(partnerUser.dob) || partnerUser.age || 21,
+    dob: partnerUser.dob || '',
+    age: calculateAge(partnerUser.dob) || partnerUser.age || null,
     city: partnerUser.city || 'Jaipur',
     state: partnerUser.state || 'Rajasthan',
     area: partnerUser.area || 'Malviya Nagar',
@@ -59,11 +62,11 @@ async function syncPartnerToUserApp(partnerUser) {
     image: photoUrl,
     profile_photo_url: photoUrl,
     photos: formattedPhotos,
-    profile_images: photoUrlsList,
-    images: photoUrlsList,
-    profileImages: photoUrlsList,
+    profile_images: finalGallery,
+    images: finalGallery,
+    profileImages: finalGallery,
     secondary_photos: secondaryPhotosList,
-    photo_gallery: photoUrlsList,
+    photo_gallery: finalGallery,
     category: (partnerUser.about && partnerUser.about.interests && partnerUser.about.interests[0]) || partnerUser.category || 'Coffee',
     activity: (partnerUser.about && partnerUser.about.interests && partnerUser.about.interests[0]) || partnerUser.activity || 'Coffee',
     interests: (partnerUser.about && partnerUser.about.interests) || partnerUser.interests || ['Coffee', 'Travel'],
