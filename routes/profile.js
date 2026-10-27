@@ -29,12 +29,15 @@ const AADHAAR_WINDOW_MS = 24 * 60 * 60 * 1000; // 24 hours
 // Multer setup
 // ─────────────────────────────────────────────────────────────────────────────
 const storage = multer.memoryStorage();
-const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 } });
+const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024, files: 5 } });
 
 const handleUploadErrors = (err, req, res, next) => {
   if (err instanceof multer.MulterError) {
     if (err.code === 'LIMIT_FILE_SIZE') {
       return res.status(400).json({ status: false, message: 'File size exceeds 5MB limit', error_code: 'FILE_TOO_LARGE' });
+    }
+    if (err.code === 'LIMIT_FILE_COUNT') {
+      return res.status(400).json({ status: false, message: 'Maximum 5 images can be uploaded', error_code: 'TOO_MANY_FILES' });
     }
   }
   if (err) return res.status(400).json({ status: false, message: err.message, error_code: 'UPLOAD_ERROR' });
@@ -279,6 +282,12 @@ const handleUploadPhotos = async (req, res) => {
       const user = await findPartnerByIdFromMysql(req.user.user_id);
       if (!user) return res.status(404).json({ status: false, message: 'User not found', error_code: 'USER_NOT_FOUND' });
 
+      // Enforce max 5 images limit on upload
+      const incomingFilesCount = (req.files && req.files.length) || (req.file ? 1 : 0);
+      if (incomingFilesCount > 5) {
+        return res.status(400).json({ status: false, message: 'Maximum 5 images can be uploaded.', error_code: 'TOO_MANY_FILES' });
+      }
+
       const { finalPhotos, primaryUrl } = extractPhotosFromRequest(req, user);
 
       const newProfileStep = user.profile_step_pending === 'PROFILE_PHOTO' ? 'AADHAR' : user.profile_step_pending;
@@ -387,7 +396,11 @@ const handleUpdateSinglePhoto = async (req, res) => {
 
       const photoIdParam = req.params.photo_id || req.body.photo_id || req.body.slot || 'ph_001';
       const m = String(photoIdParam).match(/(\d+)/);
-      const photoKey = m ? Math.min(Math.max(parseInt(m[1], 10), 1), 5) : 1;
+      const rawSlot = m ? parseInt(m[1], 10) : 1;
+      if (rawSlot < 1 || rawSlot > 5) {
+        return res.status(400).json({ status: false, message: 'Invalid photo slot. Only slots 1 to 5 are allowed.', error_code: 'INVALID_PHOTO_SLOT' });
+      }
+      const photoKey = rawSlot;
 
       const files = req.files || (req.file ? [req.file] : []);
       let updatedUrl = null;
