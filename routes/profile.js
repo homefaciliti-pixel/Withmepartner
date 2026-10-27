@@ -297,7 +297,7 @@ const handleUploadPhotos = async (req, res) => {
         is_primary: p && p.is_primary !== undefined ? Boolean(p.is_primary) : (idx === 0)
       }));
 
-      const photoUrlsList = formattedPhotos.map(p => p.url).filter(Boolean);
+      const photoUrlsList = [...new Set(formattedPhotos.map(p => p.url).filter(Boolean))];
       const secondaryUrls = photoUrlsList.slice(1);
       const primaryPhotoUrl = photoUrlsList[0] || formatPhotoUrl(primaryUrl, req);
 
@@ -428,7 +428,7 @@ const handleUpdateSinglePhoto = async (req, res) => {
         is_primary: p && p.is_primary !== undefined ? Boolean(p.is_primary) : (idx === 0)
       }));
 
-      const photoUrlsList = formattedPhotos.map(p => p.url).filter(Boolean);
+      const photoUrlsList = [...new Set(formattedPhotos.map(p => p.url).filter(Boolean))];
       const secondaryUrls = photoUrlsList.slice(1);
 
       return res.status(200).json({
@@ -660,7 +660,8 @@ router.get('/', authenticateToken, async (req, res) => {
     const primaryPhoto = (user.photos && user.photos.find(p => p.is_primary)) || (user.photos && user.photos[0]);
     const rawPhoto = primaryPhoto ? primaryPhoto.url : (user.profile_photo_url || '');
     const photoUrl = rawPhoto ? formatPhotoUrl(rawPhoto, req) : '';
-    const formattedPhotos = (user.photos || []).map((p, idx) => {
+    const storedPhotos = Array.isArray(user.photos) ? user.photos : (typeof user.photos === 'string' ? (() => { try { const parsed = JSON.parse(user.photos); return Array.isArray(parsed) ? parsed : []; } catch (_) { return []; } })() : []);
+    const formattedPhotos = storedPhotos.map((p, idx) => {
       let rawUrl = '';
       let pId = `ph_00${idx + 1}`;
       let isPrimary = idx === 0;
@@ -685,7 +686,7 @@ router.get('/', authenticateToken, async (req, res) => {
         is_primary: isPrimary
       };
     });
-    const photoUrlsList = formattedPhotos.map(p => p.url).filter(Boolean);
+    const photoUrlsList = [...new Set(formattedPhotos.map(p => p.url).filter(Boolean))];
     const secondaryPhotos = photoUrlsList.slice(1);
     const aadharVerified = user.aadhar ? (user.aadhar.aadhar_verification_status === 'APPROVED') : false;
     const avail = user.availability || {};
@@ -836,7 +837,7 @@ const handleSaveProfileAndPhotos = async (req, res) => {
         url: formatPhotoUrl(p ? (p.url || p.path || '') : '', req),
         is_primary: p && p.is_primary !== undefined ? Boolean(p.is_primary) : false
       }));
-      const photoUrlsList = formattedPhotos.map(p => p.url).filter(Boolean);
+      const photoUrlsList = [...new Set(formattedPhotos.map(p => p.url).filter(Boolean))];
       const secondaryPhotos = photoUrlsList.slice(1);
 
       return res.status(200).json({
