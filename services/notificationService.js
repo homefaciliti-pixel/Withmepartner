@@ -1,9 +1,102 @@
 const http = require('http');
 const https = require('https');
+const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 const { getDbPool } = require('../config/database');
 
 // In-memory notifications store
 const memoryNotifications = new Map(); // notification_id -> object
+
+// Firebase Service Account Credentials & Token Cache
+let serviceAccountCreds = null;
+try {
+  const saPath = path.join(__dirname, '../config/firebase-service-account.json');
+  if (fs.existsSync(saPath)) {
+    serviceAccountCreds = JSON.parse(fs.readFileSync(saPath, 'utf8'));
+  }
+} catch (e) {
+  console.warn('[FCM Partner] Service account load notice:', e.message);
+}
+
+let cachedOAuthToken = null;
+let tokenExpiresAt = 0;
+
+async function getFirebaseAccessToken() {
+  if (!serviceAccountCreds) return null;
+  const now = Math.floor(Date.now() / 1000);
+  if (cachedOAuthToken && tokenExpiresAt > now + 60) {
+    return cachedOAuthToken;
+  }
+
+  return new Promise((resolve) => {
+    try {
+      const header = { alg: 'RS256', typ: 'JWT' };
+      const claim = {
+        iss: serviceAccountCreds.client_email,
+        scope: 'https://www.googleapis.com/auth/firebase.messaging',
+        aud: 'https://oauth2.googleapis.com/token',
+        exp: now + 3600,
+        iat: now
+      };
+
+      const encodeBase64Url = (obj) => {
+        return Buffer.from(JSON.stringify(obj))
+          .toString('base64')
+          .replace(/=/g, '')
+          .replace(/\+/g, '-')
+          .replace(/\//g, '_');
+      };
+
+      const encodedHeader = encodeBase64Url(header);
+      const encodedClaim = encodeBase64Url(claim);
+      const signInput = `${encodedHeader}.${encodedClaim}`;
+
+      const signer = crypto.createSign('RSA-SHA256');
+      signer.update(signInput);
+      const signature = signer.sign(serviceAccountCreds.private_key, 'base64')
+        .replace(/=/g, '')
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_');
+
+      const jwt = `${signInput}.${signature}`;
+      const postData = `grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&assertion=${jwt}`;
+
+      const req = https.request({
+        hostname: 'oauth2.googleapis.com',
+        path: '/token',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Content-Length': Buffer.byteLength(postData)
+        }
+      }, (res) => {
+        let body = '';
+        res.on('data', chunk => body += chunk);
+        res.on('end', () => {
+          try {
+            const json = JSON.parse(body);
+            if (json.access_token) {
+              cachedOAuthToken = json.access_token;
+              tokenExpiresAt = now + (json.expires_in || 3600);
+              resolve(cachedOAuthToken);
+            } else {
+              resolve(null);
+            }
+          } catch (err) {
+            resolve(null);
+          }
+        });
+      });
+
+      req.on('error', () => resolve(null));
+      req.write(postData);
+      req.end();
+    } catch (err) {
+      resolve(null);
+    }
+  });
+}
 
 /**
  * Save / Update FCM Token for a user (partner or customer)
@@ -52,26 +145,81 @@ async function saveUserFcmToken(userId, fcmToken, deviceType = 'android') {
 }
 
 /**
- * Dispatch Push Notification via Firebase FCM HTTP API if Server Key present
+ * Dispatch Push Notification via modern Firebase FCM HTTP v1 API
  */
-function sendFcmPushNotification(fcmToken, title, body, dataPayload = {}) {
+async function sendFcmPushNotification(fcmToken, title, body, dataPayload = {}) {
+  // Stringify all data payload entries
+  const stringData = {};
+  if (dataPayload && typeof dataPayload === 'object') {
+    for (const [k, v] of Object.entries(dataPayload)) {
+      if (v !== undefined && v !== null) {
+        stringData[k] = typeof v === 'object' ? JSON.stringify(v) : String(v);
+      }
+    }
+  }
+
+  // 1. Try FCM HTTP v1 using Service Account
+  try {
+    const accessToken = await getFirebaseAccessToken();
+    if (accessToken && serviceAccountCreds && serviceAccountCreds.project_id) {
+      const payload = JSON.stringify({
+        message: {
+          token: fcmToken,
+          notification: {
+            title: title,
+            body: body
+          },
+          data: stringData,
+          android: {
+            priority: 'high',
+            notification: {
+              channel_id: 'chat_messages',
+              sound: 'default'
+            }
+          }
+        }
+      });
+
+      return new Promise((resolve) => {
+        const req = https.request({
+          hostname: 'fcm.googleapis.com',
+          path: `/v1/projects/${serviceAccountCreds.project_id}/messages:send`,
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(payload)
+          }
+        }, (res) => {
+          let data = '';
+          res.on('data', chunk => data += chunk);
+          res.on('end', () => {
+            try {
+              const parsed = JSON.parse(data);
+              resolve({ sent: res.statusCode === 200, response: parsed });
+            } catch (e) {
+              resolve({ sent: res.statusCode === 200, raw: data });
+            }
+          });
+        });
+
+        req.on('error', (err) => resolve({ sent: false, error: err.message }));
+        req.write(payload);
+        req.end();
+      });
+    }
+  } catch (e) {
+    console.warn('[FCM Partner v1 Error]:', e.message);
+  }
+
+  // 2. Legacy fallback
   const serverKey = process.env.FIREBASE_SERVER_KEY || process.env.FCM_SERVER_KEY;
   if (!serverKey) {
-    console.log(`[FCM Notice] Notification stored. To enable Firebase push delivery, set FIREBASE_SERVER_KEY in .env`);
+    console.log(`[FCM Notice] Notification stored.`);
     return Promise.resolve({ sent: false, reason: "NO_SERVER_KEY" });
   }
 
   return new Promise((resolve) => {
-    // FCM strictly requires all values in data payload to be string types
-    const stringData = {};
-    if (dataPayload && typeof dataPayload === 'object') {
-      for (const [k, v] of Object.entries(dataPayload)) {
-        if (v !== undefined && v !== null) {
-          stringData[k] = typeof v === 'object' ? JSON.stringify(v) : String(v);
-        }
-      }
-    }
-
     const payload = JSON.stringify({
       to: fcmToken,
       notification: {
@@ -99,17 +247,6 @@ function sendFcmPushNotification(fcmToken, title, body, dataPayload = {}) {
       res.on('end', () => {
         try {
           const parsed = JSON.parse(data);
-          // If FCM reports invalid or unregistered token, clean up from DB
-          if (parsed && Array.isArray(parsed.results)) {
-            const hasInvalidToken = parsed.results.some(r => r && (r.error === 'NotRegistered' || r.error === 'InvalidRegistration'));
-            if (hasInvalidToken) {
-              const db = getDbPool();
-              if (db && typeof db.query === 'function') {
-                db.query(`UPDATE withme_partners SET fcm_token = NULL WHERE fcm_token = ?`, [fcmToken]).catch(() => {});
-                db.query(`UPDATE users SET fcm_token = NULL WHERE fcm_token = ?`, [fcmToken]).catch(() => {});
-              }
-            }
-          }
           resolve({ sent: true, response: parsed });
         } catch (e) {
           resolve({ sent: true, raw: data });
@@ -117,11 +254,7 @@ function sendFcmPushNotification(fcmToken, title, body, dataPayload = {}) {
       });
     });
 
-    req.on('error', (err) => {
-      console.error("[FCM Push Error]:", err.message);
-      resolve({ sent: false, error: err.message });
-    });
-
+    req.on('error', (err) => resolve({ sent: false, error: err.message }));
     req.write(payload);
     req.end();
   });
