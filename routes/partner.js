@@ -77,7 +77,17 @@ const handleIncomingUserRequest = async (req, res) => {
   const interest = requestPayload.interest || requestPayload.activity_name || requestPayload.activity || (requestPayload.activity && requestPayload.activity.type) || 'Coffee';
   const location = requestPayload.location || (requestPayload.activity && requestPayload.activity.area) || 'Jaipur';
   const dateTime = requestPayload.date_time || `${requestPayload.date || getISTDateString()} ${requestPayload.time || '06:00 PM'}`;
-  const profileImage = requestPayload.profile_image || requestPayload.image || requestPayload.sender_avatar || '';
+  let profileImage = requestPayload.profile_image || requestPayload.image || requestPayload.sender_avatar || '';
+  if ((!profileImage || profileImage.includes('profile.jpg')) && userId) {
+    try {
+      const db = getDbPool();
+      const cleanUId = String(userId).replace('usr_', '');
+      const [uRows] = await db.query('SELECT profile_image, image FROM users WHERE id = ? OR id = ? LIMIT 1', [cleanUId, userId]);
+      if (uRows.length > 0) {
+        profileImage = uRows[0].profile_image || (uRows[0].image ? `https://withmeapi-userapp.onrender.com/uploads/${uRows[0].image}` : '');
+      }
+    } catch (_) {}
+  }
   const amount = requestPayload.amount || requestPayload.price || 1;
   const currency = requestPayload.currency || 'INR';
 
@@ -277,7 +287,17 @@ const handleIncomingUserBooking = async (req, res) => {
   const userPhone = bookingPayload.phone_number || bookingPayload.customer_phone || '';
   const interest = bookingPayload.interest || bookingPayload.activity || 'Coffee';
   const location = bookingPayload.location || (bookingPayload.meeting_info && (bookingPayload.meeting_info.location || bookingPayload.meeting_info.place)) || 'Jaipur';
-  const profileImage = bookingPayload.profile_image || bookingPayload.user_image || '';
+  let profileImage = bookingPayload.profile_image || bookingPayload.user_image || '';
+  if ((!profileImage || profileImage.includes('profile.jpg')) && userId) {
+    try {
+      const db = getDbPool();
+      const cleanUId = String(userId).replace('usr_', '');
+      const [uRows] = await db.query('SELECT profile_image, image FROM users WHERE id = ? OR id = ? LIMIT 1', [cleanUId, userId]);
+      if (uRows.length > 0) {
+        profileImage = uRows[0].profile_image || (uRows[0].image ? `https://withmeapi-userapp.onrender.com/uploads/${uRows[0].image}` : '');
+      }
+    } catch (_) {}
+  }
   const date = bookingPayload.date || (bookingPayload.meeting_info && bookingPayload.meeting_info.date) || getISTDateString();
   const time = bookingPayload.time || (bookingPayload.meeting_info && bookingPayload.meeting_info.time) || '06:00 PM';
   const price = bookingPayload.amount || bookingPayload.price || 1;
@@ -725,7 +745,7 @@ router.get('/home', authenticateToken, async (req, res) => {
         const payStatus = isPaid ? 'PAID' : (r.payment_status || 'PENDING');
         const custName = r.customer_name || r.user_name || (r.sender && r.sender.name) || r.sender_name || r.name || 'Amit';
         const partName = r.partner_name || (req.user && req.user.name) || '';
-        const photoUrl = formatPhotoUrl(r.image, req);
+        const photoUrl = formatPhotoUrl(r.sender_avatar || r.image || r.profile_image || r.resolved_sender_avatar, req);
         const senderObj = {
           id: r.user_id,
           user_id: r.user_id,
@@ -792,7 +812,7 @@ router.get('/home', authenticateToken, async (req, res) => {
         const payStatus = isPaid ? 'PAID' : (b.payment_status || 'PENDING');
         const custName = b.customer_name || b.user_name || (b.sender && b.sender.name) || b.sender_name || b.name || 'Amit';
         const partName = b.partner_name || (req.user && req.user.name) || '';
-        const photoUrl = formatPhotoUrl(b.profile_image, req);
+        const photoUrl = formatPhotoUrl(b.profile_image || b.image || b.resolved_profile_image, req);
         const senderObj = {
           id: b.user_id,
           user_id: b.user_id,
@@ -958,7 +978,7 @@ const handleGetAllPartnerRequests = async (req, res) => {
     }
 
     const formattedList = filtered.map(r => {
-      const photoUrl = formatPhotoUrl(r.image || r.profile_image, req);
+      const photoUrl = formatPhotoUrl(r.sender_avatar || r.image || r.profile_image || r.resolved_sender_avatar, req);
       const isAcc = Number(r.is_accepted !== undefined ? r.is_accepted : (String(r.status).toUpperCase() === 'ACCEPTED' ? 1 : 0));
       const isPaid =
         r.is_paid === 1 || r.is_paid === true || r.is_paid === '1' ||
@@ -1054,7 +1074,7 @@ const handlePartnerAppRequestDetails = async (req, res) => {
     }
 
     const r = rows[0];
-    const photoUrl = formatPhotoUrl(r.sender_avatar || '', req);
+    let photoUrl = formatPhotoUrl(r.sender_avatar || '', req);
     const categoryName = r.activity || 'Coffee';
     const meetupLoc = r.location || '';
     const timeVal = r.time || '06:00 PM';
@@ -1093,9 +1113,10 @@ const handlePartnerAppRequestDetails = async (req, res) => {
     let customerProfileImages = [];
     if (r.user_id) {
       try {
+        const cleanUId = String(r.user_id).replace('usr_', '');
         const [userRows] = await db.query(
-          'SELECT id, name, image, profile_image, profile_images FROM users WHERE id = ? OR user_id = ? LIMIT 1',
-          [r.user_id, r.user_id]
+          'SELECT id, name, image, profile_image, profile_images FROM users WHERE id = ? OR id = ? LIMIT 1',
+          [cleanUId, r.user_id]
         );
         if (userRows.length > 0) {
           const uRow = userRows[0];
@@ -1114,7 +1135,7 @@ const handlePartnerAppRequestDetails = async (req, res) => {
             const fallbackImg = uRow.profile_image || uRow.image || r.sender_avatar || '';
             if (fallbackImg) parsedImages = [fallbackImg];
           }
-          customerProfileImages = parsedImages.map(img => formatPhotoUrl(img, req));
+          customerProfileImages = parsedImages.map(img => formatPhotoUrl(img, req)).filter(Boolean);
           customerPhotos = customerProfileImages.map((url, idx) => ({
             photo_id: `ph_00${idx + 1}`,
             url,
@@ -1126,7 +1147,9 @@ const handlePartnerAppRequestDetails = async (req, res) => {
       }
     }
     if (!custName) custName = 'Amit';
-    if (customerProfileImages.length === 0 && photoUrl) {
+    if (customerProfileImages.length > 0) {
+      photoUrl = customerProfileImages[0];
+    } else if (photoUrl) {
       customerProfileImages = [photoUrl];
       customerPhotos = [{ photo_id: 'ph_001', url: photoUrl, is_primary: true }];
     }
@@ -1490,16 +1513,17 @@ router.get('/bookings/:booking_id', authenticateToken, async (req, res) => {
       String(b.status || '').toUpperCase() === 'CONFIRMED' ||
       String(b.status || '').toUpperCase() === 'PAID';
     const payStatus = isPaid ? 'PAID' : (b.payment_status || 'PENDING');
-    const photoUrl = formatPhotoUrl(b.profile_image, req);
+    let photoUrl = formatPhotoUrl(b.profile_image, req);
 
     // Fetch customer profile photos & verify name from users table
     let customerPhotos = [];
     let customerProfileImages = [];
     if (b.user_id) {
       try {
+        const cleanUId = String(b.user_id).replace('usr_', '');
         const [userRows] = await db.query(
-          'SELECT id, name, image, profile_image, profile_images FROM users WHERE id = ? LIMIT 1',
-          [b.user_id]
+          'SELECT id, name, image, profile_image, profile_images FROM users WHERE id = ? OR id = ? LIMIT 1',
+          [cleanUId, b.user_id]
         );
         if (userRows.length > 0) {
           const uRow = userRows[0];
@@ -1518,7 +1542,7 @@ router.get('/bookings/:booking_id', authenticateToken, async (req, res) => {
             const fallbackImg = uRow.profile_image || uRow.image || b.profile_image || '';
             if (fallbackImg) parsedImages = [fallbackImg];
           }
-          customerProfileImages = parsedImages.map(img => formatPhotoUrl(img, req));
+          customerProfileImages = parsedImages.map(img => formatPhotoUrl(img, req)).filter(Boolean);
           customerPhotos = customerProfileImages.map((url, idx) => ({
             photo_id: `ph_00${idx + 1}`,
             url,
@@ -1530,7 +1554,9 @@ router.get('/bookings/:booking_id', authenticateToken, async (req, res) => {
       }
     }
     if (!custName) custName = 'Amit';
-    if (customerProfileImages.length === 0 && photoUrl) {
+    if (customerProfileImages.length > 0) {
+      photoUrl = customerProfileImages[0];
+    } else if (photoUrl) {
       customerProfileImages = [photoUrl];
       customerPhotos = [{ photo_id: 'ph_001', url: photoUrl, is_primary: true }];
     }
@@ -1728,7 +1754,7 @@ router.get(['/bookings', '/bookings/list'], authenticateToken, async (req, res) 
       const payStatus = isPaid ? 'PAID' : (b.payment_status || 'PENDING');
       const custName = b.customer_name || b.user_name || (b.sender && b.sender.name) || b.sender_name || b.name || 'Amit';
       const partName = b.partner_name || (req.user && req.user.name) || '';
-      const photoUrl = formatPhotoUrl(b.profile_image, req);
+      const photoUrl = formatPhotoUrl(b.profile_image || b.image || b.resolved_profile_image, req);
       const senderObj = {
         id: b.user_id,
         user_id: b.user_id,

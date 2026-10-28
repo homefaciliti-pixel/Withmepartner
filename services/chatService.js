@@ -241,23 +241,24 @@ async function findUser(userId) {
   try {
     const db = getDbPool();
     const [rows] = await db.query(
-      `SELECT * FROM users WHERE id = ? OR user_id = ? OR id = ? OR phone_number = ? LIMIT 1`,
-      [uId, formattedId, rawId, uId]
+      `SELECT * FROM users WHERE id = ? OR id = ? OR phone_number = ? LIMIT 1`,
+      [rawId, uId, uId]
     );
     if (rows && rows.length > 0) {
       const u = rows[0];
       let photosArr = [];
       try { photosArr = typeof u.photos === 'string' ? JSON.parse(u.photos) : (Array.isArray(u.photos) ? u.photos : []); } catch {}
-      const photoUrls = photosArr.map(ph => (typeof ph === 'string' ? ph : (ph.url || ph.path || ''))).filter(Boolean);
-      const primaryPhoto = u.profile_image || u.image || (photoUrls[0] || '');
+      const photoUrls = photosArr.map(ph => formatPhotoUrl(typeof ph === 'string' ? ph : (ph.url || ph.path || ''))).filter(Boolean);
+      const rawPrimary = u.profile_image || u.image || (photoUrls[0] || '');
+      const primaryPhoto = formatPhotoUrl(rawPrimary) || '/uploads/photos/photo_1.jpg';
       return {
         user_id: formatNumericUserId(u.id || u.user_id || uId),
         name: u.name || u.full_name || `User ${uId}`,
         full_name: u.full_name || u.name || `User ${uId}`,
         customer_name: u.name || u.full_name || '',
         sender_name: u.name || u.full_name || '',
-        profile_photo_url: primaryPhoto || '/uploads/photos/photo_1.jpg',
-        image: primaryPhoto || '/uploads/photos/photo_1.jpg',
+        profile_photo_url: primaryPhoto,
+        image: primaryPhoto,
         photos: photosArr,
         profile_images: photoUrls,
         images: photoUrls

@@ -65,18 +65,29 @@ function formatPhotoUrl(urlOrPath, req) {
     return `${baseUrl}/uploads/photos/photo_1.jpg`;
   }
 
-  let formatted = photoStr;
-  if (formatted.includes('localhost:5000')) {
-    formatted = formatted.replace(/https?:\/\/localhost:5000/, baseUrl);
-  } else if (formatted.includes('withmepartner.onrender.com')) {
-    formatted = formatted.replace(/https?:\/\/withmepartner\.onrender\.com/, baseUrl);
-  } else if (formatted.startsWith('/uploads')) {
-    formatted = `${baseUrl}${formatted}`;
-  } else if (formatted.startsWith('uploads/')) {
-    formatted = `${baseUrl}/${formatted}`;
+  let formatted = photoStr.trim();
+  if (formatted.startsWith('http://') || formatted.startsWith('https://')) {
+    if (formatted.includes('localhost:5000')) {
+      formatted = formatted.replace(/https?:\/\/localhost:5000/, baseUrl);
+    } else if (formatted.includes('withmepartner.onrender.com')) {
+      formatted = formatted.replace(/https?:\/\/withmepartner\.onrender\.com/, baseUrl);
+    }
+    return formatted;
   }
 
-  return formatted;
+  if (formatted.startsWith('/uploads/')) {
+    return `${baseUrl}${formatted}`;
+  } else if (formatted.startsWith('uploads/')) {
+    return `${baseUrl}/${formatted}`;
+  } else if (formatted.startsWith('/')) {
+    return `${baseUrl}${formatted}`;
+  } else {
+    // Bare filename e.g. "amit_1.jpg" or "photo_1.jpg"
+    if (formatted.startsWith('photo_') || formatted.startsWith('usr_')) {
+      return `${baseUrl}/uploads/photos/${formatted}`;
+    }
+    return `https://withmeapi-userapp.onrender.com/uploads/${formatted}`;
+  }
 }
 
 // Default photo constants (used in profile upload fallbacks)

@@ -326,6 +326,26 @@ async function initMysqlDatabase() {
       }
     }
 
+    // Auto-heal missing customer avatars from users table
+    try {
+      await db.query(`
+        UPDATE withme_partner_bookings b
+        JOIN users u ON (b.user_id = u.id OR u.id = REPLACE(b.user_id, 'usr_', ''))
+        SET b.profile_image = COALESCE(NULLIF(u.profile_image, ''), CONCAT('https://withmeapi-userapp.onrender.com/uploads/', u.image))
+        WHERE (b.profile_image IS NULL OR b.profile_image = '' OR b.profile_image LIKE '%profile.jpg%')
+          AND (NULLIF(u.profile_image, '') IS NOT NULL OR NULLIF(u.image, '') IS NOT NULL)
+      `);
+      await db.query(`
+        UPDATE withme_partner_requests r
+        JOIN users u ON (r.user_id = u.id OR u.id = REPLACE(r.user_id, 'usr_', ''))
+        SET r.sender_avatar = COALESCE(NULLIF(u.profile_image, ''), CONCAT('https://withmeapi-userapp.onrender.com/uploads/', u.image))
+        WHERE (r.sender_avatar IS NULL OR r.sender_avatar = '' OR r.sender_avatar LIKE '%profile.jpg%')
+          AND (NULLIF(u.profile_image, '') IS NOT NULL OR NULLIF(u.image, '') IS NOT NULL)
+      `);
+    } catch (healErr) {
+      console.warn('[WithMe DB] Customer image heal notice:', healErr.message);
+    }
+
     console.log(`[WithMe DB] Dedicated MySQL tables verified and connected successfully.`);
     return true;
   } catch (err) {
@@ -1006,9 +1026,12 @@ async function fetchPartnerRequestsFromMysql(partnerId) {
     SELECT r.*, 
            b.is_paid AS b_is_paid, 
            b.payment_status AS b_payment_status, 
-           b.status AS b_status
+           b.status AS b_status,
+           COALESCE(NULLIF(r.sender_avatar, ''), NULLIF(u.profile_image, ''), NULLIF(u.image, ''), '') AS resolved_sender_avatar,
+           u.name AS u_name
     FROM withme_partner_requests r
     LEFT JOIN withme_partner_bookings b ON (r.booking_id IS NOT NULL AND r.booking_id != '' AND r.booking_id = b.booking_id)
+    LEFT JOIN users u ON (r.user_id = u.id OR u.id = REPLACE(r.user_id, 'usr_', ''))
     WHERE r.partner_id IN (${placeholders}) 
     ORDER BY r.created_at DESC LIMIT 200
   `;
@@ -1034,10 +1057,10 @@ async function fetchPartnerRequestsFromMysql(partnerId) {
     );
     const isAcc = isPaid ? 1 : (r.is_accepted !== undefined ? Number(r.is_accepted) : (r.status === 'ACCEPTED' || r.status === 'CONFIRMED' ? 1 : 0));
     const payStatus = isPaid ? 'PAID' : (r.payment_status || 'PENDING');
-    const custName = r.customer_name || r.sender_name || r.user_name || r.name || 'Amit';
+    const custName = r.customer_name || r.u_name || r.sender_name || r.user_name || r.name || 'Amit';
     const partName = r.partner_name || '';
     const finalStatus = isPaid ? 'CONFIRMED' : (r.status || (isAcc ? 'ACCEPTED' : 'PENDING'));
-    const photoUrl = r.sender_avatar || '';
+    const photoUrl = r.resolved_sender_avatar || r.sender_avatar || '';
     const senderObj = {
       id: r.user_id,
       user_id: r.user_id,
@@ -1242,7 +1265,16 @@ async function fetchPartnerBookingsFromMysql(partnerId, statusFilter) {
     params.push(statusFilter);
   }
 
-  const sql = `SELECT * FROM withme_partner_bookings WHERE ${conditions.join(" AND ")} ORDER BY created_at DESC LIMIT 200`;
+  const bConditions = conditions.map(c => `b.${c}`);
+  const sql = `
+    SELECT b.*,
+           COALESCE(NULLIF(b.profile_image, ''), NULLIF(u.profile_image, ''), NULLIF(u.image, ''), '') AS resolved_profile_image,
+           u.name AS u_name
+    FROM withme_partner_bookings b
+    LEFT JOIN users u ON (b.user_id = u.id OR u.id = REPLACE(b.user_id, 'usr_', ''))
+    WHERE ${bConditions.join(" AND ")} 
+    ORDER BY b.created_at DESC LIMIT 200
+  `;
 
   console.log(`[WithMe DB] fetchPartnerBookings partnerId=${pId}, checking IDs: [${idList.join(', ')}]`);
 
@@ -1260,9 +1292,9 @@ async function fetchPartnerBookingsFromMysql(partnerId, statusFilter) {
     );
     const isAcc = isPaid ? 1 : (r.is_accepted !== undefined ? Number(r.is_accepted) : (['UPCOMING', 'CONFIRMED', 'ACCEPTED'].includes(String(r.status).toUpperCase()) ? 1 : 0));
     const payStatus = isPaid ? 'PAID' : (r.payment_status || 'PENDING');
-    const custName = r.customer_name || r.user_name || r.sender_name || r.name || 'Amit';
+    const custName = r.customer_name || r.u_name || r.user_name || r.sender_name || r.name || 'Amit';
     const partName = r.partner_name || '';
-    const photoUrl = r.profile_image || '';
+    const photoUrl = r.resolved_profile_image || r.profile_image || '';
     const senderObj = {
       id: r.user_id,
       user_id: r.user_id,
@@ -1339,7 +1371,19 @@ async function savePartnerBookingToMysql(bookingData) {
   }
 
   const userId = bookingData.user_id || '';
-  const profileImage = bookingData.profile_image || bookingData.user_image || '';
+  let profileImage = bookingData.profile_image || bookingData.user_image || '';
+  if (!profileImage && userId) {
+    try {
+      const cleanUId = String(userId).replace('usr_', '');
+      const [uRows] = await db.query(
+        'SELECT profile_image, image FROM users WHERE id = ? OR id = ? LIMIT 1',
+        [cleanUId, userId]
+      );
+      if (uRows.length > 0) {
+        profileImage = uRows[0].profile_image || (uRows[0].image ? `https://withmeapi-userapp.onrender.com/uploads/${uRows[0].image}` : '');
+      }
+    } catch (_) {}
+  }
   const activity = bookingData.interest || bookingData.activity || (bookingData.meeting_info && (bookingData.meeting_info.activity || bookingData.meeting_info.type)) || 'Coffee';
   const date = bookingData.date || (bookingData.meeting_info && bookingData.meeting_info.date) || new Date().toISOString().split('T')[0];
   const time = bookingData.time || (bookingData.meeting_info && bookingData.meeting_info.time) || '06:00 PM';
