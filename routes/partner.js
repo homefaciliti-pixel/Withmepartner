@@ -1468,14 +1468,90 @@ router.post('/requests/:request_id/action', authenticateToken, (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 12. BOOKING DETAILS, SAFE MEET
+// 12. BOOKINGS LIST, BOOKING DETAILS, SAFE MEET
 // ─────────────────────────────────────────────────────────────────────────────
 
-router.get('/bookings/:booking_id', authenticateToken, async (req, res) => {
+router.get(['/bookings', '/bookings/list'], authenticateToken, async (req, res) => {
+  try {
+    const { status } = req.query;
+    const currentUserId = String(req.user.user_id);
+    const dbBookings = await fetchPartnerBookingsFromMysql(currentUserId, status);
+
+    const list = dbBookings.map(b => {
+      const isPaid =
+        b.is_paid === 1 || b.is_paid === true || b.is_paid === '1' ||
+        String(b.payment_status || '').toUpperCase() === 'PAID' ||
+        String(b.payment_status || '').toUpperCase() === 'COMPLETED' ||
+        String(b.status || '').toUpperCase() === 'CONFIRMED' ||
+        String(b.status || '').toUpperCase() === 'PAID';
+      const payStatus = isPaid ? 'PAID' : (b.payment_status || 'PENDING');
+      const custName = b.customer_name || b.user_name || (b.sender && b.sender.name) || b.sender_name || b.name || 'Amit';
+      const partName = b.partner_name || (req.user && req.user.name) || '';
+      const photoUrl = formatPhotoUrl(b.profile_image || b.image || b.resolved_profile_image, req);
+      const senderObj = {
+        id: b.user_id,
+        user_id: b.user_id,
+        name: custName,
+        customer_name: custName,
+        user_name: custName,
+        sender_name: custName,
+        image: photoUrl,
+        profile_image: photoUrl
+      };
+      return {
+        booking_id: b.booking_id,
+        request_id: b.request_id,
+        user_id: b.user_id,
+        partner_id: b.partner_id || currentUserId,
+        partner_name: partName,
+        image: photoUrl,
+        profile_image: photoUrl,
+        name: custName,
+        customer_name: custName,
+        user_name: custName,
+        sender_name: custName,
+        title: custName,
+        header_title: `Booking with: ${custName}`,
+        sender: senderObj,
+        user: senderObj,
+        phone_number: b.phone_number || '',
+        interest: b.interest,
+        activity: b.interest,
+        location: b.location,
+        date: b.date,
+        time: b.time,
+        status: b.status,
+        is_accepted: b.is_accepted !== undefined ? Number(b.is_accepted) : 1,
+        is_paid: isPaid,
+        payment_status: payStatus,
+        is_payment_completed: isPaid,
+        payment_id: b.payment_id || `pay_${b.booking_id}`,
+        payment_status_text: isPaid ? 'Paid' : 'Pending',
+        can_chat: b.can_chat !== undefined ? b.can_chat : isPaid,
+        chat_status: b.chat_status || (isPaid ? 'UNLOCKED' : 'LOCKED')
+      };
+    });
+
+    return res.status(200).json({
+      status: true,
+      message: 'Success',
+      data: { filter_status: status || 'all', total_count: list.length, bookings: list },
+      bookings: list
+    });
+  } catch (err) {
+    console.error('[Get Bookings Error]:', err.message);
+    return res.status(500).json({ status: false, message: 'Failed to fetch bookings.', error_code: 'SERVER_ERROR' });
+  }
+});
+
+router.get('/bookings/:booking_id', authenticateToken, async (req, res, next) => {
   try {
     const { booking_id } = req.params;
+    if (booking_id === 'list' || booking_id === 'active' || booking_id === 'history') {
+      return next();
+    }
     const db = getDbPool();
-    const [rows] = await db.query('SELECT * FROM withme_partner_bookings WHERE booking_id = ? LIMIT 1', [booking_id]);
+    const [rows] = await db.query('SELECT * FROM withme_partner_bookings WHERE booking_id = ? OR id = ? LIMIT 1', [booking_id, booking_id]);
 
     let b;
     if (rows.length === 0) {
@@ -1644,7 +1720,7 @@ router.post('/bookings/:booking_id/start-safe-meet', authenticateToken, async (r
 
   try {
     const db = getDbPool();
-    const [rows] = await db.query('SELECT * FROM withme_partner_bookings WHERE booking_id = ? LIMIT 1', [booking_id]);
+    const [rows] = await db.query('SELECT * FROM withme_partner_bookings WHERE booking_id = ? OR id = ? LIMIT 1', [booking_id, booking_id]);
     if (rows.length === 0 && booking_id !== 'bk_001' && booking_id !== '1') return res.status(404).json({ status: false, message: 'Booking not found', error_code: 'BOOKING_NOT_FOUND' });
 
     return res.status(200).json({
@@ -1663,7 +1739,7 @@ router.post('/bookings/:booking_id/safe-meet', authenticateToken, async (req, re
 
   try {
     const db = getDbPool();
-    const [rows] = await db.query('SELECT * FROM withme_partner_bookings WHERE booking_id = ? LIMIT 1', [booking_id]);
+    const [rows] = await db.query('SELECT * FROM withme_partner_bookings WHERE booking_id = ? OR id = ? LIMIT 1', [booking_id, booking_id]);
     if (rows.length === 0 && booking_id !== 'bk_001' && booking_id !== '1') return res.status(404).json({ status: false, message: 'Booking not found', error_code: 'BOOKING_NOT_FOUND' });
 
     const safeMeetMode = {
@@ -1706,7 +1782,7 @@ router.post('/safe-meet-mode', authenticateToken, async (req, res) => {
 async function cancelBookingById(booking_id, reason, res) {
   try {
     const db = getDbPool();
-    const [rows] = await db.query('SELECT * FROM withme_partner_bookings WHERE booking_id = ? LIMIT 1', [booking_id]);
+    const [rows] = await db.query('SELECT * FROM withme_partner_bookings WHERE booking_id = ? OR id = ? LIMIT 1', [booking_id, booking_id]);
     if (rows.length === 0 && booking_id !== 'bk_001' && booking_id !== '1') return res.status(404).json({ status: false, message: 'Booking not found', error_code: 'BOOKING_NOT_FOUND' });
 
     if (rows.length > 0) {
@@ -1737,79 +1813,6 @@ router.post('/bookings/cancel', authenticateToken, (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // 13. MY BOOKINGS LIST & FILTER
 // ─────────────────────────────────────────────────────────────────────────────
-
-router.get(['/bookings', '/bookings/list'], authenticateToken, async (req, res) => {
-  try {
-    const { status } = req.query;
-    const currentUserId = String(req.user.user_id);
-    const dbBookings = await fetchPartnerBookingsFromMysql(currentUserId, status);
-
-    const list = dbBookings.map(b => {
-      const isPaid =
-        b.is_paid === 1 || b.is_paid === true || b.is_paid === '1' ||
-        String(b.payment_status || '').toUpperCase() === 'PAID' ||
-        String(b.payment_status || '').toUpperCase() === 'COMPLETED' ||
-        String(b.status || '').toUpperCase() === 'CONFIRMED' ||
-        String(b.status || '').toUpperCase() === 'PAID';
-      const payStatus = isPaid ? 'PAID' : (b.payment_status || 'PENDING');
-      const custName = b.customer_name || b.user_name || (b.sender && b.sender.name) || b.sender_name || b.name || 'Amit';
-      const partName = b.partner_name || (req.user && req.user.name) || '';
-      const photoUrl = formatPhotoUrl(b.profile_image || b.image || b.resolved_profile_image, req);
-      const senderObj = {
-        id: b.user_id,
-        user_id: b.user_id,
-        name: custName,
-        customer_name: custName,
-        user_name: custName,
-        sender_name: custName,
-        image: photoUrl,
-        profile_image: photoUrl
-      };
-      return {
-        booking_id: b.booking_id,
-        request_id: b.request_id,
-        user_id: b.user_id,
-        partner_id: b.partner_id || currentUserId,
-        partner_name: partName,
-        image: photoUrl,
-        profile_image: photoUrl,
-        name: custName,
-        customer_name: custName,
-        user_name: custName,
-        sender_name: custName,
-        title: custName,
-        header_title: `Booking with: ${custName}`,
-        sender: senderObj,
-        user: senderObj,
-        phone_number: b.phone_number || '',
-        interest: b.interest,
-        activity: b.interest,
-        location: b.location,
-        date: b.date,
-        time: b.time,
-        status: b.status,
-        is_accepted: b.is_accepted !== undefined ? Number(b.is_accepted) : 1,
-        is_paid: isPaid,
-        payment_status: payStatus,
-        is_payment_completed: isPaid,
-        payment_id: b.payment_id || `pay_${b.booking_id}`,
-        payment_status_text: isPaid ? 'Paid' : 'Pending',
-        can_chat: b.can_chat !== undefined ? b.can_chat : isPaid,
-        chat_status: b.chat_status || (isPaid ? 'UNLOCKED' : 'LOCKED')
-      };
-    });
-
-    return res.status(200).json({
-      status: true,
-      message: 'Success',
-      data: { filter_status: status || 'all', total_count: list.length, bookings: list },
-      bookings: list
-    });
-  } catch (err) {
-    console.error('[Get Bookings Error]:', err.message);
-    return res.status(500).json({ status: false, message: 'Failed to fetch bookings.', error_code: 'SERVER_ERROR' });
-  }
-});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 14. EARNINGS & TRANSACTIONS
