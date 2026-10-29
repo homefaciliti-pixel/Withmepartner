@@ -10,20 +10,45 @@ const memoryNotifications = new Map(); // notification_id -> object
 
 // Firebase Service Account Credentials & Token Cache
 let serviceAccountCreds = null;
-try {
-  const saPath = path.join(__dirname, '../config/firebase-service-account.json');
-  if (fs.existsSync(saPath)) {
-    serviceAccountCreds = JSON.parse(fs.readFileSync(saPath, 'utf8'));
+
+function loadServiceAccount() {
+  if (serviceAccountCreds) return serviceAccountCreds;
+  try {
+    if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+      const raw = process.env.FIREBASE_SERVICE_ACCOUNT.trim();
+      if (raw.startsWith('{')) {
+        serviceAccountCreds = JSON.parse(raw);
+        return serviceAccountCreds;
+      }
+      try {
+        const decoded = Buffer.from(raw, 'base64').toString('utf8');
+        if (decoded.startsWith('{')) {
+          serviceAccountCreds = JSON.parse(decoded);
+          return serviceAccountCreds;
+        }
+      } catch (_) {}
+    }
+    if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
+      serviceAccountCreds = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+      return serviceAccountCreds;
+    }
+    const saPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH || path.join(__dirname, '../config/firebase-service-account.json');
+    if (fs.existsSync(saPath)) {
+      serviceAccountCreds = JSON.parse(fs.readFileSync(saPath, 'utf8'));
+      return serviceAccountCreds;
+    }
+  } catch (e) {
+    console.warn('[FCM Partner] Service account load notice:', e.message);
   }
-} catch (e) {
-  console.warn('[FCM Partner] Service account load notice:', e.message);
+  return serviceAccountCreds;
 }
 
 let cachedOAuthToken = null;
 let tokenExpiresAt = 0;
 
 async function getFirebaseAccessToken() {
-  if (!serviceAccountCreds) return null;
+  const creds = loadServiceAccount();
+  if (!creds || !creds.client_email || !creds.private_key) return null;
   const now = Math.floor(Date.now() / 1000);
   if (cachedOAuthToken && tokenExpiresAt > now + 60) {
     return cachedOAuthToken;
@@ -33,7 +58,7 @@ async function getFirebaseAccessToken() {
     try {
       const header = { alg: 'RS256', typ: 'JWT' };
       const claim = {
-        iss: serviceAccountCreds.client_email,
+        iss: creds.client_email,
         scope: 'https://www.googleapis.com/auth/firebase.messaging',
         aud: 'https://oauth2.googleapis.com/token',
         exp: now + 3600,
@@ -54,7 +79,7 @@ async function getFirebaseAccessToken() {
 
       const signer = crypto.createSign('RSA-SHA256');
       signer.update(signInput);
-      const signature = signer.sign(serviceAccountCreds.private_key, 'base64')
+      const signature = signer.sign(creds.private_key, 'base64')
         .replace(/=/g, '')
         .replace(/\+/g, '-')
         .replace(/\//g, '_');
@@ -160,8 +185,9 @@ async function sendFcmPushNotification(fcmToken, title, body, dataPayload = {}) 
 
   // 1. Try FCM HTTP v1 using Service Account
   try {
+    const creds = loadServiceAccount();
     const accessToken = await getFirebaseAccessToken();
-    if (accessToken && serviceAccountCreds && serviceAccountCreds.project_id) {
+    if (accessToken && creds && creds.project_id) {
       const payload = JSON.stringify({
         message: {
           token: fcmToken,
@@ -183,7 +209,7 @@ async function sendFcmPushNotification(fcmToken, title, body, dataPayload = {}) 
       return new Promise((resolve) => {
         const req = https.request({
           hostname: 'fcm.googleapis.com',
-          path: `/v1/projects/${serviceAccountCreds.project_id}/messages:send`,
+          path: `/v1/projects/${creds.project_id}/messages:send`,
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${accessToken}`,
@@ -632,5 +658,7 @@ module.exports = {
   sendNotification,
   getUserNotifications,
   markNotificationRead,
-  sendEventNotification
+  sendEventNotification,
+  sendFcmPushNotification,
+  getFirebaseAccessToken
 };

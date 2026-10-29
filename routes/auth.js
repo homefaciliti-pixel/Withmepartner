@@ -635,7 +635,7 @@ const handleGetSessionUser = async (req, res) => {
   }
 };
 
-router.get(['/me', '/user', '/verify-token', '/verify', '/session', '/status', '/profile'], authenticateToken, handleGetSessionUser);
+router.get(['/me', '/user', '/verify-token', '/verify', '/session', '/status'], authenticateToken, handleGetSessionUser);
 router.post(['/me', '/user', '/verify-token', '/verify', '/session', '/status'], authenticateToken, handleGetSessionUser);
 
 module.exports = router;
