@@ -24,7 +24,14 @@ function getDbPool() {
       waitForConnections: true,
       connectionLimit: 3,
       queueLimit: 0,
-      connectTimeout: 5000
+      connectTimeout: 5000,
+      // Fix: MySQL server runs on IST (SYSTEM timezone = Asia/Kolkata = UTC+05:30).
+      // Without this, mysql2 returns TIMESTAMP columns as Date objects whose UTC value
+      // is the IST wall-clock value, making every timestamp appear 5h30m in the future.
+      // Setting timezone: '+05:30' tells mysql2 to interpret TIMESTAMP columns as IST,
+      // so the returned Date objects correctly represent the actual moment in time.
+      timezone: '+05:30',
+      dateStrings: false
     });
   }
   return pool;
@@ -444,13 +451,38 @@ function mapMysqlRowToPartner(r) {
   let aboutObj = null;
   try {
     if (r.about) {
-      aboutObj = typeof r.about === 'string' ? JSON.parse(r.about) : r.about;
+      const aboutRaw = r.about;
+      if (typeof aboutRaw === 'object' && !Array.isArray(aboutRaw)) {
+        // Already a parsed object (e.g. from dateStrings=false with JSON column)
+        aboutObj = aboutRaw;
+      } else if (typeof aboutRaw === 'string') {
+        const trimmed = aboutRaw.trim();
+        if (trimmed.startsWith('{')) {
+          // JSON object string — parse it
+          aboutObj = JSON.parse(trimmed);
+        } else {
+          // Plain text description stored directly (legacy format)
+          aboutObj = {
+            description: trimmed,
+            interests: interests.length > 0 ? interests : (r.category ? [r.category] : [])
+          };
+        }
+      }
     }
-  } catch (e) {}
+  } catch (e) {
+    // JSON parse failed — treat raw value as plain-text description
+    if (r.about && typeof r.about === 'string') {
+      aboutObj = {
+        description: r.about.trim(),
+        interests: interests.length > 0 ? interests : (r.category ? [r.category] : [])
+      };
+    }
+  }
   if (!aboutObj) {
+    // Truly no about data — return empty structure, NOT a fake "Hi! I am..." string
     aboutObj = {
-      description: (typeof r.about === 'string' && !r.about.startsWith('{')) ? r.about : `Hi! I am ${r.name || 'a partner'}.`,
-      interests: interests.length > 0 ? interests : [r.category || 'Coffee']
+      description: '',
+      interests: interests.length > 0 ? interests : (r.category ? [r.category] : [])
     };
   }
 
