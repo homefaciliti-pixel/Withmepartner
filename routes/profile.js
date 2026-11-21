@@ -8,7 +8,13 @@ const {
 } = require('../store/db');
 const { authenticateToken } = require('../middleware/auth');
 const { validateVerhoeff } = require('../utils/verhoeff');
-const { encrypt, maskAadhar } = require('../utils/crypto');
+const { encrypt, decrypt, maskAadhar } = require('../utils/crypto');
+const crypto = require('crypto');
+const {
+  submitAadhaarExtraction,
+  getTaskStatus,
+  evaluateExtractionResult
+} = require('../services/idfyService');
 const {
   deleteUserFromMysql,
   updatePartnerInMysql,
@@ -585,12 +591,52 @@ router.post('/aadhar', authenticateToken, (req, res) => {
       const files = req.files || [];
       let frontUrl = `https://private-bucket.s3.amazonaws.com/${user.user_id}/aadhar_front.jpg`;
       let backUrl = `https://private-bucket.s3.amazonaws.com/${user.user_id}/aadhar_back.jpg`;
+      let frontDoc = null;
+      let backDoc = null;
 
       if (files.length > 0) {
-        const frontFile = files.find(f => f.fieldname.includes('front')) || files[0];
-        const backFile = files.find(f => f.fieldname.includes('back')) || files[1] || files[0];
-        if (frontFile) { const s = saveUploadedFile(frontFile, `aadhar_front_${user.user_id}`); if (s) frontUrl = s; }
-        if (backFile) { const s = saveUploadedFile(backFile, `aadhar_back_${user.user_id}`); if (s) backUrl = s; }
+        const frontFile = files.find(f => f.fieldname && f.fieldname.includes('front')) || files[0];
+        const backFile = files.find(f => f.fieldname && f.fieldname.includes('back')) || files[1] || files[0];
+        if (frontFile) { 
+          const s = saveUploadedFile(frontFile, `aadhar_front_${user.user_id}`); 
+          if (s) frontUrl = s; 
+          frontDoc = frontFile;
+        }
+        if (backFile) { 
+          const s = saveUploadedFile(backFile, `aadhar_back_${user.user_id}`); 
+          if (s) backUrl = s; 
+          backDoc = backFile;
+        }
+      }
+
+      // Check request body for base64 or URL if not in multipart files
+      if (!frontDoc && (req.body.aadhar_front || req.body.front_image || req.body.document1)) {
+        frontDoc = req.body.aadhar_front || req.body.front_image || req.body.document1;
+      }
+      if (!backDoc && (req.body.aadhar_back || req.body.back_image || req.body.document2)) {
+        backDoc = req.body.aadhar_back || req.body.back_image || req.body.document2;
+      }
+
+      // Dispatch async task to IDfy if documents are present
+      let idfyRequestId = null;
+      let idfyTaskId = null;
+      let idfyStatus = null;
+      if (frontDoc) {
+        try {
+          const idfyTask = await submitAadhaarExtraction({
+            frontDocument: frontDoc,
+            backDocument: backDoc || frontDoc,
+            taskId: crypto.randomUUID(),
+            groupId: `usr_${user.user_id}`
+          });
+          if (idfyTask && idfyTask.success && idfyTask.request_id) {
+            idfyRequestId = idfyTask.request_id;
+            idfyTaskId = idfyTask.task_id;
+            idfyStatus = 'in_progress';
+          }
+        } catch (idfyErr) {
+          console.warn('[IDfy Integration Warning]:', idfyErr.message);
+        }
       }
 
       // Store submitted Aadhaar details as pending. Format/checksum validation and image upload
@@ -600,12 +646,53 @@ router.post('/aadhar', authenticateToken, (req, res) => {
           aadhar_number: encryptedAadhar,
           aadhar_front_url: frontUrl,
           aadhar_back_url: backUrl,
-          aadhar_verification_status: 'PENDING'
+          aadhar_verification_status: 'PENDING',
+          idfy_request_id: idfyRequestId,
+          idfy_task_id: idfyTaskId,
+          idfy_status: idfyStatus
         },
+        idfy_request_id: idfyRequestId,
+        idfy_task_id: idfyTaskId,
+        idfy_status: idfyStatus,
         is_verified: 0,
         is_approved: 0,
         profile_step_pending: 'ABOUT_YOU'
       });
+
+      // Background worker: poll IDfy after 5 seconds to automatically approve upon completion
+      if (idfyRequestId) {
+        setTimeout(async () => {
+          try {
+            const pollRes = await getTaskStatus(idfyRequestId);
+            if (pollRes && pollRes.success && pollRes.task) {
+              const evalRes = evaluateExtractionResult(pollRes.task, cleanAadhar);
+              if (evalRes.status === 'APPROVED') {
+                await updatePartnerInMysql(user.user_id, {
+                  is_verified: 1,
+                  is_approved: 1,
+                  kyc_status: 'APPROVED',
+                  idfy_status: 'completed',
+                  aadhar_remarks: null,
+                  aadhar_details: evalRes.details
+                });
+                const updatedUser = await findPartnerByIdFromMysql(user.user_id);
+                syncPartnerToUserApp(updatedUser).catch(() => {});
+                console.log(`[IDfy Background] Partner ${user.user_id} automatically APPROVED!`);
+              } else if (evalRes.status === 'REJECTED') {
+                await updatePartnerInMysql(user.user_id, {
+                  is_verified: 0,
+                  is_approved: 0,
+                  kyc_status: 'REJECTED',
+                  idfy_status: 'failed',
+                  aadhar_remarks: evalRes.reason
+                });
+              }
+            }
+          } catch (bgErr) {
+            console.error('[IDfy Background Check Error]:', bgErr.message);
+          }
+        }, 5000);
+      }
 
       // Sync the pending state to User App so this partner remains hidden until genuinely verified.
       syncPartnerToUserApp({
@@ -620,6 +707,7 @@ router.post('/aadhar', authenticateToken, (req, res) => {
         message: 'Aadhaar details submitted and pending verification. The partner will not be visible until verification succeeds.',
         data: {
           aadhar_verification_status: 'PENDING',
+          idfy_request_id: idfyRequestId || null,
           is_verified: false,
           is_approved: false,
           profile_step_pending: 'ABOUT_YOU'
@@ -645,18 +733,140 @@ router.post('/aadhar', authenticateToken, (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 router.get('/aadhar/status', authenticateToken, async (req, res) => {
   try {
-    const user = await findPartnerByIdFromMysql(req.user.user_id);
+    let user = await findPartnerByIdFromMysql(req.user.user_id);
     if (!user) return res.status(404).json({ status: false, message: 'User not found', error_code: 'USER_NOT_FOUND' });
 
-    const status = user.aadhar ? (user.aadhar.aadhar_verification_status || 'PENDING') : 'PENDING';
-    const remarks = user.aadhar ? user.aadhar.remarks : null;
+    let status = user.aadhar ? (user.aadhar.aadhar_verification_status || 'PENDING') : 'PENDING';
+    let remarks = user.aadhar ? user.aadhar.remarks : null;
+    let isVerified = Boolean(user.is_verified === 1 || user.is_approved === 1);
 
-    return res.status(200).json({ status: true, message: 'Success', data: { aadhar_verification_status: status, remarks } });
+    const idfyRequestId = (user.aadhar && user.aadhar.idfy_request_id) || user.idfy_request_id;
+
+    // If still pending but has active IDfy request, query IDfy live status
+    if (!isVerified && status === 'PENDING' && idfyRequestId) {
+      try {
+        const pollRes = await getTaskStatus(idfyRequestId);
+        if (pollRes && pollRes.success && pollRes.task) {
+          const rawAadhar = user.aadhar && user.aadhar.aadhar_number ? decrypt(user.aadhar.aadhar_number) : '';
+          const evalRes = evaluateExtractionResult(pollRes.task, rawAadhar);
+          if (evalRes.status === 'APPROVED') {
+            await updatePartnerInMysql(user.user_id, {
+              is_verified: 1,
+              is_approved: 1,
+              kyc_status: 'APPROVED',
+              idfy_status: 'completed',
+              aadhar_remarks: null,
+              aadhar_details: evalRes.details
+            });
+            user = await findPartnerByIdFromMysql(user.user_id);
+            syncPartnerToUserApp(user).catch(() => {});
+            status = 'APPROVED';
+            isVerified = true;
+            remarks = null;
+          } else if (evalRes.status === 'REJECTED') {
+            await updatePartnerInMysql(user.user_id, {
+              is_verified: 0,
+              is_approved: 0,
+              kyc_status: 'REJECTED',
+              idfy_status: 'failed',
+              aadhar_remarks: evalRes.reason
+            });
+            status = 'REJECTED';
+            remarks = evalRes.reason;
+          }
+        }
+      } catch (pollErr) {
+        console.warn('[IDfy Status Poll Error]:', pollErr.message);
+      }
+    }
+
+    return res.status(200).json({
+      status: true,
+      message: 'Success',
+      data: {
+        aadhar_verification_status: status,
+        is_verified: isVerified,
+        remarks: remarks,
+        idfy_request_id: idfyRequestId || null
+      }
+    });
   } catch (err) {
     console.error('[Aadhar Status Error]:', err.message);
     return res.status(500).json({ status: false, message: 'Failed to fetch Aadhar status.', error_code: 'SERVER_ERROR' });
   }
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 5.3 IDfy Aadhaar Webhook Callback
+// ─────────────────────────────────────────────────────────────────────────────
+async function handleIdfyWebhook(req, res) {
+  try {
+    const payload = req.body || {};
+    console.log('[IDfy Webhook] Received callback:', JSON.stringify(payload).slice(0, 300));
+
+    const taskItem = Array.isArray(payload) ? payload[0] : (payload.task || payload);
+    const requestId = payload.request_id || (taskItem && taskItem.request_id);
+
+    if (!requestId) {
+      return res.status(400).json({ status: false, message: 'request_id is required' });
+    }
+
+    const db = getDbPool();
+    const groupId = taskItem && taskItem.group_id;
+    let [rows] = await db.query(
+      'SELECT * FROM withme_partners WHERE idfy_request_id = ? LIMIT 1',
+      [requestId]
+    );
+
+    if (rows.length === 0 && groupId) {
+      const cleanGroupId = groupId.replace(/^usr_/, '');
+      [rows] = await db.query(
+        'SELECT * FROM withme_partners WHERE user_id = ? OR partner_id = ? OR user_id = ? LIMIT 1',
+        [groupId, groupId, cleanGroupId]
+      );
+    }
+
+    if (rows.length === 0) {
+      console.warn(`[IDfy Webhook] No partner found for request_id: ${requestId}`);
+      return res.status(200).json({ status: true, message: 'Acknowledged (no matching partner)' });
+    }
+
+    const partnerRow = rows[0];
+    const rawAadhar = partnerRow.aadhar_number ? decrypt(partnerRow.aadhar_number) : '';
+    const evalRes = evaluateExtractionResult(taskItem, rawAadhar);
+
+    if (evalRes.status === 'APPROVED') {
+      await updatePartnerInMysql(partnerRow.user_id, {
+        is_verified: 1,
+        is_approved: 1,
+        kyc_status: 'APPROVED',
+        idfy_status: 'completed',
+        aadhar_remarks: null,
+        aadhar_details: evalRes.details
+      });
+      const updatedUser = await findPartnerByIdFromMysql(partnerRow.user_id);
+      syncPartnerToUserApp(updatedUser).catch(() => {});
+      console.log(`[IDfy Webhook] Partner ${partnerRow.user_id} verified successfully via webhook.`);
+    } else if (evalRes.status === 'REJECTED') {
+      await updatePartnerInMysql(partnerRow.user_id, {
+        is_verified: 0,
+        is_approved: 0,
+        kyc_status: 'REJECTED',
+        idfy_status: 'failed',
+        aadhar_remarks: evalRes.reason
+      });
+      console.log(`[IDfy Webhook] Partner ${partnerRow.user_id} rejected via webhook: ${evalRes.reason}`);
+    }
+
+    return res.status(200).json({ status: true, message: 'Webhook processed successfully' });
+  } catch (err) {
+    console.error('[IDfy Webhook Error]:', err.message);
+    return res.status(500).json({ status: false, message: 'Internal server error processing webhook' });
+  }
+}
+
+router.post('/aadhar/webhook', handleIdfyWebhook);
+router.post('/idfy/webhook', handleIdfyWebhook);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 6.1 Submit About You

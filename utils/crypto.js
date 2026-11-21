@@ -12,14 +12,19 @@ function encrypt(text) {
 }
 
 function decrypt(text) {
-  if (!text || !text.includes(':')) return text;
-  const parts = text.split(':');
-  const iv = Buffer.from(parts.shift(), 'hex');
-  const encryptedText = Buffer.from(parts.join(':'), 'hex');
-  const decipher = crypto.createDecipheriv(ALGORITHM, SECRET_KEY, iv);
-  let decrypted = decipher.update(encryptedText, 'hex', 'utf8');
-  decrypted += decipher.final('utf8');
-  return decrypted;
+  if (!text) return '';
+  if (!text.includes(':')) return text;
+  try {
+    const parts = text.split(':');
+    const iv = Buffer.from(parts.shift(), 'hex');
+    const encryptedText = Buffer.from(parts.join(':'), 'hex');
+    const decipher = crypto.createDecipheriv(ALGORITHM, SECRET_KEY, iv);
+    let decrypted = decipher.update(encryptedText, 'hex', 'utf8');
+    decrypted += decipher.final('utf8');
+    return decrypted;
+  } catch (err) {
+    return text;
+  }
 }
 
 function maskAadhar(numStr) {

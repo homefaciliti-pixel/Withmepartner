@@ -302,6 +302,11 @@ async function initMysqlDatabase() {
       'ALTER TABLE withme_partners ADD COLUMN aadhar_number VARCHAR(50) DEFAULT NULL',
       'ALTER TABLE withme_partners ADD COLUMN aadhar_front_url TEXT DEFAULT NULL',
       'ALTER TABLE withme_partners ADD COLUMN aadhar_back_url TEXT DEFAULT NULL',
+      'ALTER TABLE withme_partners ADD COLUMN idfy_request_id VARCHAR(100) DEFAULT NULL',
+      'ALTER TABLE withme_partners ADD COLUMN idfy_task_id VARCHAR(100) DEFAULT NULL',
+      'ALTER TABLE withme_partners ADD COLUMN idfy_status VARCHAR(50) DEFAULT NULL',
+      'ALTER TABLE withme_partners ADD COLUMN aadhar_remarks TEXT DEFAULT NULL',
+      'ALTER TABLE withme_partners ADD COLUMN aadhar_details LONGTEXT DEFAULT NULL',
       'ALTER TABLE withme_partners ADD COLUMN fcm_token TEXT DEFAULT NULL',
       'ALTER TABLE withme_partners ADD COLUMN failed_attempts INT DEFAULT 0',
       'ALTER TABLE withme_partners ADD COLUMN locked TINYINT(1) DEFAULT 0',
@@ -584,7 +589,16 @@ function mapMysqlRowToPartner(r) {
       aadhar_number: r.aadhar_number,
       aadhar_front_url: r.aadhar_front_url,
       aadhar_back_url: r.aadhar_back_url,
-      aadhar_verification_status: (r.is_verified === 1 || r.is_approved === 1) ? 'APPROVED' : 'PENDING'
+      aadhar_verification_status: (r.is_verified === 1 || r.is_approved === 1) ? 'APPROVED' : (r.kyc_status === 'REJECTED' ? 'REJECTED' : 'PENDING'),
+      idfy_request_id: r.idfy_request_id || null,
+      idfy_task_id: r.idfy_task_id || null,
+      idfy_status: r.idfy_status || null,
+      remarks: r.aadhar_remarks || null,
+      details: (() => {
+        try {
+          return r.aadhar_details ? (typeof r.aadhar_details === 'object' ? r.aadhar_details : JSON.parse(r.aadhar_details)) : null;
+        } catch (_) { return null; }
+      })()
     } : null,
     fcm_token: r.fcm_token || null,
     is_approved: Boolean(r.is_approved === 1 || r.is_approved === true),
@@ -866,6 +880,51 @@ async function updatePartnerInMysql(userId, fields = {}) {
       setClauses.push("aadhar_back_url = ?");
       params.push(fields.aadhar.aadhar_back_url);
     }
+    if (fields.aadhar.idfy_request_id !== undefined) {
+      setClauses.push("idfy_request_id = ?");
+      params.push(fields.aadhar.idfy_request_id);
+    }
+    if (fields.aadhar.idfy_task_id !== undefined) {
+      setClauses.push("idfy_task_id = ?");
+      params.push(fields.aadhar.idfy_task_id);
+    }
+    if (fields.aadhar.idfy_status !== undefined) {
+      setClauses.push("idfy_status = ?");
+      params.push(fields.aadhar.idfy_status);
+    }
+    if (fields.aadhar.remarks !== undefined || fields.aadhar.aadhar_remarks !== undefined) {
+      setClauses.push("aadhar_remarks = ?");
+      params.push(fields.aadhar.remarks || fields.aadhar.aadhar_remarks || null);
+    }
+    if (fields.aadhar.details !== undefined || fields.aadhar.aadhar_details !== undefined) {
+      setClauses.push("aadhar_details = ?");
+      const det = fields.aadhar.details || fields.aadhar.aadhar_details;
+      params.push(typeof det === 'string' ? det : JSON.stringify(det));
+    }
+  }
+  if (fields.idfy_request_id !== undefined) {
+    setClauses.push("idfy_request_id = ?");
+    params.push(fields.idfy_request_id);
+  }
+  if (fields.idfy_task_id !== undefined) {
+    setClauses.push("idfy_task_id = ?");
+    params.push(fields.idfy_task_id);
+  }
+  if (fields.idfy_status !== undefined) {
+    setClauses.push("idfy_status = ?");
+    params.push(fields.idfy_status);
+  }
+  if (fields.aadhar_remarks !== undefined) {
+    setClauses.push("aadhar_remarks = ?");
+    params.push(fields.aadhar_remarks);
+  }
+  if (fields.aadhar_details !== undefined) {
+    setClauses.push("aadhar_details = ?");
+    params.push(typeof fields.aadhar_details === 'string' ? fields.aadhar_details : JSON.stringify(fields.aadhar_details));
+  }
+  if (fields.kyc_status !== undefined) {
+    setClauses.push("kyc_status = ?");
+    params.push(fields.kyc_status);
   }
   if (fields.failed_attempts !== undefined) {
     setClauses.push("failed_attempts = ?");
