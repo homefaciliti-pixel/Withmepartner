@@ -1004,24 +1004,20 @@ async function resolvePartnerCanonicalId(rawPartnerId) {
 }
 
 /**
- * Fetch partner requests for specific partnerId from `withme_partner_requests` table
+ * Get all known identifier aliases (id, partner_id, user_id, phone numbers) for a partner
  */
-async function fetchPartnerRequestsFromMysql(partnerId) {
-  const db = getDbPool();
-
+async function getPartnerIdSet(partnerId) {
   const pId = String(partnerId || '').trim();
-  if (!pId) {
-    return [];
-  }
+  if (!pId) return new Set();
 
   let cleanMobile = pId.replace(/\D/g, '');
   if (cleanMobile.length > 10 && cleanMobile.startsWith('91')) cleanMobile = cleanMobile.slice(-10);
   else if (cleanMobile.length === 11 && cleanMobile.startsWith('0')) cleanMobile = cleanMobile.slice(-10);
   const fullMobile = cleanMobile ? `91${cleanMobile}` : '';
 
-  // Step 1: Look up the partner row in withme_partners to get all known identifiers
-  let allPartnerIds = new Set([pId, cleanMobile, fullMobile].filter(id => id && String(id).trim() !== ''));
+  const idSet = new Set([pId, cleanMobile, fullMobile].filter(id => id && String(id).trim() !== ''));
   try {
+    const db = getDbPool();
     const isNum = !isNaN(Number(pId)) && Number(pId) > 0;
     let sql = `SELECT id, partner_id, user_id, mobile_number, phone_number FROM withme_partners WHERE partner_id = ? OR user_id = ?`;
     let params = [pId, pId];
@@ -1037,39 +1033,77 @@ async function fetchPartnerRequestsFromMysql(partnerId) {
 
     const [pRows] = await db.query(sql, params);
     pRows.forEach(row => {
-      if (row.id) allPartnerIds.add(String(row.id));
-      if (row.partner_id) allPartnerIds.add(String(row.partner_id));
-      if (row.user_id) allPartnerIds.add(String(row.user_id));
-      if (row.mobile_number) allPartnerIds.add(String(row.mobile_number));
-      if (row.phone_number) allPartnerIds.add(String(row.phone_number));
+      if (row.id) idSet.add(String(row.id));
+      if (row.partner_id) idSet.add(String(row.partner_id));
+      if (row.user_id) idSet.add(String(row.user_id));
+      if (row.mobile_number) idSet.add(String(row.mobile_number));
+      if (row.phone_number) idSet.add(String(row.phone_number));
     });
-  } catch (lookupErr) {
-    console.error('[WithMe DB] fetchPartnerRequests lookup error:', lookupErr.message);
+  } catch (err) {
+    console.error('[WithMe DB] getPartnerIdSet error:', err.message);
+  }
+  return idSet;
+}
+
+/**
+ * Strict Partner Ownership Checker:
+ * Verifies whether targetPartnerId matches currentUserId or any of its known aliases
+ */
+async function isPartnerOwner(currentUserId, targetPartnerId) {
+  if (!currentUserId || !targetPartnerId) return false;
+  const currentStr = String(currentUserId).trim();
+  const targetStr = String(targetPartnerId).trim();
+  if (!currentStr || !targetStr) return false;
+  if (currentStr === targetStr) return true;
+
+  const idSet = await getPartnerIdSet(currentStr);
+  return idSet.has(targetStr);
+}
+
+/**
+ * Fetch partner requests for specific partnerId from `withme_partner_requests` table.
+ * By default, returns ONLY genuine paid requests.
+ */
+async function fetchPartnerRequestsFromMysql(partnerId, options = {}) {
+  const db = getDbPool();
+
+  const pId = String(partnerId || '').trim();
+  if (!pId) {
+    return [];
   }
 
-  // Step 2: Fetch requests strictly WHERE partner_id matches any known identifier
+  const allPartnerIds = await getPartnerIdSet(pId);
   const idList = [...allPartnerIds].filter(id => id && String(id).trim() !== '');
   if (idList.length === 0) {
     return [];
   }
 
   const placeholders = idList.map(() => '?').join(', ');
+  const conditions = [`r.partner_id IN (${placeholders})`];
+
+  // Filter out unpaid, failed, and dummy data unless explicitly requested
+  if (!options.includeUnpaid) {
+    conditions.push("((r.is_paid = 1 AND UPPER(r.payment_status) = 'PAID') OR (b.is_paid = 1 AND UPPER(b.payment_status) = 'PAID'))");
+    conditions.push("r.status NOT IN ('CANCELLED', 'PAYMENT_FAILED', 'DUMMY_DATA')");
+  }
+
   const sql = `
     SELECT r.*, 
            b.is_paid AS b_is_paid, 
            b.payment_status AS b_payment_status, 
            b.status AS b_status,
+           b.payment_id AS b_payment_id,
            COALESCE(NULLIF(r.sender_avatar, ''), NULLIF(u.profile_image, ''), NULLIF(u.image, ''), '') AS resolved_sender_avatar,
            u.name AS u_name
     FROM withme_partner_requests r
     LEFT JOIN withme_partner_bookings b ON (r.booking_id IS NOT NULL AND r.booking_id != '' AND r.booking_id = b.booking_id)
     LEFT JOIN users u ON (r.user_id = u.id OR u.id = REPLACE(r.user_id, 'usr_', ''))
-    WHERE r.partner_id IN (${placeholders}) 
+    WHERE ${conditions.join(' AND ')}
     ORDER BY r.created_at DESC LIMIT 200
   `;
   const params = idList;
 
-  console.log(`[WithMe DB] fetchPartnerRequests partnerId=${pId}, checking IDs: [${idList.join(', ')}]`);
+  console.log(`[WithMe DB] fetchPartnerRequests partnerId=${pId}, checking IDs: [${idList.join(', ')}], includeUnpaid=${Boolean(options.includeUnpaid)}`);
 
   const [rows] = await db.query(sql, params);
   if (!rows || rows.length === 0) {
@@ -1078,18 +1112,12 @@ async function fetchPartnerRequestsFromMysql(partnerId) {
 
   return rows.map(r => {
     const isPaid = Boolean(
-      r.is_paid == 1 || r.is_paid === true || r.is_paid === '1' ||
-      String(r.payment_status).toUpperCase() === 'PAID' ||
-      String(r.status).toUpperCase() === 'CONFIRMED' ||
-      String(r.status).toUpperCase() === 'PAID' ||
-      r.b_is_paid == 1 || r.b_is_paid === true || r.b_is_paid === '1' ||
-      String(r.b_payment_status).toUpperCase() === 'PAID' ||
-      String(r.b_status).toUpperCase() === 'CONFIRMED' ||
-      String(r.b_status).toUpperCase() === 'PAID'
+      ((r.is_paid == 1 || r.is_paid === true || r.is_paid === '1') && String(r.payment_status).toUpperCase() === 'PAID') ||
+      ((r.b_is_paid == 1 || r.b_is_paid === true || r.b_is_paid === '1') && String(r.b_payment_status).toUpperCase() === 'PAID')
     );
     const isAcc = isPaid ? 1 : (r.is_accepted !== undefined ? Number(r.is_accepted) : (r.status === 'ACCEPTED' || r.status === 'CONFIRMED' ? 1 : 0));
     const payStatus = isPaid ? 'PAID' : (r.payment_status || 'PENDING');
-    const custName = r.customer_name || r.u_name || r.sender_name || r.user_name || r.name || 'Amit';
+    const custName = r.customer_name || r.u_name || r.sender_name || r.user_name || r.name || 'User';
     const partName = r.partner_name || '';
     const finalStatus = isPaid ? 'CONFIRMED' : (r.status || (isAcc ? 'ACCEPTED' : 'PENDING'));
     const photoUrl = r.resolved_sender_avatar || r.sender_avatar || '';
@@ -1136,6 +1164,7 @@ async function fetchPartnerRequestsFromMysql(partnerId) {
       is_paid: isPaid,
       isPaid: isPaid,
       is_payment_completed: isPaid,
+      payment_id: r.payment_id || r.b_payment_id || null,
       can_chat: isPaid,
       can_pay: Boolean(!isPaid && isAcc === 1),
       chat_status: isPaid ? 'UNLOCKED' : 'LOCKED',
@@ -1240,9 +1269,10 @@ async function updatePartnerRequestStatusInMysql(requestId, status, isAccepted =
 }
 
 /**
- * Fetch bookings for specific partnerId from `withme_partner_bookings` table
+ * Fetch bookings for specific partnerId from `withme_partner_bookings` table.
+ * By default, returns ONLY genuine paid bookings.
  */
-async function fetchPartnerBookingsFromMysql(partnerId, statusFilter) {
+async function fetchPartnerBookingsFromMysql(partnerId, statusFilter, options = {}) {
   const db = getDbPool();
 
   const pId = String(partnerId || '').trim();
@@ -1250,65 +1280,39 @@ async function fetchPartnerBookingsFromMysql(partnerId, statusFilter) {
     return [];
   }
 
-  let cleanMobile = pId.replace(/\D/g, '');
-  if (cleanMobile.length > 10 && cleanMobile.startsWith('91')) cleanMobile = cleanMobile.slice(-10);
-  else if (cleanMobile.length === 11 && cleanMobile.startsWith('0')) cleanMobile = cleanMobile.slice(-10);
-  const fullMobile = cleanMobile ? `91${cleanMobile}` : '';
-
-  // Step 1: Look up the partner row in withme_partners to get all known identifiers
-  let allPartnerIds = new Set([pId, cleanMobile, fullMobile].filter(id => id && String(id).trim() !== ''));
-  try {
-    const isNum = !isNaN(Number(pId)) && Number(pId) > 0;
-    let sql = `SELECT id, partner_id, user_id, mobile_number, phone_number FROM withme_partners WHERE partner_id = ? OR user_id = ?`;
-    let params = [pId, pId];
-    if (isNum) {
-      sql += ` OR id = ?`;
-      params.push(Number(pId));
-    }
-    if (cleanMobile) {
-      sql += ` OR mobile_number = ? OR phone_number = ? OR mobile_number = ? OR phone_number = ?`;
-      params.push(cleanMobile, cleanMobile, fullMobile, fullMobile);
-    }
-    sql += ` LIMIT 5`;
-
-    const [pRows] = await db.query(sql, params);
-    pRows.forEach(row => {
-      if (row.id) allPartnerIds.add(String(row.id));
-      if (row.partner_id) allPartnerIds.add(String(row.partner_id));
-      if (row.user_id) allPartnerIds.add(String(row.user_id));
-      if (row.mobile_number) allPartnerIds.add(String(row.mobile_number));
-      if (row.phone_number) allPartnerIds.add(String(row.phone_number));
-    });
-  } catch (lookupErr) {
-    console.error('[WithMe DB] fetchPartnerBookings lookup error:', lookupErr.message);
-  }
-
+  const allPartnerIds = await getPartnerIdSet(pId);
   const idList = [...allPartnerIds].filter(id => id && String(id).trim() !== '');
   if (idList.length === 0) {
     return [];
   }
 
   const placeholders = idList.map(() => '?').join(', ');
-  const conditions = [`partner_id IN (${placeholders})`];
+  const conditions = [`b.partner_id IN (${placeholders})`];
   const params = [...idList];
 
+  // Exclude unpaid, failed, and dummy data unless explicitly requested
+  if (!options.includeUnpaid) {
+    conditions.push("b.is_paid = 1");
+    conditions.push("UPPER(b.payment_status) = 'PAID'");
+    conditions.push("b.status NOT IN ('Cancelled', 'CANCELLED', 'PAYMENT_FAILED', 'DUMMY_DATA')");
+  }
+
   if (statusFilter && statusFilter !== 'all') {
-    conditions.push("LOWER(status) = LOWER(?)");
+    conditions.push("LOWER(b.status) = LOWER(?)");
     params.push(statusFilter);
   }
 
-  const bConditions = conditions.map(c => `b.${c}`);
   const sql = `
     SELECT b.*,
            COALESCE(NULLIF(b.profile_image, ''), NULLIF(u.profile_image, ''), NULLIF(u.image, ''), '') AS resolved_profile_image,
            u.name AS u_name
     FROM withme_partner_bookings b
     LEFT JOIN users u ON (b.user_id = u.id OR u.id = REPLACE(b.user_id, 'usr_', ''))
-    WHERE ${bConditions.join(" AND ")} 
+    WHERE ${conditions.join(" AND ")} 
     ORDER BY b.created_at DESC LIMIT 200
   `;
 
-  console.log(`[WithMe DB] fetchPartnerBookings partnerId=${pId}, checking IDs: [${idList.join(', ')}]`);
+  console.log(`[WithMe DB] fetchPartnerBookings partnerId=${pId}, checking IDs: [${idList.join(', ')}], includeUnpaid=${Boolean(options.includeUnpaid)}`);
 
   const [rows] = await db.query(sql, params);
   if (!rows || rows.length === 0) {
@@ -1316,15 +1320,13 @@ async function fetchPartnerBookingsFromMysql(partnerId, statusFilter) {
   }
   return rows.map(r => {
     const isPaid = Boolean(
-      r.is_paid == 1 || r.is_paid === true || r.is_paid === '1' ||
-      String(r.payment_status).toUpperCase() === 'PAID' ||
-      String(r.payment_status).toUpperCase() === 'COMPLETED' ||
-      String(r.status).toUpperCase() === 'CONFIRMED' ||
-      String(r.status).toUpperCase() === 'PAID'
+      (r.is_paid == 1 || r.is_paid === true || r.is_paid === '1') &&
+      String(r.payment_status).toUpperCase() === 'PAID' &&
+      r.payment_id && String(r.payment_id).trim() !== '' && !String(r.payment_id).startsWith('dummy_')
     );
     const isAcc = isPaid ? 1 : (r.is_accepted !== undefined ? Number(r.is_accepted) : (['UPCOMING', 'CONFIRMED', 'ACCEPTED'].includes(String(r.status).toUpperCase()) ? 1 : 0));
     const payStatus = isPaid ? 'PAID' : (r.payment_status || 'PENDING');
-    const custName = r.customer_name || r.u_name || r.user_name || r.sender_name || r.name || 'Amit';
+    const custName = r.customer_name || r.u_name || r.user_name || r.sender_name || r.name || 'User';
     const partName = r.partner_name || '';
     const photoUrl = r.resolved_profile_image || r.profile_image || '';
     const senderObj = {
@@ -1340,7 +1342,7 @@ async function fetchPartnerBookingsFromMysql(partnerId, statusFilter) {
     return {
       booking_id: r.booking_id,
       request_id: r.request_id || null,
-      payment_id: r.payment_id || `pay_${r.booking_id}`,
+      payment_id: r.payment_id || null,
       partner_id: r.partner_id,
       partner_name: partName,
       user_id: r.user_id,
@@ -1541,5 +1543,8 @@ module.exports = {
   fetchPartnerTransactionsFromMysql,
   savePartnerTransactionToMysql,
   mapMysqlRowToPartner,
-  calculateAge
+  calculateAge,
+  getPartnerIdSet,
+  isPartnerOwner,
+  resolvePartnerCanonicalId
 };

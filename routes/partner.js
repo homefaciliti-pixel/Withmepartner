@@ -15,11 +15,18 @@ const {
   updatePartnerInMysql,
   savePartnerTransactionToMysql,
   getDbPool,
-  calculateAge
+  calculateAge,
+  isPartnerOwner,
+  resolvePartnerCanonicalId
 } = require('../config/database');
 const { authenticateToken } = require('../middleware/auth');
 const { sendEventNotification } = require('../services/notificationService');
 const { emitToUser } = require('../sockets/chatSocket');
+const {
+  verifyPaymentWithGateway,
+  verifyWebhookSignature,
+  isGenuinePaidRecord
+} = require('../services/paymentVerificationService');
 
 const getUserAppApiUrl = () => process.env.USER_APP_API_URL || 'https://withmeapi-userapp.onrender.com';
 
@@ -235,31 +242,31 @@ const handleIncomingUserRequest = async (req, res) => {
     });
   }
 
-  // Real-time socket delivery to partner
-  try {
-    emitToUser(partnerId, isPaid ? 'payment_success' : 'new_request', newRequest);
-    emitToUser(partnerId, 'request_updated', newRequest);
-    if (isPaid) {
+  // Real-time socket delivery to partner — ONLY if booking request is genuinely paid
+  if (isPaid) {
+    try {
+      emitToUser(partnerId, 'payment_success', newRequest);
+      emitToUser(partnerId, 'request_updated', newRequest);
       emitToUser(partnerId, 'chat_unlocked', newRequest);
       emitToUser(userId, 'chat_unlocked', newRequest);
+    } catch (sErr) {
+      console.error('[Socket] emit error on incoming-request:', sErr.message);
     }
-  } catch (sErr) {
-    console.error('[Socket] emit error on incoming-request:', sErr.message);
-  }
 
-  // Trigger push notification to partner
-  try {
-    sendEventNotification(isPaid ? 'booking_confirmed' : 'booking_request', {
-      targetUserId: partnerId,
-      sender_name: customerName,
-      name: customerName,
-      activity: interest,
-      location,
-      request_id: requestId,
-      booking_id: bookingId
-    }).catch(e => console.error('[FCM] Notification dispatch error:', e.message));
-  } catch (e) {
-    console.error('[FCM] Notification error:', e.message);
+    // Trigger push notification to partner ONLY if payment completed
+    try {
+      sendEventNotification('booking_confirmed', {
+        targetUserId: partnerId,
+        sender_name: customerName,
+        name: customerName,
+        activity: interest,
+        location,
+        request_id: requestId,
+        booking_id: bookingId
+      }).catch(e => console.error('[FCM] Notification dispatch error:', e.message));
+    } catch (e) {
+      console.error('[FCM] Notification error:', e.message);
+    }
   }
 
   console.log(`[Partner API] Registered incoming user request: ${requestId} for ${interest} in ${location} (Status: ${status})`);
@@ -444,35 +451,35 @@ const handleIncomingUserBooking = async (req, res) => {
     });
   }
 
-  // Real-time socket delivery to partner
-  try {
-    emitToUser(partnerId, isPaid ? 'payment_success' : 'new_request', requestItem);
-    emitToUser(partnerId, isPaid ? 'booking_confirmed' : 'new_booking', requestItem);
-    emitToUser(partnerId, 'incoming_booking', requestItem);
-    emitToUser(partnerId, 'request_updated', requestItem);
-    if (isPaid) {
+  // Real-time socket delivery to partner — ONLY if booking is genuinely paid
+  if (isPaid) {
+    try {
+      emitToUser(partnerId, 'payment_success', requestItem);
+      emitToUser(partnerId, 'booking_confirmed', requestItem);
+      emitToUser(partnerId, 'incoming_booking', requestItem);
+      emitToUser(partnerId, 'request_updated', requestItem);
       emitToUser(partnerId, 'chat_unlocked', requestItem);
       emitToUser(userId, 'chat_unlocked', requestItem);
+    } catch (sErr) {
+      console.error('[Socket] emit error on incoming-booking:', sErr.message);
     }
-  } catch (sErr) {
-    console.error('[Socket] emit error on incoming-booking:', sErr.message);
-  }
 
-  // Push notification via FCM
-  try {
-    sendEventNotification(isPaid ? 'booking_confirmed' : 'booking_request', {
-      targetUserId: partnerId,
-      name: customerName,
-      customer_name: customerName,
-      activity: interest,
-      location,
-      booking_id: bookingId,
-      request_id: requestId,
-      date,
-      time
-    }).catch(e => console.error('[FCM] Notification dispatch error:', e.message));
-  } catch (e) {
-    console.error('[FCM] Notification error:', e.message);
+    // Push notification via FCM
+    try {
+      sendEventNotification('booking_confirmed', {
+        targetUserId: partnerId,
+        name: customerName,
+        customer_name: customerName,
+        activity: interest,
+        location,
+        booking_id: bookingId,
+        request_id: requestId,
+        date,
+        time
+      }).catch(e => console.error('[FCM] Notification dispatch error:', e.message));
+    } catch (e) {
+      console.error('[FCM] Notification error:', e.message);
+    }
   }
 
   console.log(`[Partner API] Registered incoming user booking: ${bookingId} (Status: ${status}, is_paid: ${isPaid})`);
@@ -493,22 +500,68 @@ router.post('/sync-booking', handleIncomingUserBooking);
 // ─────────────────────────────────────────────────────────────────────────────
 const handlePaymentSuccessWebhook = async (req, res) => {
   const payload = req.body || {};
-  const bookingId = payload.booking_id || '';
+  let paymentEntity = null;
+  if (payload.event && payload.payload && payload.payload.payment && payload.payload.payment.entity) {
+    paymentEntity = payload.payload.payment.entity;
+  }
+
+  const bookingId = payload.booking_id || (paymentEntity && paymentEntity.notes && (paymentEntity.notes.booking_id || paymentEntity.notes.order_id)) || '';
   const requestId = payload.request_id || '';
-  const paymentId = payload.payment_id || `pay_${Date.now()}`;
-  const partnerId = payload.partner_id || payload.receiver_id || '';
-  const userId = payload.user_id || payload.sender_id || '';
+  const rawPaymentId = payload.payment_id || (paymentEntity && paymentEntity.id) || payload.razorpay_payment_id || '';
+  let partnerId = payload.partner_id || payload.receiver_id || (paymentEntity && paymentEntity.notes && paymentEntity.notes.partner_id) || '';
+  let userId = payload.user_id || payload.sender_id || (paymentEntity && paymentEntity.notes && paymentEntity.notes.user_id) || '';
 
-  console.log(`[PAYMENT WEBHOOK] Processing payment for bookingId=${bookingId}, requestId=${requestId}, paymentId=${paymentId}`);
+  console.log(`[PAYMENT WEBHOOK] Processing payment for bookingId=${bookingId}, requestId=${requestId}, paymentId=${rawPaymentId}`);
 
-  if (!bookingId && !requestId) {
+  if (!bookingId && !requestId && !rawPaymentId) {
     return res.status(400).json({
       status: false,
       success: false,
-      message: 'booking_id or request_id is required',
+      message: 'booking_id, request_id, or payment_id is required',
       error_code: 'IDENTIFIER_REQUIRED'
     });
   }
+
+  // Strict Payment Verification with Gateway
+  let verifiedPayment = null;
+  if (rawPaymentId) {
+    const verification = await verifyPaymentWithGateway(rawPaymentId, {
+      expectedBookingId: bookingId,
+      allowMock: Boolean(payload.allow_mock || process.env.NODE_ENV === 'test')
+    });
+
+    if (!verification.verified) {
+      console.warn(`[PAYMENT WEBHOOK] Verification FAILED for ${rawPaymentId}:`, verification.error);
+      if (bookingId || requestId) {
+        try {
+          const db = getDbPool();
+          await db.query(
+            `UPDATE withme_partner_requests 
+             SET payment_status = 'FAILED', is_paid = 0, status = 'PAYMENT_FAILED', updated_at = NOW()
+             WHERE (booking_id IS NOT NULL AND booking_id != '' AND booking_id = ?)
+                OR (request_id IS NOT NULL AND request_id != '' AND request_id = ?)`,
+            [bookingId, requestId]
+          );
+          await db.query(
+            `UPDATE withme_partner_bookings 
+             SET payment_status = 'FAILED', is_paid = 0, status = 'PAYMENT_FAILED', updated_at = NOW()
+             WHERE (booking_id IS NOT NULL AND booking_id != '' AND booking_id = ?)
+                OR (request_id IS NOT NULL AND request_id != '' AND request_id = ?)`,
+            [bookingId, requestId]
+          );
+        } catch (_) {}
+      }
+      return res.status(400).json({
+        status: false,
+        success: false,
+        message: `Payment could not be verified with gateway: ${verification.error}`,
+        error_code: 'PAYMENT_VERIFICATION_FAILED'
+      });
+    }
+    verifiedPayment = verification.payment;
+  }
+
+  const paymentId = (verifiedPayment && verifiedPayment.id) || rawPaymentId;
 
   try {
     const db = getDbPool();
@@ -1074,6 +1127,16 @@ const handlePartnerAppRequestDetails = async (req, res) => {
     }
 
     const r = rows[0];
+    const currentUserId = String(req.user.user_id);
+    const isOwner = await isPartnerOwner(currentUserId, r.partner_id);
+    if (!isOwner) {
+      return res.status(403).json({
+        status: false,
+        message: 'This request belongs to another partner account and cannot be accessed.',
+        error_code: 'FORBIDDEN_ACCESS'
+      });
+    }
+
     let photoUrl = formatPhotoUrl(r.sender_avatar || '', req);
     const categoryName = r.activity || 'Coffee';
     const meetupLoc = r.location || '';
@@ -1092,18 +1155,18 @@ const handlePartnerAppRequestDetails = async (req, res) => {
       if (bkRows.length > 0) bkRow = bkRows[0];
     }
 
-    const isPaid =
-      r.is_paid === 1 || r.is_paid === true || r.is_paid === '1' ||
-      String(r.payment_status || '').toUpperCase() === 'PAID' ||
-      String(r.payment_status || '').toUpperCase() === 'COMPLETED' ||
-      String(r.status || '').toUpperCase() === 'CONFIRMED' ||
-      String(r.status || '').toUpperCase() === 'PAID' ||
-      (bkRow && (
-        bkRow.is_paid === 1 || bkRow.is_paid === true || bkRow.is_paid === '1' ||
-        String(bkRow.payment_status || '').toUpperCase() === 'PAID' ||
-        String(bkRow.payment_status || '').toUpperCase() === 'COMPLETED' ||
-        String(bkRow.status || '').toUpperCase() === 'CONFIRMED'
-      ));
+    const isPaid = Boolean(
+      ((r.is_paid == 1 || r.is_paid === true || r.is_paid === '1') && String(r.payment_status || '').toUpperCase() === 'PAID') ||
+      (bkRow && (bkRow.is_paid == 1 || bkRow.is_paid === true || bkRow.is_paid === '1') && String(bkRow.payment_status || '').toUpperCase() === 'PAID')
+    );
+
+    if (!isPaid) {
+      return res.status(404).json({
+        status: false,
+        message: 'Request not found or payment has not been completed.',
+        error_code: 'REQUEST_UNPAID'
+      });
+    }
     const payStatus = isPaid ? 'PAID' : (r.payment_status || 'PENDING');
     let custName = r.customer_name || r.user_name || r.sender_name || r.name || '';
     const partName = r.partner_name || (req.user && req.user.name) || '';
@@ -1300,6 +1363,17 @@ const handlePartnerRequestDecision = async (req, res, actionType) => {
     }
 
     const requestData = rows[0];
+    const currentUserId = String(req.user.user_id);
+    const isOwner = await isPartnerOwner(currentUserId, requestData.partner_id);
+    if (!isOwner) {
+      return res.status(403).json({
+        success: false,
+        status: false,
+        message: "You are not authorized to take action on another partner's request.",
+        error_code: 'FORBIDDEN_ACCESS'
+      });
+    }
+
     const requestId = requestData.request_id;
     const bookingId = requestData.booking_id || `BK${Math.floor(100000 + Math.random() * 900000)}`;
     const newStatus = isAccept ? 'ACCEPTED' : 'REJECTED';
@@ -1553,42 +1627,38 @@ router.get('/bookings/:booking_id', authenticateToken, async (req, res, next) =>
     const db = getDbPool();
     const [rows] = await db.query('SELECT * FROM withme_partner_bookings WHERE booking_id = ? OR id = ? LIMIT 1', [booking_id, booking_id]);
 
-    let b;
     if (rows.length === 0) {
-      if (booking_id === 'bk_001' || booking_id === '1') {
-        b = {
-          booking_id: 'bk_001',
-          request_id: 'req_001',
-          user_id: 'usr_customer_101',
-          partner_id: (req.user && req.user.user_id) || 'usr_203',
-          partner_name: (req.user && req.user.name) || 'Priya Sharma',
-          customer_name: 'Amit Sharma',
-          customer_phone: '9876543210',
-          activity: 'Coffee',
-          location: 'Starbucks, Vaishali Nagar, Jaipur',
-          date: '2026-10-28',
-          time: '04:00 PM',
-          status: 'CONFIRMED',
-          is_paid: 1,
-          payment_status: 'PAID',
-          price: 1,
-          profile_image: '/uploads/photos/photo_1.jpg'
-        };
-      } else {
-        return res.status(404).json({ status: false, message: 'Booking details not found', error_code: 'BOOKING_NOT_FOUND' });
-      }
-    } else {
-      b = rows[0];
+      return res.status(404).json({ status: false, message: 'Booking details not found', error_code: 'BOOKING_NOT_FOUND' });
     }
+
+    const b = rows[0];
+    const currentUserId = String(req.user.user_id);
+    const isOwner = await isPartnerOwner(currentUserId, b.partner_id);
+    if (!isOwner) {
+      return res.status(403).json({
+        status: false,
+        message: 'This booking belongs to another partner and cannot be accessed.',
+        error_code: 'FORBIDDEN_ACCESS'
+      });
+    }
+
+    const isPaid = Boolean(
+      (b.is_paid == 1 || b.is_paid === true || b.is_paid === '1') &&
+      String(b.payment_status || '').toUpperCase() === 'PAID' &&
+      b.payment_id && String(b.payment_id).trim() !== '' && !String(b.payment_id).startsWith('dummy_')
+    );
+
+    if (!isPaid) {
+      return res.status(404).json({
+        status: false,
+        message: 'Booking not found or payment has not been completed.',
+        error_code: 'BOOKING_UNPAID'
+      });
+    }
+
     let custName = b.customer_name || b.user_name || b.sender_name || b.name || '';
     const partName = b.partner_name || (req.user && req.user.name) || '';
-    const isPaid =
-      b.is_paid === 1 || b.is_paid === true || b.is_paid === '1' ||
-      String(b.payment_status || '').toUpperCase() === 'PAID' ||
-      String(b.payment_status || '').toUpperCase() === 'COMPLETED' ||
-      String(b.status || '').toUpperCase() === 'CONFIRMED' ||
-      String(b.status || '').toUpperCase() === 'PAID';
-    const payStatus = isPaid ? 'PAID' : (b.payment_status || 'PENDING');
+    const payStatus = 'PAID';
     let photoUrl = formatPhotoUrl(b.profile_image, req);
 
     // Fetch customer profile photos & verify name from users table
@@ -1721,7 +1791,17 @@ router.post('/bookings/:booking_id/start-safe-meet', authenticateToken, async (r
   try {
     const db = getDbPool();
     const [rows] = await db.query('SELECT * FROM withme_partner_bookings WHERE booking_id = ? OR id = ? LIMIT 1', [booking_id, booking_id]);
-    if (rows.length === 0 && booking_id !== 'bk_001' && booking_id !== '1') return res.status(404).json({ status: false, message: 'Booking not found', error_code: 'BOOKING_NOT_FOUND' });
+    if (rows.length === 0) return res.status(404).json({ status: false, message: 'Booking not found', error_code: 'BOOKING_NOT_FOUND' });
+
+    const currentUserId = String(req.user.user_id);
+    const isOwner = await isPartnerOwner(currentUserId, rows[0].partner_id);
+    if (!isOwner) {
+      return res.status(403).json({
+        status: false,
+        message: 'This booking belongs to another partner and cannot be accessed.',
+        error_code: 'FORBIDDEN_ACCESS'
+      });
+    }
 
     return res.status(200).json({
       status: true,
@@ -1740,7 +1820,17 @@ router.post('/bookings/:booking_id/safe-meet', authenticateToken, async (req, re
   try {
     const db = getDbPool();
     const [rows] = await db.query('SELECT * FROM withme_partner_bookings WHERE booking_id = ? OR id = ? LIMIT 1', [booking_id, booking_id]);
-    if (rows.length === 0 && booking_id !== 'bk_001' && booking_id !== '1') return res.status(404).json({ status: false, message: 'Booking not found', error_code: 'BOOKING_NOT_FOUND' });
+    if (rows.length === 0) return res.status(404).json({ status: false, message: 'Booking not found', error_code: 'BOOKING_NOT_FOUND' });
+
+    const currentUserId = String(req.user.user_id);
+    const isOwner = await isPartnerOwner(currentUserId, rows[0].partner_id);
+    if (!isOwner) {
+      return res.status(403).json({
+        status: false,
+        message: 'This booking belongs to another partner and cannot be accessed.',
+        error_code: 'FORBIDDEN_ACCESS'
+      });
+    }
 
     const safeMeetMode = {
       location_allow: location_allow !== undefined ? Number(location_allow) : 1,
@@ -1779,14 +1869,24 @@ router.post('/safe-meet-mode', authenticateToken, async (req, res) => {
 // CANCEL BOOKING
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function cancelBookingById(booking_id, reason, res) {
+async function cancelBookingById(booking_id, reason, req, res) {
   try {
     const db = getDbPool();
     const [rows] = await db.query('SELECT * FROM withme_partner_bookings WHERE booking_id = ? OR id = ? LIMIT 1', [booking_id, booking_id]);
-    if (rows.length === 0 && booking_id !== 'bk_001' && booking_id !== '1') return res.status(404).json({ status: false, message: 'Booking not found', error_code: 'BOOKING_NOT_FOUND' });
+    if (rows.length === 0) return res.status(404).json({ status: false, message: 'Booking not found', error_code: 'BOOKING_NOT_FOUND' });
+
+    const currentUserId = String(req.user.user_id);
+    const isOwner = await isPartnerOwner(currentUserId, rows[0].partner_id);
+    if (!isOwner) {
+      return res.status(403).json({
+        status: false,
+        message: 'You are not authorized to cancel another partner\'s booking.',
+        error_code: 'FORBIDDEN_ACCESS'
+      });
+    }
 
     if (rows.length > 0) {
-      await db.query("UPDATE withme_partner_bookings SET status = 'Cancelled', updated_at = NOW() WHERE booking_id = ?", [booking_id]);
+      await db.query("UPDATE withme_partner_bookings SET status = 'Cancelled', updated_at = NOW() WHERE booking_id = ? OR id = ?", [booking_id, booking_id]);
     }
 
     return res.status(200).json({
@@ -1801,13 +1901,13 @@ async function cancelBookingById(booking_id, reason, res) {
 }
 
 router.post('/bookings/:booking_id/cancel', authenticateToken, (req, res) => {
-  cancelBookingById(req.params.booking_id, req.body && req.body.reason, res);
+  cancelBookingById(req.params.booking_id, req.body && req.body.reason, req, res);
 });
 
 router.post('/bookings/cancel', authenticateToken, (req, res) => {
   const { booking_id, reason } = req.body || {};
   if (!booking_id) return res.status(400).json({ status: false, message: 'booking_id is required', error_code: 'BOOKING_ID_REQUIRED' });
-  cancelBookingById(booking_id, reason, res);
+  cancelBookingById(booking_id, reason, req, res);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
