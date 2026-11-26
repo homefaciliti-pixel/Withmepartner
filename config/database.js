@@ -1284,13 +1284,14 @@ async function savePartnerRequestToMysql(requestData) {
 
   await db.query(
     `INSERT INTO withme_partner_requests (
-      request_id, booking_id, user_id, partner_id, partner_name, sender_name, sender_phone, sender_avatar,
+      request_id, booking_id, user_id, partner_id, partner_name, sender_name, customer_name, sender_phone, sender_avatar,
       activity, date, time, location, message, price, status, is_accepted, payment_status, is_paid, payment_id
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON DUPLICATE KEY UPDATE
       partner_id = VALUES(partner_id),
       partner_name = VALUES(partner_name),
       sender_name = VALUES(sender_name),
+      customer_name = VALUES(customer_name),
       sender_phone = VALUES(sender_phone),
       sender_avatar = VALUES(sender_avatar),
       activity = VALUES(activity),
@@ -1305,7 +1306,7 @@ async function savePartnerRequestToMysql(requestData) {
       is_paid = VALUES(is_paid),
       payment_id = VALUES(payment_id),
       updated_at = NOW()`,
-    [reqId, bId, userId, resolvedPartnerId, partnerName, custName, senderPhone, senderAvatar, activity, date, time, location, message, price, status, isAccepted, paymentStatus, isPaid ? 1 : 0, paymentId]
+    [reqId, bId, userId, resolvedPartnerId, partnerName, custName, custName, senderPhone, senderAvatar, activity, date, time, location, message, price, status, isAccepted, paymentStatus, isPaid ? 1 : 0, paymentId]
   );
   console.log(`[WithMe DB] Saved partner request ${reqId} (partner_id=${resolvedPartnerId}, partner_name=${partnerName}, customer_name=${custName}, status=${status}, is_accepted=${isAccepted}, is_paid=${isPaid ? 1 : 0}) to 'withme_partner_requests' table.`);
 }
@@ -1465,15 +1466,20 @@ async function savePartnerBookingToMysql(bookingData) {
 
   const userId = bookingData.user_id || '';
   let profileImage = bookingData.profile_image || bookingData.user_image || '';
-  if (!profileImage && userId) {
+  if (userId) {
     try {
       const cleanUId = String(userId).replace('usr_', '');
       const [uRows] = await db.query(
-        'SELECT profile_image, image FROM users WHERE id = ? OR id = ? LIMIT 1',
+        'SELECT name, nickname, profile_image, image FROM users WHERE id = ? OR id = ? LIMIT 1',
         [cleanUId, userId]
       );
       if (uRows.length > 0) {
-        profileImage = uRows[0].profile_image || (uRows[0].image ? `https://withmeapi-userapp.onrender.com/uploads/${uRows[0].image}` : '');
+        if (!custName || custName === 'User') {
+          custName = uRows[0].name || uRows[0].nickname || 'Customer';
+        }
+        if (!profileImage) {
+          profileImage = uRows[0].profile_image || (uRows[0].image ? `https://withmeapi-userapp.onrender.com/uploads/${uRows[0].image}` : '');
+        }
       }
     } catch (_) {}
   }

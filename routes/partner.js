@@ -78,23 +78,44 @@ const handleIncomingUserRequest = async (req, res) => {
   const paymentId = requestPayload.payment_id || `pay_${requestId}`;
   const partnerId = requestPayload.partner_id || requestPayload.receiver_id || 'usr_203';
   const userId = requestPayload.user_id || requestPayload.sender_id || 'usr_101';
-  const partnerName = requestPayload.partner_name || (partnerId === 'usr_203' ? 'Priya Sharma' : '');
-  const customerName = requestPayload.user_name || requestPayload.customer_name || requestPayload.sender_name || requestPayload.name || 'User';
-  const senderPhone = requestPayload.phone_number || requestPayload.sender_phone || '';
-  const interest = requestPayload.interest || requestPayload.activity_name || requestPayload.activity || (requestPayload.activity && requestPayload.activity.type) || 'Coffee';
-  const location = requestPayload.location || (requestPayload.activity && requestPayload.activity.area) || 'Jaipur';
-  const dateTime = requestPayload.date_time || `${requestPayload.date || getISTDateString()} ${requestPayload.time || '06:00 PM'}`;
+  let partnerName = requestPayload.partner_name || '';
+  let customerName = requestPayload.user_name || requestPayload.customer_name || requestPayload.sender_name || requestPayload.name || '';
+  let senderPhone = requestPayload.phone_number || requestPayload.sender_phone || '';
   let profileImage = requestPayload.profile_image || requestPayload.image || requestPayload.sender_avatar || '';
-  if ((!profileImage || profileImage.includes('profile.jpg')) && userId) {
+
+  // Resolve customer name, phone, and image from users table
+  if (userId) {
     try {
       const db = getDbPool();
       const cleanUId = String(userId).replace('usr_', '');
-      const [uRows] = await db.query('SELECT profile_image, image FROM users WHERE id = ? OR id = ? LIMIT 1', [cleanUId, userId]);
+      const [uRows] = await db.query(
+        'SELECT name, nickname, profile_image, image, phone_number, mobile_number FROM users WHERE id = ? OR id = ? LIMIT 1',
+        [cleanUId, userId]
+      );
       if (uRows.length > 0) {
-        profileImage = uRows[0].profile_image || (uRows[0].image ? `https://withmeapi-userapp.onrender.com/uploads/${uRows[0].image}` : '');
+        const u = uRows[0];
+        if (!customerName || customerName === 'User') {
+          customerName = u.name || u.nickname || 'Customer';
+        }
+        if (!senderPhone) {
+          senderPhone = u.phone_number || u.mobile_number || '';
+        }
+        if (!profileImage || profileImage.includes('profile.jpg')) {
+          profileImage = u.profile_image || (u.image ? `https://withmeapi-userapp.onrender.com/uploads/${u.image}` : '');
+        }
       }
     } catch (_) {}
   }
+  if (!customerName) customerName = 'Customer';
+
+  // Resolve partner name from partners table
+  if (!partnerName && partnerId) {
+    try {
+      const p = await findPartnerByIdFromMysql(partnerId);
+      if (p && p.name) partnerName = p.name;
+    } catch (_) {}
+  }
+  if (!partnerName && partnerId === 'usr_203') partnerName = 'Priya Sharma';
   const amount = requestPayload.amount || requestPayload.price || 1;
   const currency = requestPayload.currency || 'INR';
 
@@ -289,22 +310,44 @@ const handleIncomingUserBooking = async (req, res) => {
   const requestId = bookingPayload.request_id || `req_b_${bookingId}`;
   const partnerId = bookingPayload.partner_id || bookingPayload.receiver_id || '';
   const userId = bookingPayload.user_id || bookingPayload.sender_id || '';
-  const partnerName = bookingPayload.partner_name || '';
-  const customerName = bookingPayload.user_name || bookingPayload.customer_name || bookingPayload.sender_name || bookingPayload.name || 'User';
-  const userPhone = bookingPayload.phone_number || bookingPayload.customer_phone || '';
-  const interest = bookingPayload.interest || bookingPayload.activity || 'Coffee';
-  const location = bookingPayload.location || (bookingPayload.meeting_info && (bookingPayload.meeting_info.location || bookingPayload.meeting_info.place)) || 'Jaipur';
+  let partnerName = bookingPayload.partner_name || '';
+  let customerName = bookingPayload.user_name || bookingPayload.customer_name || bookingPayload.sender_name || bookingPayload.name || '';
+  let userPhone = bookingPayload.phone_number || bookingPayload.customer_phone || '';
   let profileImage = bookingPayload.profile_image || bookingPayload.user_image || '';
-  if ((!profileImage || profileImage.includes('profile.jpg')) && userId) {
+
+  // Resolve customer name, phone, and image from users table
+  if (userId) {
     try {
       const db = getDbPool();
       const cleanUId = String(userId).replace('usr_', '');
-      const [uRows] = await db.query('SELECT profile_image, image FROM users WHERE id = ? OR id = ? LIMIT 1', [cleanUId, userId]);
+      const [uRows] = await db.query(
+        'SELECT name, nickname, profile_image, image, phone_number, mobile_number FROM users WHERE id = ? OR id = ? LIMIT 1',
+        [cleanUId, userId]
+      );
       if (uRows.length > 0) {
-        profileImage = uRows[0].profile_image || (uRows[0].image ? `https://withmeapi-userapp.onrender.com/uploads/${uRows[0].image}` : '');
+        const u = uRows[0];
+        if (!customerName || customerName === 'User') {
+          customerName = u.name || u.nickname || 'Customer';
+        }
+        if (!userPhone) {
+          userPhone = u.phone_number || u.mobile_number || '';
+        }
+        if (!profileImage || profileImage.includes('profile.jpg')) {
+          profileImage = u.profile_image || (u.image ? `https://withmeapi-userapp.onrender.com/uploads/${u.image}` : '');
+        }
       }
     } catch (_) {}
   }
+  if (!customerName) customerName = 'Customer';
+
+  // Resolve partner name from partners table
+  if (!partnerName && partnerId) {
+    try {
+      const p = await findPartnerByIdFromMysql(partnerId);
+      if (p && p.name) partnerName = p.name;
+    } catch (_) {}
+  }
+  if (!partnerName && partnerId === 'usr_203') partnerName = 'Priya Sharma';
   const date = bookingPayload.date || (bookingPayload.meeting_info && bookingPayload.meeting_info.date) || getISTDateString();
   const time = bookingPayload.time || (bookingPayload.meeting_info && bookingPayload.meeting_info.time) || '06:00 PM';
   const price = bookingPayload.amount || bookingPayload.price || 1;
@@ -796,7 +839,7 @@ router.get('/home', authenticateToken, async (req, res) => {
           String(r.status || '').toUpperCase() === 'CONFIRMED' ||
           String(r.status || '').toUpperCase() === 'PAID';
         const payStatus = isPaid ? 'PAID' : (r.payment_status || 'PENDING');
-        const custName = r.customer_name || r.user_name || (r.sender && r.sender.name) || r.sender_name || r.name || 'Amit';
+        const custName = r.customer_name || r.user_name || (r.sender && r.sender.name) || r.sender_name || r.name || 'Customer';
         const partName = r.partner_name || (req.user && req.user.name) || '';
         const photoUrl = formatPhotoUrl(r.sender_avatar || r.image || r.profile_image || r.resolved_sender_avatar, req);
         const senderObj = {
@@ -863,7 +906,7 @@ router.get('/home', authenticateToken, async (req, res) => {
           String(b.status || '').toUpperCase() === 'CONFIRMED' ||
           String(b.status || '').toUpperCase() === 'PAID';
         const payStatus = isPaid ? 'PAID' : (b.payment_status || 'PENDING');
-        const custName = b.customer_name || b.user_name || (b.sender && b.sender.name) || b.sender_name || b.name || 'Amit';
+        const custName = b.customer_name || b.user_name || (b.sender && b.sender.name) || b.sender_name || b.name || 'Customer';
         const partName = b.partner_name || (req.user && req.user.name) || '';
         const photoUrl = formatPhotoUrl(b.profile_image || b.image || b.resolved_profile_image, req);
         const senderObj = {
@@ -1040,7 +1083,7 @@ const handleGetAllPartnerRequests = async (req, res) => {
         String(r.status || '').toUpperCase() === 'CONFIRMED' ||
         String(r.status || '').toUpperCase() === 'PAID';
       const payStatus = isPaid ? 'PAID' : (r.payment_status || 'PENDING');
-      const custName = r.customer_name || r.user_name || (r.sender && r.sender.name) || r.sender_name || r.name || 'Amit';
+      const custName = r.customer_name || r.user_name || (r.sender && r.sender.name) || r.sender_name || r.name || 'Customer';
       const partName = r.partner_name || (req.user && req.user.name) || '';
       const senderObj = {
         id: r.user_id,
@@ -1209,7 +1252,7 @@ const handlePartnerAppRequestDetails = async (req, res) => {
         console.error('[Request Details] User fetch error:', uErr.message);
       }
     }
-    if (!custName) custName = 'Amit';
+    if (!custName) custName = 'Customer';
     if (customerProfileImages.length > 0) {
       photoUrl = customerProfileImages[0];
     } else if (photoUrl) {
@@ -1565,7 +1608,7 @@ router.get(['/bookings', '/bookings/list'], authenticateToken, async (req, res) 
         String(b.status || '').toUpperCase() === 'CONFIRMED' ||
         String(b.status || '').toUpperCase() === 'PAID';
       const payStatus = isPaid ? 'PAID' : (b.payment_status || 'PENDING');
-      const custName = b.customer_name || b.user_name || (b.sender && b.sender.name) || b.sender_name || b.name || 'Amit';
+      const custName = b.customer_name || b.user_name || (b.sender && b.sender.name) || b.sender_name || b.name || 'Customer';
       const partName = b.partner_name || (req.user && req.user.name) || '';
       const photoUrl = formatPhotoUrl(b.profile_image || b.image || b.resolved_profile_image, req);
       const senderObj = {
@@ -1705,7 +1748,7 @@ router.get('/bookings/:booking_id', authenticateToken, async (req, res, next) =>
         console.error('[Booking Details] User fetch error:', uErr.message);
       }
     }
-    if (!custName) custName = 'Amit';
+    if (!custName) custName = 'Customer';
     if (customerProfileImages.length > 0) {
       photoUrl = customerProfileImages[0];
     } else if (photoUrl) {

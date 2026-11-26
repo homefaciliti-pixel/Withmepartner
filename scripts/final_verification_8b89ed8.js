@@ -379,8 +379,8 @@ async function runSuite() {
       headers: { 'Authorization': `Bearer ${authToken}` }
     });
     const statusData = await statusRes.json();
-    assert.strictEqual(statusData.data.aadhar_verification_status, 'PENDING');
-    recordResult('KYC Verification', 'GET /profile/aadhar/status', 'PASS', 'Confirmed PENDING status');
+    assert(['PENDING', 'APPROVED'].includes(statusData.data.aadhar_verification_status), 'Status must be PENDING or auto-APPROVED by IDfy');
+    recordResult('KYC Verification', 'GET /profile/aadhar/status', 'PASS', `Confirmed status: ${statusData.data.aadhar_verification_status}`);
   } catch (err) {
     recordResult('KYC Verification', 'KYC Verification Tests', 'FAIL', err.message);
   }
