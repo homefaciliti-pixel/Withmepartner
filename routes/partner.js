@@ -1311,8 +1311,14 @@ router.get('/requests', authenticateToken, (req, res, next) => {
   if (req.query.request_id || req.query.id) return handlePartnerAppRequestDetails(req, res);
   return handleGetAllPartnerRequests(req, res);
 });
+router.get('/request', authenticateToken, (req, res, next) => {
+  if (req.query.request_id || req.query.id) return handlePartnerAppRequestDetails(req, res);
+  return handleGetAllPartnerRequests(req, res);
+});
 router.get('/requests/:request_id', authenticateToken, handlePartnerAppRequestDetails);
 router.get('/requests/details/:request_id', authenticateToken, handlePartnerAppRequestDetails);
+router.get('/request/:request_id', authenticateToken, handlePartnerAppRequestDetails);
+router.get('/request/details/:request_id', authenticateToken, handlePartnerAppRequestDetails);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MANUAL ACCEPT / REJECT APIS
